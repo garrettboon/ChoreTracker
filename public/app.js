@@ -35,7 +35,7 @@ try{
   app=initializeApp(cfg);auth=getAuth(app);
   db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})});
   fns=getFunctions(app);
-}catch(e){document.getElementById("app").innerHTML=`<div class="center"><div class="logo">Boon <span>Bank</span></div><p class="sub" style="max-width:420px">Open this app from its Firebase Hosting address (your-project.web.app). It can't start from a saved file.</p></div>`;throw e;}
+}catch(e){document.getElementById("app").innerHTML=`<div class="center"><div class="logo">Boon <span>Chore Tracker</span></div><p class="sub" style="max-width:420px">Open this app from its Firebase Hosting address (your-project.web.app). It can't start from a saved file.</p></div>`;throw e;}
 const call=name=>httpsCallable(fns,name);
 async function messaging(){if(msg)return msg;if(!(await isSupported().catch(()=>false)))return null;msg=getMessaging(app);onMessage(msg,p=>toast((p.notification&&p.notification.body)||"Reminder"));return msg;}
 if("serviceWorker" in navigator)navigator.serviceWorker.register("/firebase-messaging-sw.js").catch(()=>{});
@@ -126,8 +126,8 @@ function render(){
   let h;
   if(S.phase==="welcome")h=viewWelcome();
   else if(S.phase==="pair")h=viewPair();
-  else if(S.phase==="notparent")h=`<div class="center"><div class="logo">Boon <span>Bank</span></div><p class="sub" style="max-width:420px;margin-top:12px">${esc(S.ui.err)}</p><div class="choices"><button class="btn" data-act="sign-out">Sign out</button></div></div>`;
-  else if(S.phase!=="ready"||!S.config)h=`<div class="center"><div class="logo">Boon <span>Bank</span></div><p class="sub">Loading…</p></div>`;
+  else if(S.phase==="notparent")h=`<div class="center"><div class="logo">Boon <span>Chore Tracker</span></div><p class="sub" style="max-width:420px;margin-top:12px">${esc(S.ui.err)}</p><div class="choices"><button class="btn" data-act="sign-out">Sign out</button></div></div>`;
+  else if(S.phase!=="ready"||!S.config)h=`<div class="center"><div class="logo">Boon <span>Chore Tracker</span></div><p class="sub">Loading…</p></div>`;
   else if(S.role==="kid")h=kidCfg(S.viewKid)?viewKid(S.viewKid):`<div class="center"><p class="sub">This tablet's person was removed. Ask a parent to pair it again.</p></div>`;
   else if(S.role==="display")h=viewDisplay();
   else h=viewParent();
@@ -141,7 +141,7 @@ function afterRender(){
 }
 
 function viewWelcome(){
-  return `<div class="center"><div class="logo">Boon <span>Bank</span></div><p class="sub">Set up this device</p><div class="choices">
+  return `<div class="center"><div class="logo">Boon <span>Chore Tracker</span></div><p class="sub">Set up this device</p><div class="choices">
     <button class="choice" data-act="start-pair"><span class="e">📱</span><span><b>Pair this device</b><small>For a kid's tablet or the family leaderboard. A parent gives you a code.</small></span></button>
     <button class="choice" data-act="parent-signin"><span class="e">🔑</span><span><b>Parent sign-in</b><small>Sign in with Google</small></span></button></div></div>`;
 }
@@ -232,7 +232,7 @@ function viewDisplay(){
   const d=(7-new Date().getDay())%7;const cash=d===0?"Cash-out tonight":`Cash-out in ${d} day${d===1?"":"s"}`;
   const all=[];for(const w of Object.values(S.weeks))for(const e of w.entries||[])if(e.status!=="reversed")all.push({...e,kidId:w.kidId});
   const recent=all.sort((a,b)=>b.t-a.t).slice(0,5).map(e=>{const k=kidCfg(e.kidId);return k?`<b>${esc(k.name)}</b> ${esc(e.name.toLowerCase())} +${money(e.amount)}`:"";}).filter(Boolean);
-  return `<div class="board"><header class="board-head"><h1>Boon Bank</h1><div class="when">${new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"})}. <b>${cash}</b></div></header>
+  return `<div class="board"><header class="board-head"><h1>Boon Chore Tracker</h1><div class="when">${new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"})}. <b>${cash}</b></div></header>
   <div class="lanes">${kidsSorted().map(k=>{const ks=kidState(k.id),w=getWeek(k.id,activeWeek(k.id)),net=weekNet(w),cr=creatureFor(k.id),won=w.goal&&net>=w.goal,s=streak(k.id),saved=ks.goals.reduce((a,g)=>a+g.balance,0);
     return `<section class="lane ${won?"won":""}" data-kid="${k.id}"><div class="lane-who"><span class="lane-cr">${cr[1]}</span><div><h2>${esc(k.name)}</h2><span class="streak">🔥 ${s}</span></div></div>
       <div class="lane-track">${w.goal?trail(net/w.goal,cr,won,`${esc(k.name)} is at ${Math.round(net/w.goal*100)}% of their goal`):`<p class="sub">Waiting for this week's goal</p>`}</div>

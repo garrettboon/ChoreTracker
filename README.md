@@ -1,4 +1,4 @@
-# Boon Bank: Firebase setup
+# Boon Chore Tracker: Firebase setup
 
 This folder is the complete app. You'll create a Firebase project, fill in three small settings, and deploy with one command. Plan on about 45 minutes the first time.
 
@@ -76,7 +76,7 @@ Run `firebase deploy` again any time you change a file.
 Repeat for each kid's tablet and the leaderboard device:
 
 1. On your phone: **Devices** tab > choose who the device is for > **Create pairing code**. Codes last 15 minutes.
-2. On the tablet: open the Hosting URL in Chrome, open Chrome's menu, and tap **Add to Home screen** (or **Install app**). Open Boon Bank from the new home-screen icon.
+2. On the tablet: open the Hosting URL in Chrome, open Chrome's menu, and tap **Add to Home screen** (or **Install app**). Open Boon Chores from the new home-screen icon.
 3. Tap **Pair this device**, enter the code, and give the device a name.
 4. On a kid's tablet, tap **Turn on chore reminders** and allow notifications. The Devices tab on your phone will show "Reminders on."
 
