@@ -1,0 +1,42 @@
+name: Deploy to Firebase
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: firebase-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write   # lets GitHub prove its identity to Google (no key file)
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install function dependencies
+        working-directory: functions
+        run: npm ci
+
+      - name: Write functions/.env from GitHub secret
+        env:
+          PARENT_EMAILS: ${{ secrets.PARENT_EMAILS }}
+        run: printf 'PARENT_EMAILS=%s\n' "$PARENT_EMAILS" > functions/.env
+
+      - name: Sign in to Google Cloud (keyless)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Deploy hosting, rules, and functions
+        run: npx --yes firebase-tools@latest deploy --non-interactive --force

@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function familyDoc() { return /databases/$(database)/documents/app/family; }
+    function isParent() {
+      return signedIn()
+        && request.auth.token.email != null
+        && request.auth.token.email_verified == true
+        && exists(familyDoc())
+        && request.auth.token.email.lower() in get(familyDoc()).data.parentEmails;
+    }
+    function deviceDoc() { return /databases/$(database)/documents/devices/$(request.auth.uid); }
+    function isDevice() { return signedIn() && exists(deviceDoc()); }
+    function isKid(kidId) {
+      return isDevice() && get(deviceDoc()).data.role == 'kid' && get(deviceDoc()).data.kidId == kidId;
+    }
+    function canRead() { return isParent() || isDevice(); }
+
+    // Parent list, written only by the setupFamily function.
+    match /app/family { allow read: if isParent(); allow write: if false; }
+
+    // Kids, chores, rates, interest settings.
+    match /app/config { allow read: if canRead(); allow write: if isParent(); }
+
+    // Money balances and stats: only parents change them.
+    match /bank/{kidId} { allow read: if canRead(); allow write: if isParent(); }
+
+    // A kid's own choices: creature, savings goals, interest destination, daily checklist.
+    match /prefs/{kidId} { allow read: if canRead(); allow write: if isParent() || isKid(kidId); }
+
+    // One doc per person per week. Chore entries are added by the completeChore function.
+    // Kids may only set their goal (once), bonus destination, and savings destination.
+    match /weeks/{weekId} {
+      allow read: if canRead();
+      allow write: if isParent();
+      allow create: if isKid(request.resource.data.kidId)
+        && weekId == request.resource.data.week + '_' + request.resource.data.kidId
+        && request.resource.data.keys().hasOnly(['kidId', 'week', 'goal', 'bonusTo', 'saveTo']);
+      allow update: if isKid(resource.data.kidId)
+        && resource.data.get('closed', false) == false
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['goal', 'bonusTo', 'saveTo'])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['goal'])
+            || resource.data.get('goal', null) == null);
+    }
+
+    // Paired devices, created only by the pairDevice function.
+    match /devices/{uid} {
+      allow read: if isParent() || (signedIn() && request.auth.uid == uid);
+      allow delete: if isParent();
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fcmToken', 'tokenAt']);
+    }
+
+    match /pairCodes/{code} { allow read, write: if isParent(); }
+  }
+}
