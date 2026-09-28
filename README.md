@@ -71,7 +71,7 @@ You don't have to deploy by hand, though. Pushing to GitHub does it: every push 
 
 1. Open the Hosting URL in Chrome and tap **Parent sign-in**. Sign in with one of the accounts in `PARENT_EMAILS`.
 2. The first parent sign-in creates the starter setup: Dad, Teslyn, Warren, and Maggie, with your chores, rates, and interest tiers. Check the **Settings** tab and adjust anything.
-3. Your lane as Dad is its own tab at the start of the Parent screen.
+3. Your lane as Dad is its own tab at the start of the Parent screen. To give another grown-up a lane, add them under **Settings** > **People** and tick **Adult**.
 
 ## 7. Pair each tablet
 
@@ -87,7 +87,7 @@ For the leaderboard device, keep it plugged in. The app asks the screen to stay 
 ## Everyday use
 
 - **Kids** tap chores (and confirm, so a stray tap doesn't count), check off their daily list, set their goal after Sunday cash-out, split the week's savings between their goals, and choose where their bonus and interest go. Under **My money**, each card shows its total; tap Save or Invest to open the details.
-- **Parents** use **Activity** to review and reverse chores, or log one for someone without their tablet; **Views** for the family leaderboard and to open any kid's screen exactly as they see it; **Actions** for deductions (add, mark earned back, or remove) and the Sunday cash-out (if a week was missed, it's combined with the next one into a single lump, with each week's goal judged on its own); **Savings goals** to add or edit goals, log purchases, or set a child's balances (for money from before the app, or to fix a mistake); and **Settings** for devices, people, chores (drag the ⠿ handle to reorder them; tick **Ask what it was** on an open-ended chore like Parent choice so kids must describe what they did), rates, reminder times, and interest.
+- **Parents** use **Activity** to review and reverse chores, or log one for someone without their tablet; **Views** for the family leaderboard and to open any kid's screen exactly as they see it; **Actions** for deductions (add, mark earned back, or remove) and the Sunday cash-out (if a week was missed, it's combined with the next one into a single lump, with each week's goal judged on its own); **Savings goals** to add or edit goals, log purchases, or set a child's balances (for money from before the app, or to fix a mistake); and **Settings** for devices, people (tick **Adult** for a grown-up, who gets their own lane and tab instead of a place in the kid list), chores (drag the ⠿ handle to reorder them; tick **Ask what it was** on an open-ended chore like Parent choice so kids must describe what they did), rates, reminder times, and interest.
 - **Goal bonus** is 25% of the weekly goal, paid at cash-out when the week's earnings reach the goal.
 - **Streaks** count days when every daily item was checked off. Once a day is complete it stays complete, even if the list changes later that day.
 - **Reminders** go out at each person's reminder times (Mountain time), listing only what's still unchecked. Nothing is sent if everything's done.
