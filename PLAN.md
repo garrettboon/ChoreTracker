@@ -2,7 +2,14 @@
 
 XP, levels, unlocks, streak mechanics, rewards, quests, and chore battles.
 
-Status: **planned, not started**. Each phase below is sized to ship on its own and deploys through the existing GitHub Action (push to `main`).
+Status: **Phases 0–4 built** on branch `claude/busy-knuth-poq8va` (not yet merged or deployed). Phases 5–7 are still planned. Each phase is sized to ship on its own and deploys through the existing GitHub Action (push to `main`).
+
+What changed from the plan while building:
+- The shared rules live at `public/game.js`, the one file the browser can load. The functions keep an identical copy at `functions/game.mjs`, updated with `npm run sync`; a unit test fails if the two drift. This replaced the `shared/` folder and the predeploy copy step.
+- The level 30 creature is a 🦚 Peacock (👑 is already the level 12 accessory).
+- Battle modes planned for Phases 6–7 show in the challenge screen as "Coming later".
+- Streak freezes are refunded if the missed day gets checked off late.
+- Known limit: kids can still backdate their own checklist (as before). XP only pays for today and yesterday, but the streak count shown on screen trusts the checklist.
 
 ---
 
@@ -43,7 +50,7 @@ Things in the existing code that the plan has to respect:
 
 ### 3.1 Shared game module
 
-A new `shared/game.js` (plain ES module, no dependencies) holds every rule that both sides need:
+`public/game.js` (plain ES module, no dependencies) holds every rule that both sides need:
 
 - XP table and the `xpForLevel()` / `levelFor(total)` curve
 - Unlock catalog (creatures, cosmetics, titles, battle modes, freezes) keyed by level
@@ -52,7 +59,7 @@ A new `shared/game.js` (plain ES module, no dependencies) holds every rule that 
 - Handicap formula and battle mode definitions
 - Chore of the Day picker
 
-Deployment: a `predeploy` hook in `firebase.json` copies it to `public/game.js` and `functions/game.mjs`. The browser imports it directly. Functions load it with `await import("./game.mjs")`. Both copies are gitignored, so the source of truth is `shared/game.js`.
+The browser imports it directly. Functions load the identical copy `functions/game.mjs` with `require()` (Node 22+ can require ES modules). Run `npm run sync` after editing; a unit test checks the copies match.
 
 ### 3.2 XP ledger (server-only, idempotent)
 
@@ -91,7 +98,7 @@ A single helper `awardXp(personId, key, amount, reason)` runs in a transaction:
 
 ### 3.3 Level curve
 
-`XP to go from level L to L+1 = round(60 × L^1.3)`, capped at level 30. All constants live in `shared/game.js` so they are easy to retune after two weeks of real data.
+`XP to go from level L to L+1 = round(60 × L^1.3)`, capped at level 30. All constants live in `public/game.js` so they are easy to retune after two weeks of real data.
 
 Assuming a kid earns about 80 XP a day (around 5 chores plus the checklist):
 
@@ -149,7 +156,7 @@ game: {
 Sizes: **S** is about a day, **M** is 2 to 4 days, **L** is a week or more.
 
 ### Phase 0: Foundations (S)
-- Create `shared/game.js`, add the predeploy copy step, and update `.gitignore`.
+- Create `public/game.js` and its functions copy, plus `npm run sync`.
 - Move badge and streak logic from `app.js` into it without changing behavior.
 - Add `node --test` for the shared module and `@firebase/rules-unit-testing` for the security rules. Add a test step before deploy in `.github/workflows/deploy.yml`.
 - Add optional `email` to adult profiles in Settings. The parent screen's "me" tab uses the matching adult (falls back to today's behavior when unset).
@@ -175,7 +182,7 @@ New creatures (the 12 starters stay free):
 | 6 | 🦁 Lion | 18 | 🧙 Wizard |
 | 7 | 🐼 Panda | 20 | 🐲 Elder Dragon |
 | 9 | 🦩 Flamingo | 25 | 🦸 Hero |
-| 11 | 🐳 Whale | 30 | 👑 Royal (any creature gets a crown) |
+| 11 | 🐳 Whale | 30 | 🦚 Peacock |
 
 **Done when:** doing a chore raises XP within a few seconds on every screen. Reversing it removes the XP. Leveling up shows the celebration once. A kid can't select a locked creature, even by writing Firestore directly.
 
@@ -196,7 +203,7 @@ Creatures are emoji, so growth uses CSS and overlays instead of new art:
 - Every item respects `prefers-reduced-motion`.
 
 ### Phase 3: Chore of the Day, streak multiplier, streak freezes (S to M)
-- **Chore of the Day:** picked each day from family chores with a date-seeded hash in `shared/game.js`, so client and server agree. A parent can pin a specific chore. It gives **double XP** and shows a ⭐ ribbon on that chore and on the display.
+- **Chore of the Day:** picked each day from family chores with a date-seeded hash in `public/game.js`, so client and server agree. A parent can pin a specific chore. It gives **double XP** and shows a ⭐ ribbon on that chore and on the display.
 - **Streak multiplier:** all XP counts ×1.25 while the checklist streak is 7 days or more. The kid view shows "🔥 ×1.25".
 - **Streak freezes:**
   - Earned at levels 5, 10, 15, … and at the 30-day streak milestone. A person holds at most 2.
@@ -357,4 +364,4 @@ Identity: a kid acts through their paired device's `kidId`. An adult acts throug
 - **Adding Mom:** Settings, "Add person," tick Adult, set her email, and add her to `PARENT_EMAILS`. Phase 0's email mapping is what makes this work. Nothing else is needed.
 - **Seasons:** an optional quarterly season with seasonal cosmetics and a season-only badge. This is a refresh mechanism once people are past level 20.
 - **Photo proof** for Time Trial and Judge's Pick. This needs Cloud Storage and rules, so it's deferred.
-- **Retuning:** after 2 weeks of real use, check the XP per day per person and adjust the curve and table in `shared/game.js`.
+- **Retuning:** after 2 weeks of real use, check the XP per day per person and adjust the curve and table in `public/game.js`.

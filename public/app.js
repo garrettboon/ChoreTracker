@@ -351,8 +351,9 @@ function battleBuilder(k,bb){const bc=game().battles,lv=xpState(k.id).level,mode
 const bbChores=(kidId,mode)=>cfg().chores.filter(c=>c.kind==="family"&&(c.assign==="pool"||(mode==="ghost"&&c.assign===kidId)));
 function battleSection(k){const bc=game().battles;const mine=battleList().filter(b=>b.players.includes(k.id));const live=mine.filter(b=>b.live);const recent=mine.filter(b=>!b.live&&b.status==="done").slice(0,3);
   if(!bc.enabled&&!live.length&&!recent.length)return "";
-  const bb=S.ui.bb&&S.ui.bb.kid===k.id?S.ui.bb:null;
-  return `<section class="card battles"><div class="sec-head"><h2>⚔️ Battles</h2>${bc.enabled&&!bb?`<button class="btn small" data-act="bb-open">Challenge</button>`:""}</div>
+  const bb=S.ui.bb&&S.ui.bb.kid===k.id?S.ui.bb:null;const asleep=bc.enabled&&G.inQuietHours(nowHM(),cfg());
+  const t12=hm=>{const [h,m]=hm.split(":").map(Number);return new Date(2000,0,1,h,m).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});};
+  return `<section class="card battles"><div class="sec-head"><h2>⚔️ Battles</h2>${bc.enabled&&!bb?(asleep?`<span class="sub">😴 Asleep until ${t12(bc.quietEnd)}</span>`:`<button class="btn small" data-act="bb-open">Challenge</button>`):""}</div>
     ${bb?battleBuilder(k,bb):""}${live.map(b=>battleCard(b,k.id)).join("")}
     ${!live.length&&!bb?`<p class="empty">${bc.enabled?"No battles right now. Challenge someone, or race your own best time.":"Battles are turned off."}</p>`:""}
     ${recent.length?`<ul class="feed recent">${recent.map(b=>recentLine(b,k.id)).join("")}</ul>`:""}</section>`;}
