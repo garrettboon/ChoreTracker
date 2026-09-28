@@ -42,7 +42,8 @@ test("guardrails: one battle per pair, locked modes, decline cooldown, daily cap
   const { id } = await k1.call("createBattle", { mode: "race", opponent: "k2" });
   await rejects(k2.call("createBattle", { mode: "race", opponent: "k1" }), /already have a battle/);
   await rejects(k3.call("createBattle", { mode: "blitz", opponent: "k1" }), /Reach level 3/);
-  await rejects(k3.call("createBattle", { mode: "bingo", opponent: "k1" }), /isn't ready/);
+  await rejects(k3.call("createBattle", { mode: "bingo", opponent: "k1" }), /Reach level 5/);
+  await rejects(k3.call("createBattle", { mode: "nonsense", opponent: "k1" }), /isn't ready/);
   await rejects(k3.call("createBattle", { mode: "race", opponent: "k3" }), /Pick someone/);
   await k2.call("respondBattle", { id, accept: false });
   assert.equal((await battle(id)).status, "declined");

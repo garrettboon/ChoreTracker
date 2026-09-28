@@ -32,8 +32,8 @@ export const CONFIG = {
     { id: "p1", kind: "pr", name: "Morning routine", note: "" },
     { id: "p2", kind: "pr", name: "Teeth", note: "" },
   ],
-  // Deterministic XP in tests: no chore of the day, battles allowed at any hour.
-  game: { choreOfDay: { enabled: false }, battles: { quietStart: "00:00", quietEnd: "00:00" } },
+  // Deterministic XP in tests: no chore of the day or quests, battles allowed at any hour.
+  game: { choreOfDay: { enabled: false }, quests: { enabled: false }, battles: { quietStart: "00:00", quietEnd: "00:00" } },
 };
 
 const clients = [];

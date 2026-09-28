@@ -33,7 +33,7 @@ test("freezes come every 5 levels", () => {
   assert.equal(G.freezeLevels(5, 5), 0);
 });
 
-test("unlocks: starters free, new creatures and modes by level, 'soon' modes never", () => {
+test("unlocks: starters free, new creatures and modes by level", () => {
   const l1 = G.unlockedIds(1, {});
   for (const s of G.STARTERS) assert.ok(l1.includes("c:" + s));
   assert.equal(G.STARTERS.length, 12);
@@ -42,7 +42,9 @@ test("unlocks: starters free, new creatures and modes by level, 'soon' modes nev
   assert.ok(l1.includes("m:race") && l1.includes("m:timetrial") && l1.includes("m:ghost"));
   assert.ok(!l1.includes("m:blitz"));
   assert.ok(G.unlockedIds(3, {}).includes("m:blitz"));
-  assert.ok(!G.unlockedIds(30, {}).includes("m:bingo"));
+  assert.ok(!G.unlockedIds(4, {}).includes("m:bingo"));
+  assert.ok(G.unlockedIds(5, {}).includes("m:bingo"));
+  assert.ok(G.unlockedIds(30, {}).includes("m:wildcard"));
   assert.ok(l1.includes("ti:rookie"));
   assert.ok(!l1.includes("ti:comeback"));
   assert.ok(G.unlockedIds(1, { counts: { redeem: 1 } }).includes("ti:comeback"));
@@ -174,4 +176,113 @@ test("battle XP: winner, tie, loss, and nothing for not trying", () => {
   assert.deepEqual(G.battleXp(b, { noContest: true }), {});
   assert.deepEqual(G.battleXp({ mode: "ghost", players: ["a"] }, { winner: "a", record: true }), { a: 25 });
   assert.deepEqual(G.battleXp({ mode: "ghost", players: ["a"] }, { lost: true, winner: null }), { a: 15 });
+});
+
+test("territory counts only Anyone chores, with the Wildcard twist doubling one chore", () => {
+  const chores = [{ id: "pool1", assign: "pool" }, { id: "pool2", assign: "pool" }, { id: "mine", assign: "a" }];
+  const b = { mode: "territory", players: ["a", "c"], handicap: { a: 1, c: 1 }, startAt: T0, endAt: T0 + 100 };
+  const entries = { a: [e(T0 + 1, "pool1"), e(T0 + 2, "mine")], c: [e(T0 + 1, "pool2"), e(T0 + 3, "pool2")] };
+  assert.deepEqual(G.battleScores(b, entries, chores), { a: { raw: 1, adj: 1 }, c: { raw: 2, adj: 2 } });
+  assert.equal(G.decide(b, entries, chores, false), null);
+  assert.equal(G.decide(b, entries, chores, true).winner, "c");
+  const twisted = { ...b, twist: { choreId: "pool1" } };
+  assert.equal(G.decide(twisted, entries, chores, true).tie, true);
+});
+
+test("chore bingo: card, free squares, first line wins", () => {
+  const card = G.bingoCard(["a", "b", "c", "d", "e", "f", "g", "h", "i"], "seed");
+  assert.equal(card.length, 9);
+  assert.deepEqual([...card].sort(), ["a", "b", "c", "d", "e", "f", "g", "h", "i"]);
+  assert.deepEqual(G.bingoCard(["x", "y"], "s").length, 9, "few chores repeat to fill the card");
+  const free = G.bingoFree({ id: "old", age: 12 }, { id: "young", age: 8 }, {}, "s");
+  assert.deepEqual(Object.keys(free), ["young"]);
+  assert.equal(free.young[0], 4);
+  assert.equal(free.young.length, 2, "4+ years apart gets a second free square");
+  assert.deepEqual(G.bingoFree({ id: "a", age: 10 }, { id: "b", age: 10 }, {}, "s"), {});
+  const b = { mode: "bingo", players: ["p", "q"], params: { card: ["a", "b", "c", "d", "e", "f", "g", "h", "i"], free: { q: [4] } }, startAt: T0, endAt: T0 + 1000 };
+  // q has the center free, so e+... q needs d,f for the middle row. p needs a,b,c for the top row.
+  const entries = { p: [e(T0 + 1, "a"), e(T0 + 2, "b"), e(T0 + 5, "c")], q: [e(T0 + 1, "d"), e(T0 + 3, "f")] };
+  assert.deepEqual(G.decide(b, entries, [], false), { winner: "q", tie: false, reason: "Bingo!" });
+  assert.equal(G.battleScores(b, entries, []).q.raw, 3);
+  assert.equal(G.decide(b, { p: [e(T0 + 1, "a")], q: [] }, [], false), null);
+  assert.equal(G.decide(b, { p: [e(T0 + 1, "a")], q: [] }, [], true).tie, true, "the free square counts toward the most squares");
+  assert.equal(G.decide(b, { p: [e(T0 + 1, "a"), e(T0 + 2, "i")], q: [] }, [], true).winner, "p");
+  assert.equal(G.decide(b, { p: [], q: [] }, [], true).noContest, true, "free squares alone don't count");
+});
+
+test("goal showdown score uses the larger of goal and recent average", () => {
+  assert.equal(G.showdownScore(5, 5, 2), 1);
+  assert.equal(G.showdownScore(5, 1, 5), 1, "a tiny goal doesn't help");
+  assert.equal(G.showdownScore(3, 0, 0), 0);
+  assert.equal(G.showdownScore(-2, 4, 0), 0);
+});
+
+test("team battles: raid and kids vs grown-ups", () => {
+  const chores = [{ id: "x", mult: 1 }, { id: "big", mult: 2 }];
+  const raid = { mode: "raid", players: ["a", "c"], teams: { a: ["a", "c"] }, params: { hp: 40, bossName: "Sock Goblin" }, startAt: T0, endAt: T0 + 100 };
+  assert.equal(G.decide(raid, { a: [e(T0 + 1, "big")], c: [e(T0 + 2)] }, chores, false), null);
+  assert.equal(G.decide(raid, { a: [e(T0 + 1, "big")], c: [e(T0 + 2), e(T0 + 3)] }, chores, false).winnerSide, "a");
+  assert.equal(G.decide(raid, { a: [e(T0 + 1)], c: [] }, chores, true).lostSide, "a");
+  assert.equal(G.raidHp(2, 1, 0), 120);
+  assert.equal(G.raidHp(2, 2, 2), 360);
+  assert.equal(G.bossFor(0).name, "Sock Goblin");
+  assert.equal(G.bossFor(6).name, "Chaos Dragon 3");
+  const gu = { mode: "grownups", players: ["k1", "k2", "d"], teams: { a: ["k1", "k2"], b: ["d"] }, teamHandicap: { a: 1.5, b: 1 }, startAt: T0, endAt: T0 + 100 };
+  const r = G.decide(gu, { k1: [e(T0 + 1)], k2: [], d: [e(T0 + 1)] }, chores, true);
+  assert.equal(r.winnerSide, "a", "kids' 10 XP × 1.5 beats 10");
+  assert.equal(G.isWinner(gu, r, "k2"), true);
+  assert.equal(G.isWinner(gu, r, "d"), false);
+  assert.deepEqual(G.teamHandicaps([{ age: 8 }, { age: 12 }], [{ adult: true }], {}), { a: 1.5, b: 1 });
+  const xp = G.battleXp({ ...gu, scores: { k1: { raw: 10 }, k2: { raw: 0 }, d: { raw: 10 } } }, r);
+  assert.deepEqual(xp, { k1: 40, k2: 0, d: 15 }, "a teammate who did nothing gets nothing");
+  assert.deepEqual(G.battleXp({ ...raid, scores: { a: { raw: 10 }, c: { raw: 0 } } }, { winnerSide: "a" }), { a: 50, c: 0 });
+});
+
+test("streak duel and showdown pay double; judge's pick needs a parent", () => {
+  const b = { mode: "streakduel", players: ["a", "c"] };
+  assert.equal(G.decide(b, {}, [], true), null);
+  assert.deepEqual(G.battleXp(b, { winner: "a" }), { a: 80, c: 30 });
+  const j = { mode: "judge", players: ["a", "c"], attempts: { a: { entryId: "1" }, c: { entryId: "2" } } };
+  assert.equal(G.decide(j, {}, [], true), null, "both did it: waits for the judge");
+  assert.equal(G.decide({ ...j, attempts: { a: { entryId: "1" } } }, {}, [], true).winner, "a");
+});
+
+test("rewards, family goal, and raises", () => {
+  assert.deepEqual(G.rewardSlots({ level: 5, repeat: 5 }, 17), [5, 10, 15]);
+  assert.deepEqual(G.rewardSlots({ level: 5, repeat: 0 }, 17), [5]);
+  assert.deepEqual(G.rewardSlots({ level: 5 }, 4), []);
+  assert.equal(G.nextRewardSlot({ level: 5, repeat: 5 }, 17, [5]), 10);
+  assert.equal(G.nextRewardSlot({ level: 5, repeat: 0 }, 17, [5]), null);
+  assert.deepEqual(G.familyProgress(1500, { target: 1000, startTotal: 1000 }), { into: 500, target: 1000, frac: 0.5, done: false });
+  assert.equal(G.familyProgress(2100, { target: 1000, startTotal: 1000 }).done, true);
+  assert.equal(G.familyProgress(10, null), null);
+  assert.equal(G.raisesDue(12, 0, 5), 2);
+  assert.equal(G.raisesDue(12, 10, 5), 0);
+  assert.equal(G.raisesDue(15, 10, 5), 1);
+});
+
+test("weekly quests: three per person, stable, and scored from the week's data", () => {
+  const q1 = G.weeklyQuests("2026-09-28", "k1").map((q) => q.id);
+  assert.equal(q1.length, 3);
+  assert.equal(new Set(q1).size, 3);
+  assert.deepEqual(G.weeklyQuests("2026-09-28", "k1").map((q) => q.id), q1, "same every time");
+  const weeks = new Set();
+  for (let i = 0; i < 8; i++) weeks.add(G.weeklyQuests(G.addDays("2026-09-07", i * 7), "k1").map((q) => q.id).join());
+  assert.ok(weeks.size > 3, "changes from week to week");
+  const chores = [{ id: "a", mult: 1 }, { id: "b", mult: 2 }, { id: "c", mult: 1 }];
+  const ctx = {
+    entries: [{ date: "d1", choreId: "a", hour: 8 }, { date: "d1", choreId: "b", hour: 10 }, { date: "d1", choreId: "c", hour: 11 }, { date: "d2", choreId: "b", hour: 12 }],
+    chores, cotdOf: () => "c", checklistDays: 5, wins: 0, goal: 5, netByFri: 6,
+  };
+  const val = (id) => G.QUESTS.find((q) => q.id === id).progress(ctx);
+  assert.equal(val("variety"), 3);
+  assert.equal(val("early"), 1);
+  assert.equal(val("ten"), 4);
+  assert.equal(val("cotd"), 1);
+  assert.equal(val("checklist5"), 5);
+  assert.equal(val("goalfri"), 1);
+  assert.equal(val("battle"), 0);
+  assert.equal(val("big"), 2);
+  const st = G.questStatus("2026-09-28", "k1", ctx);
+  assert.ok(st.every((q) => q.progress <= q.target));
 });

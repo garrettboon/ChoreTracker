@@ -26,7 +26,7 @@ export function levelProgress(total) {
 /* ---------- XP values ---------- */
 export const XP = {
   chore: 10, checklist: 5, goal: 50, redeem: 20, savingsGoal: 50, badge: 25,
-  win: 40, tie: 25, loss: 15, ghostRecord: 25,
+  win: 40, tie: 25, loss: 15, ghostRecord: 25, raidWin: 50,
 };
 export const STREAK_MILESTONES = { 3: 25, 7: 50, 14: 75, 30: 150, 60: 250, 100: 400 };
 export const FREEZE_CAP = 2;
@@ -35,6 +35,9 @@ export const freezeLevels = (from, to) => { let n = 0; for (let l = from + 1; l 
 /* ---------- settings (parent-editable, merged over defaults) ---------- */
 export const GAME_DEFAULTS = {
   choreOfDay: { enabled: true, pin: null },
+  rewards: [],                                             // [{ id, level, name, repeat }] repeat: every N levels, 0 = once
+  moneyPerks: { enabled: false, everyLevels: 5, amount: 0.05 }, // suggested raises, applied by a parent
+  quests: { enabled: true },
   streakMultiplier: { enabled: true, minStreak: 7, mult: 1.25 },
   battles: {
     enabled: true, modesOff: [], quietStart: "20:30", quietEnd: "07:00", dailyCap: 3,
@@ -47,6 +50,9 @@ export function gameCfg(config) {
     choreOfDay: { ...GAME_DEFAULTS.choreOfDay, ...(g.choreOfDay || {}) },
     streakMultiplier: { ...GAME_DEFAULTS.streakMultiplier, ...(g.streakMultiplier || {}) },
     battles: { ...GAME_DEFAULTS.battles, ...(g.battles || {}) },
+    rewards: Array.isArray(g.rewards) ? g.rewards : [],
+    moneyPerks: { ...GAME_DEFAULTS.moneyPerks, ...(g.moneyPerks || {}) },
+    quests: { ...GAME_DEFAULTS.quests, ...(g.quests || {}) },
   };
 }
 
@@ -90,14 +96,14 @@ export const MODES = [
   { id: "timetrial", emoji: "⏱️", name: "Time Trial", level: 1, desc: "Same chore, fastest time wins." },
   { id: "ghost", emoji: "👻", name: "Ghost Race", level: 1, solo: true, desc: "Beat your own best time on a chore." },
   { id: "blitz", emoji: "⚡", name: "Blitz", level: 3, desc: "Most chore XP before time runs out." },
-  { id: "bingo", emoji: "🎱", name: "Chore Bingo", level: 5, soon: true, desc: "First to finish a row of chores." },
-  { id: "territory", emoji: "🚩", name: "Territory", level: 6, soon: true, desc: "Claim the most shared chores today." },
-  { id: "judge", emoji: "🧑‍⚖️", name: "Judge's Pick", level: 8, soon: true, desc: "A parent picks the better job." },
-  { id: "streakduel", emoji: "🔥", name: "Streak Duel", level: 10, soon: true, desc: "Last one to keep their streak wins." },
-  { id: "showdown", emoji: "🎯", name: "Goal Showdown", level: 12, soon: true, desc: "Best percent of weekly goal wins." },
-  { id: "raid", emoji: "🐉", name: "Boss Raid", level: 15, soon: true, desc: "Team up to beat a boss." },
-  { id: "grownups", emoji: "👨‍👧", name: "Kids vs. Grown-ups", level: 15, soon: true, desc: "Team battle against the adults." },
-  { id: "wildcard", emoji: "🃏", name: "Wildcard", level: 20, soon: true, desc: "A random mode with a twist." },
+  { id: "bingo", emoji: "🎱", name: "Chore Bingo", level: 5, desc: "First to finish a row of chores wins." },
+  { id: "territory", emoji: "🚩", name: "Territory", level: 6, kidsOnly: true, desc: "Claim the most Anyone chores by midnight." },
+  { id: "judge", emoji: "🧑‍⚖️", name: "Judge's Pick", level: 8, desc: "Same chore. A parent picks the better job." },
+  { id: "streakduel", emoji: "🔥", name: "Streak Duel", level: 10, desc: "Whoever misses their daily list first loses." },
+  { id: "showdown", emoji: "🎯", name: "Goal Showdown", level: 12, desc: "Best share of your weekly goal wins." },
+  { id: "raid", emoji: "🐉", name: "Boss Raid", level: 15, team: true, desc: "Team up and beat a boss with chores." },
+  { id: "grownups", emoji: "👨‍👧", name: "Kids vs. Grown-ups", level: 15, team: true, desc: "Kids team against the adults." },
+  { id: "wildcard", emoji: "🃏", name: "Wildcard", level: 20, desc: "A random mode with a twist." },
 ];
 export const modeById = (id) => MODES.find((m) => m.id === id);
 export const TIMED = ["timetrial", "ghost"];
@@ -217,13 +223,20 @@ export function badgeList(s) {
 
 /* ---------- battles ---------- */
 export const effAge = (p, adultAge = 18) => (p && p.adult ? adultAge : Number(p && p.age) || 0);
+const round2 = (n) => Math.round(n * 100) / 100;
 // Younger player's score multiplier; the older player is always 1.
 export function handicaps(a, b, config) {
   const bc = gameCfg(config).battles;
   const aa = effAge(a, bc.adultAge), ab = effAge(b, bc.adultAge);
-  const m = Math.min(1 + bc.handicapPerYear * Math.abs(aa - ab), bc.handicapMax);
-  const r = Math.round(m * 100) / 100;
+  const r = round2(Math.min(1 + bc.handicapPerYear * Math.abs(aa - ab), bc.handicapMax));
   return { [a.id]: aa < ab ? r : 1, [b.id]: ab < aa ? r : 1 };
+}
+// Team version: compares each team's average age.
+export function teamHandicaps(teamA, teamB, config) {
+  const bc = gameCfg(config).battles;
+  const avg = (t) => t.reduce((s, p) => s + effAge(p, bc.adultAge), 0) / (t.length || 1);
+  const h = handicaps({ id: "a", age: avg(teamA) }, { id: "b", age: avg(teamB) }, config);
+  return { a: h.a, b: h.b };
 }
 export function inQuietHours(hm, config) {
   const { quietStart: s, quietEnd: e } = gameCfg(config).battles;
@@ -234,16 +247,41 @@ export function inQuietHours(hm, config) {
 export function battleEntries(entries, startAt, endAt) {
   return (entries || []).filter((e) => e.status !== "reversed" && e.t >= startAt && e.t < endAt).sort((x, y) => x.t - y.t);
 }
-// Live scores. entriesBy: { personId: [entries] }. chores: config chores (for Blitz XP).
+const choreOf = (chores, id) => (chores || []).find((c) => c.id === id);
+// How much one entry counts. A Wildcard twist can make one chore count double.
+const weight = (b, e) => (b.twist && b.twist.choreId === e.choreId ? 2 : 1);
+// Raw points for one player's entries in this battle.
+function rawPoints(b, list, chores) {
+  if (b.mode === "race") return list.reduce((s, e) => s + weight(b, e), 0);
+  if (b.mode === "blitz" || b.mode === "grownups" || b.mode === "raid") {
+    return list.reduce((s, e) => s + baseChoreXp(choreOf(chores, e.choreId)) * weight(b, e), 0);
+  }
+  if (b.mode === "territory") {
+    return list.filter((e) => (choreOf(chores, e.choreId) || {}).assign === "pool").reduce((s, e) => s + weight(b, e), 0);
+  }
+  return 0;
+}
+// Live scores. entriesBy: { personId: [entries] }. chores: config chores.
 export function battleScores(b, entriesBy, chores) {
   const out = {};
   for (const p of b.players) {
     const list = battleEntries(entriesBy[p], b.startAt, b.endAt);
-    let raw = 0;
-    if (b.mode === "race") raw = list.length;
-    else if (b.mode === "blitz") raw = list.reduce((s, e) => s + baseChoreXp((chores || []).find((c) => c.id === e.choreId)), 0);
+    let raw;
+    if (b.mode === "bingo") raw = bingoMarks(b, list, p).filter(Boolean).length;
+    else raw = rawPoints(b, list, chores);
     const h = (b.handicap && b.handicap[p]) || 1;
-    out[p] = { raw, adj: Math.round(raw * h * 100) / 100 };
+    out[p] = { raw, adj: b.mode === "bingo" ? raw : round2(raw * h) };
+  }
+  return out;
+}
+// Team totals for team modes (raid, grownups).
+export function teamScores(b, entriesBy, chores) {
+  const per = battleScores({ ...b, handicap: {} }, entriesBy, chores);
+  const out = {};
+  for (const side of Object.keys(b.teams || {})) {
+    const raw = b.teams[side].reduce((s, p) => s + (per[p] ? per[p].raw : 0), 0);
+    const h = (b.teamHandicap && b.teamHandicap[side]) || 1;
+    out[side] = { raw, adj: round2(raw * h) };
   }
   return out;
 }
@@ -254,12 +292,70 @@ export function raceFinish(b, entriesBy) {
     const h = (b.handicap && b.handicap[p]) || 1;
     const list = battleEntries(entriesBy[p], b.startAt, b.endAt);
     let n = 0; out[p] = null;
-    for (const e of list) { n++; if (n * h >= b.params.n - 1e-9) { out[p] = e.t; break; } }
+    for (const e of list) { n += weight(b, e); if (n * h >= b.params.n - 1e-9) { out[p] = e.t; break; } }
   }
   return out;
 }
+
+/* ---------- Chore Bingo ---------- */
+export const BINGO_LINES = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
+// A 3×3 card from the given chore ids, shuffled by a seed; chores repeat when there are fewer than 9.
+export function bingoCard(choreIds, seed) {
+  const ids = [...choreIds].sort();
+  if (!ids.length) return [];
+  let h = hash(String(seed));
+  const next = () => { h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0; h = (h ^ (h >>> 13)) >>> 0; return h; };
+  const pool = [];
+  while (pool.length < 9) pool.push(...ids);
+  for (let i = pool.length - 1; i > 0; i--) { const j = next() % (i + 1); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  return pool.slice(0, 9);
+}
+// Which squares a player has marked. Each chore done marks the first open square with that chore.
+export function bingoMarks(b, list, p) {
+  const card = (b.params && b.params.card) || [];
+  const marks = card.map((_, i) => ((b.params.free || {})[p] || []).includes(i));
+  for (const e of list) {
+    const i = card.findIndex((c, k) => c === e.choreId && !marks[k]);
+    if (i >= 0) marks[i] = true;
+  }
+  return marks;
+}
+export const bingoHasLine = (marks) => BINGO_LINES.some((l) => l.every((i) => marks[i]));
+// Free squares for the younger player: the center, plus one more with a gap of 4+ years.
+export function bingoFree(a, c, config, seed) {
+  const bc = gameCfg(config).battles;
+  const aa = effAge(a, bc.adultAge), ac = effAge(c, bc.adultAge);
+  if (aa === ac) return {};
+  const young = aa < ac ? a.id : c.id;
+  const free = [4];
+  if (Math.abs(aa - ac) >= 4) free.push([0, 2, 6, 8][hash(String(seed)) % 4]);
+  return { [young]: free };
+}
+
+/* ---------- Goal Showdown ---------- */
+// Share of the weekly goal, measured against at least the recent average so a tiny goal can't win.
+export function showdownScore(net, goal, avg) {
+  const base = Math.max(Number(goal) || 0, Number(avg) || 0);
+  return base > 0 ? round2(Math.max(0, net) / base) : 0;
+}
+
+/* ---------- Boss Raid ---------- */
+export const BOSSES = [
+  ["sock", "🧦", "Sock Goblin"], ["dish", "🍽️", "Dish Hydra"], ["toy", "🧸", "Toy Kraken"],
+  ["tornado", "🌪️", "Mess Tornado"], ["chaos", "🐉", "Chaos Dragon"],
+];
+export const bossFor = (beaten) => {
+  const i = Math.max(0, beaten || 0);
+  const b = BOSSES[Math.min(i, BOSSES.length - 1)];
+  return { id: b[0], emoji: b[1], name: i >= BOSSES.length ? `${b[2]} ${i - BOSSES.length + 2}` : b[2], tier: i };
+};
+export const raidHp = (members, days, tier) => Math.round(60 * members * days * (1 + 0.25 * (tier || 0)));
+
+/* ---------- Wildcard ---------- */
+export const WILDCARD_MODES = ["race", "blitz", "territory", "bingo"];
+
 // Decide a battle. `final` means time is up. Returns null while still undecided, else
-// { winner, tie, noContest, reason }.
+// { winner, tie, noContest, reason } (team modes use winnerSide instead of winner).
 export function decide(b, entriesBy, chores, final) {
   const [a, c] = b.players;
   if (b.mode === "race") {
@@ -267,12 +363,33 @@ export function decide(b, entriesBy, chores, final) {
     const done = b.players.filter((p) => f[p] != null).sort((x, y) => f[x] - f[y]);
     if (done.length) return { winner: done[0], tie: false, reason: "Finished first" };
     if (!final) return null;
-    const s = battleScores(b, entriesBy, chores);
-    return compareScores(s, a, c, "Most chores when time ran out");
+    return compareScores(battleScores(b, entriesBy, chores), a, c, "Most chores when time ran out");
   }
   if (b.mode === "blitz") {
     if (!final) return null;
     return compareScores(battleScores(b, entriesBy, chores), a, c, "Most XP when time ran out");
+  }
+  if (b.mode === "territory") {
+    if (!final) return null;
+    return compareScores(battleScores(b, entriesBy, chores), a, c, "Claimed the most shared chores");
+  }
+  if (b.mode === "bingo") {
+    // First to complete a line, by the time of the chore that completed it.
+    const when = {};
+    for (const p of b.players) {
+      const list = battleEntries(entriesBy[p], b.startAt, b.endAt);
+      when[p] = bingoHasLine(bingoMarks(b, [], p)) ? b.startAt : null;
+      for (let i = 0; i < list.length && when[p] == null; i++) {
+        if (bingoHasLine(bingoMarks(b, list.slice(0, i + 1), p))) when[p] = list[i].t;
+      }
+    }
+    const done = b.players.filter((p) => when[p] != null).sort((x, y) => when[x] - when[y]);
+    if (done.length) return { winner: done[0], tie: false, reason: "Bingo!" };
+    if (!final) return null;
+    const s = battleScores(b, entriesBy, chores);
+    const freeOnly = (p) => s[p].raw === ((b.params.free || {})[p] || []).length;
+    if (freeOnly(a) && freeOnly(c)) return { noContest: true, reason: "Nobody did a chore" };
+    return compareScores(s, a, c, "Most squares when time ran out");
   }
   if (b.mode === "timetrial") {
     const at = b.attempts || {};
@@ -293,6 +410,29 @@ export function decide(b, entriesBy, chores, final) {
     if (b.pb == null) return { winner: a, record: true, reason: "First record set" };
     return at.ms < b.pb ? { winner: a, reason: "New personal best" } : { winner: null, lost: true, reason: "Didn't beat your best" };
   }
+  if (b.mode === "judge") {
+    // Decided by a parent; time running out with work undone ends it.
+    const at = b.attempts || {};
+    const did = (p) => !!(at[p] && at[p].entryId);
+    if (!final) return null;
+    if (!did(a) && !did(c)) return { noContest: true, reason: "Nobody did the chore" };
+    if (!did(a) || !did(c)) return { winner: did(a) ? a : c, tie: false, reason: "Only one did the chore" };
+    return null;
+  }
+  if (b.mode === "raid") {
+    const s = teamScores(b, entriesBy, chores);
+    if (s.a.raw >= b.params.hp) return { winnerSide: "a", reason: `${b.params.bossName} is beaten!` };
+    if (!final) return null;
+    return s.a.raw ? { lostSide: "a", reason: `${b.params.bossName} got away` } : { noContest: true, reason: "Nobody did a chore" };
+  }
+  if (b.mode === "grownups") {
+    if (!final) return null;
+    const s = teamScores(b, entriesBy, chores);
+    if (!s.a.raw && !s.b.raw) return { noContest: true, reason: "Nobody did a chore" };
+    if (s.a.adj === s.b.adj) return { tie: true, reason: "Most XP when time ran out" };
+    return { winnerSide: s.a.adj > s.b.adj ? "a" : "b", reason: "Most XP when time ran out" };
+  }
+  if (b.mode === "streakduel" || b.mode === "showdown") return null; // decided by the server's daily check
   return final ? { noContest: true, reason: "Unknown mode" } : null;
 }
 function compareScores(s, a, c, reason) {
@@ -300,6 +440,10 @@ function compareScores(s, a, c, reason) {
   if (s[a].adj === s[c].adj) return { tie: true, reason };
   return { winner: s[a].adj > s[c].adj ? a : c, tie: false, reason };
 }
+// Which side a player is on in a team battle.
+export const sideOf = (b, p) => (b.teams ? Object.keys(b.teams).find((k) => b.teams[k].includes(p)) : null);
+// Did this player win? Works for solo, 1v1, and team battles.
+export const isWinner = (b, r, p) => !!r && (r.winner === p || (!!r.winnerSide && sideOf(b, p) === r.winnerSide));
 // XP each player earns for a finished battle (uses the scores stored on the battle).
 // Nobody earns XP for a battle they didn't try.
 export function battleXp(b, result) {
@@ -311,12 +455,64 @@ export function battleXp(b, result) {
     return out;
   }
   const tried = (p) => {
-    if (TIMED.includes(b.mode)) { const at = (b.attempts || {})[p]; return !!(at && at.ms != null && !at.void); }
+    if (TIMED.includes(b.mode) || b.mode === "judge") { const at = (b.attempts || {})[p]; return !!(at && (at.ms != null || at.entryId) && !at.void); }
+    if (b.mode === "streakduel" || b.mode === "showdown") return true;
     return ((b.scores && b.scores[p] && b.scores[p].raw) || 0) > 0;
   };
+  const k = ["streakduel", "showdown"].includes(b.mode) ? 2 : 1; // multi-day modes pay double
   for (const p of b.players) {
-    if (result.tie) out[p] = tried(p) ? XP.tie : 0;
-    else out[p] = p === result.winner ? XP.win : tried(p) ? XP.loss : 0;
+    if (b.mode === "raid") out[p] = tried(p) ? (result.winnerSide ? XP.raidWin : XP.loss) : 0;
+    else if (result.tie) out[p] = tried(p) ? XP.tie * k : 0;
+    else if (isWinner(b, result, p)) out[p] = !b.teams || tried(p) ? XP.win * k : 0; // teammates who did nothing get nothing
+    else out[p] = tried(p) ? XP.loss * k : 0;
   }
   return out;
+}
+
+/* ---------- rewards, family goal, raises ---------- */
+// Levels at which a reward can be claimed: its level, then every `repeat` levels after (0 = once).
+export function rewardSlots(reward, maxLevel) {
+  const out = [];
+  const start = Number(reward.level) || 1, every = Number(reward.repeat) || 0;
+  for (let l = start; l <= maxLevel; l += every || Infinity) { out.push(l); if (!every) break; }
+  return out;
+}
+// The first reachable slot not claimed yet, or null.
+export const nextRewardSlot = (reward, maxLevel, claimedSlots) =>
+  rewardSlots(reward, maxLevel).find((l) => !(claimedSlots || []).includes(l)) ?? null;
+export function familyProgress(total, goal) {
+  if (!goal || !(goal.target > 0)) return null;
+  const into = Math.max(0, total - (goal.startTotal || 0));
+  return { into, target: goal.target, frac: Math.min(1, into / goal.target), done: into >= goal.target };
+}
+// Raises due since the last one applied: one per `every` levels.
+export const raisesDue = (level, perkLevel, every) =>
+  every > 0 ? Math.max(0, Math.floor(level / every) - Math.floor((perkLevel || 0) / every)) : 0;
+
+/* ---------- weekly quests ---------- */
+// ctx: { entries (this week, not reversed, with .hour in family time), chores, cotdOf(date),
+//        checklistDays, wins, goal, netByFri }
+export const QUESTS = [
+  { id: "variety", emoji: "🌈", text: "Do 3 different chores in one day", target: 3, xp: 40,
+    progress: (c) => { const by = {}; for (const e of c.entries) (by[e.date] = by[e.date] || new Set()).add(e.choreId); return Math.max(0, ...Object.values(by).map((s) => s.size)); } },
+  { id: "early", emoji: "🌅", text: "Do a chore before 9 AM", target: 1, xp: 30, progress: (c) => c.entries.filter((e) => e.hour < 9).length },
+  { id: "ten", emoji: "🔟", text: "Do 10 chores this week", target: 10, xp: 40, progress: (c) => c.entries.length },
+  { id: "cotd", emoji: "⭐", text: "Do a Chore of the Day", target: 1, xp: 30, progress: (c) => c.entries.filter((e) => c.cotdOf(e.date) === e.choreId).length },
+  { id: "checklist5", emoji: "✅", text: "Finish your daily checklist 5 days this week", target: 5, xp: 50, progress: (c) => c.checklistDays },
+  { id: "goalfri", emoji: "🎯", text: "Reach your weekly goal by Friday", target: 1, xp: 50, progress: (c) => (c.goal > 0 && c.netByFri >= c.goal ? 1 : 0) },
+  { id: "battle", emoji: "⚔️", text: "Win a battle", target: 1, xp: 40, progress: (c) => c.wins },
+  { id: "big", emoji: "💪", text: "Do 2 double-size chores", target: 2, xp: 40, progress: (c) => c.entries.filter((e) => ((choreOf(c.chores, e.choreId) || {}).mult || 1) >= 2).length },
+];
+// This week's three quests for a person: the same on every device, different each week.
+export function weeklyQuests(week, personId) {
+  let h = hash(week + ":" + personId);
+  const pool = [...QUESTS], out = [];
+  while (out.length < 3 && pool.length) { out.push(pool.splice(h % pool.length, 1)[0]); h = Math.imul(h, 16777619) >>> 0; h ^= h >>> 13; }
+  return out;
+}
+export function questStatus(week, personId, ctx) {
+  return weeklyQuests(week, personId).map((q) => {
+    const p = Math.min(q.target, q.progress(ctx) || 0);
+    return { id: q.id, emoji: q.emoji, text: q.text, target: q.target, xp: q.xp, progress: p, done: p >= q.target };
+  });
 }

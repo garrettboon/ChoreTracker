@@ -61,6 +61,18 @@ service cloud.firestore {
     }
     match /battles/{battleId} { allow read: if canRead(); allow write: if false; }
 
+    // Reward claims: created by the claimReward function; parents approve, mark given, or remove them.
+    match /claims/{claimId} { allow read: if canRead(); allow update, delete: if isParent(); allow create: if false; }
+
+    // Parent bounties: parents create and edit them; kids claim and parents award through functions.
+    match /bounties/{bountyId} { allow read: if canRead(); allow write: if isParent(); }
+
+    // Family goal and other shared game settings parents change often.
+    match /app/game { allow read: if canRead(); allow write: if isParent(); }
+
+    // Each parent's push token, for reward claims and battles that need a parent.
+    match /parentTokens/{uid} { allow read: if isParent(); allow write: if isParent() && request.auth.uid == uid; }
+
     // One doc per person per week. Chore entries are added by the completeChore function.
     // Kids may only set their goal (once), bonus destination, and how savings split between goals.
     match /weeks/{weekId} {
