@@ -65,6 +65,8 @@ The first deploy takes a few minutes and may ask to enable some Google Cloud API
 
 Run `firebase deploy` again any time you change a file.
 
+You don't have to deploy by hand, though. Pushing to GitHub does it: every push to `main`, and every push to a `claude/` branch (the branches Claude Code works on), runs the **Deploy to Firebase** action in `.github/workflows/deploy.yml`. Before deploying, the action checks that the pushed commit includes whatever is live now, so a branch that started from older code can't quietly undo a change. If it refuses, merge the branch it names into yours and push again, or run the action by hand from the **Actions** tab with **force** ticked to deploy anyway. Because a deploy can come from a `claude/` branch, merge that branch into `main` afterwards (a pull request works) so `main` stays current. Progress and errors show under the repository's **Actions** tab.
+
 ## 6. First sign-in (your phone)
 
 1. Open the Hosting URL in Chrome and tap **Parent sign-in**. Sign in with one of the accounts in `PARENT_EMAILS`.
