@@ -69,7 +69,7 @@ test("battles respect quiet hours and the parent's off switches", async () => {
   await rejects(k1.call("createBattle", { mode: "race", opponent: "k2" }), /turned off/);
 });
 
-test("time trial: timed runs log the chore; very fast results need a parent", async () => {
+test("time trial: the result stays pending until a parent checks each run was done well", async () => {
   await reset();
   const k1 = await kidClient("k1"), k3 = await kidClient("k3");
   await rejects(k1.call("createBattle", { mode: "timetrial", opponent: "k3", choreId: "mine" }), /Anyone chore/);
@@ -81,19 +81,41 @@ test("time trial: timed runs log the chore; very fast results need a parent", as
   await k3.call("startAttempt", { id });
   await k1.call("finishAttempt", { id });
   assert.equal((await battle(id)).status, "active", "waits for both players");
+  const parent = await parentClient();
+  await rejects(k3.call("checkRun", { id, player: "k1", ok: true }), /Only a parent/);
+  await rejects(parent.call("checkRun", { id, player: "k3", ok: true }), /isn't finished/);
+  // A parent can check a run as soon as it's done: k1 rushed it.
+  await parent.call("checkRun", { id, player: "k1", ok: false });
   await k3.call("finishAttempt", { id });
   let b = await battle(id);
-  assert.equal(b.status, "confirming");
-  assert.equal(b.result.needsParent, true, "runs under a minute are flagged");
   assert.ok(b.attempts.k1.entryId && b.attempts.k3.entryId, "each run logged a real chore");
-  const loser = b.result.winner === "k1" ? k3 : k1; // both runs take about the same time, so usually a tie
-  await rejects(loser.call("confirmResult", { id }), /parent has to check/);
-  const parent = await parentClient();
-  await parent.call("confirmResult", { id, action: "confirm" });
+  // Make k1 clearly faster, so the check decides it.
+  await db.doc(`battles/${id}`).update({ "attempts.k1.ms": 30000, "attempts.k3.ms": 90000 });
+  b = await battle(id);
+  assert.equal(b.status, "confirming");
+  assert.equal(b.result.qualityCheck, true);
+  assert.equal(b.result.needsParent, true);
+  await rejects(k3.call("confirmResult", { id }), /parent has to check/);
+  await rejects(parent.call("confirmResult", { id, action: "confirm" }), /Check each run/);
+  await parent.call("checkRun", { id, player: "k3", ok: true });
   b = await waitFor(async () => { const b = await battle(id); return b.live === false && b; }, { msg: "closed" });
   assert.equal(b.status, "done");
-  if (b.result.tie) assert.deepEqual(b.xp, { k1: 25, k3: 25 });
-  else assert.equal(b.xp[b.result.winner], 40);
+  assert.equal(b.result.winner, "k3", "the fastest run done well wins, even though k1 was faster");
+  assert.deepEqual(b.xp, { k1: 0, k3: 40 });
+});
+
+test("time trial: nobody passing the check is no contest", async () => {
+  await reset();
+  const k1 = await kidClient("k1"), k2 = await kidClient("k2"), parent = await parentClient();
+  const { id } = await k1.call("createBattle", { mode: "timetrial", opponent: "k2", choreId: "c2" });
+  await k2.call("respondBattle", { id, accept: true });
+  for (const k of [k1, k2]) { await k.call("startAttempt", { id }); await k.call("finishAttempt", { id }); }
+  await parent.call("checkRun", { id, player: "k1", ok: false });
+  await parent.call("checkRun", { id, player: "k2", ok: false });
+  const b = await waitFor(async () => { const b = await battle(id); return b.live === false && b; }, { msg: "closed" });
+  assert.equal(b.result.noContest, true);
+  assert.match(b.result.reason, /parent's check/);
+  assert.deepEqual(b.xp, {});
 });
 
 test("ghost race and adults: a parent acts as their own adult profile only", async () => {
@@ -108,8 +130,8 @@ test("ghost race and adults: a parent acts as their own adult profile only", asy
   let b = await battle(id);
   assert.equal(b.status, "confirming");
   assert.equal(b.result.record, true);
-  await rejects(dad.call("confirmResult", { id }), /Another parent/);
-  await mom.call("confirmResult", { id, action: "confirm" });
+  await rejects(dad.call("checkRun", { id, player: "dad", ok: true }), /Another parent/);
+  await mom.call("checkRun", { id, player: "dad", ok: true });
   b = await waitFor(async () => { const b = await battle(id); return b.live === false && b; }, { msg: "closed" });
   assert.deepEqual(b.xp, { dad: 25 });
   const x = await quiet("xp/dad");

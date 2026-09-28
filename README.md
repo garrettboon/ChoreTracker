@@ -121,8 +121,8 @@ What levels unlock: new creatures (the first 12 stay free), accessories, screen 
 | Mode | Unlocks at | How it works |
 |---|---|---|
 | Race | level 1 | First to finish N chores |
-| Time Trial | level 1 | Same chore, fastest time. The timer's Done button logs the chore |
-| Ghost Race | level 1 | Beat your own best time |
+| Time Trial | level 1 | Same chore, fastest time done well. The timer's Done button logs the chore, and a parent checks the work |
+| Ghost Race | level 1 | Beat your own best time, done well (a parent checks) |
 | Blitz | level 3 | Most chore XP in a time window |
 | Chore Bingo | level 5 | First to finish a row, column, or diagonal on a 3×3 card of chores |
 | Territory | level 6 | Kids only. Most Anyone chores by midnight |
@@ -135,7 +135,9 @@ What levels unlock: new creatures (the first 12 stay free), accessories, screen 
 
 Younger players get an automatic handicap: their score is multiplied by 8% per year of age difference, up to ×1.5. Adults count as 18. In Bingo the younger player gets free squares instead.
 
-A speed result is final once someone on the other side or a parent confirms it, or on its own after 12 hours. Times under a minute and disputed results wait for a parent in the **Game** tab. Streak Duel, Goal Showdown, and Boss Raid are decided from the family's records and need no confirming.
+**Time Trial and Ghost Race need a parent's quality check.** When a kid finishes a timed run, the result is only pending. In the **Game** tab a parent marks each run **✓ Done well** or **✗ Not good enough** (you can check each run as soon as it's finished). Only runs done well count, so the fastest run done well wins, and a run that fails the check earns no XP. Unchecked runs become no contest after 48 hours.
+
+Other speed results are final once someone on the other side or a parent confirms them, or on their own after 12 hours. Disputed results wait for a parent in the **Game** tab. Streak Duel, Goal Showdown, and Boss Raid are decided from the family's records and need no confirming.
 
 To limit battles, go to **Settings** > Game. You can set quiet hours (no battles from 8:30 PM to 7 AM by default), a daily limit per person (3), turn off single modes, or turn battles off entirely.
 

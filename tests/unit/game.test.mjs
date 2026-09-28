@@ -306,3 +306,9 @@ test("the cat unlocks at level 5", () => {
   assert.ok(G.unlockedIds(5, {}).includes("c:cat"));
   assert.deepEqual(G.describeUnlocks(["c:cat"])[0].slice(0, 2), ["🐱", "Cat"]);
 });
+
+test("a timed run that fails the parent's check earns no XP", () => {
+  const b = { mode: "timetrial", players: ["a", "c"], attempts: { a: { ms: 30000 }, c: { ms: 60000 } }, quality: { a: false, c: true } };
+  assert.deepEqual(G.battleXp(b, { winner: "c" }), { a: 0, c: 40 });
+  assert.deepEqual(G.battleXp({ ...b, quality: { a: true, c: true } }, { winner: "a" }), { a: 40, c: 15 });
+});

@@ -379,7 +379,7 @@ function modeParams(b){const p=b.params||{};const tw=b.twist?`. ${esc(b.twist.te
   return (t||(p.choreName?esc(p.choreName):""))+tw;}
 function fmtEnd(t){const d=new Date(t);return d.getHours()===0&&d.getMinutes()===0?(d-Date.now()>26*3600e3?"at midnight "+d.toLocaleDateString(undefined,{weekday:"short"}):"at midnight"):"at "+d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});}
 function scoreHtml(b,id){
-  if(G.TIMED.includes(b.mode)){const a=(b.attempts||{})[id];return !a?"–":a.void?"✗":a.ms!=null?fmtMs(a.ms):`<span class="tt-clock" data-start="${a.startAt}"></span>`;}
+  if(G.TIMED.includes(b.mode)){const a=(b.attempts||{})[id],q=(b.quality||{})[id];return !a?"–":a.void?"✗":a.ms!=null?fmtMs(a.ms)+(q===true?` <small title="A parent checked it">✓</small>`:q===false?` <small title="Didn't pass the parent's check">✗</small>`:""):`<span class="tt-clock" data-start="${a.startAt}"></span>`;}
   if(b.mode==="judge"){const a=(b.attempts||{})[id];return a&&a.entryId?"✓ Done":"–";}
   if(b.mode==="streakduel"){const days=Object.values(b.duelDays||{});const ok=days.filter(d=>d[id]).length;return days.length?`${ok} day${ok===1?"":"s"}`:"–";}
   if(b.mode==="showdown"){const s=(b.scores||{})[id];return s?s.adj+"%":`${showdownLive(b,id)}%<small> so far</small>`;}
@@ -414,7 +414,7 @@ function battleCard(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Batt
     if(G.TIMED.includes(b.mode)){const a=(b.attempts||{})[me];
       body=!a?`<p class="sub">Tap Start, do "${esc(b.params.choreName)}", then tap Done. The chore is logged when you finish.</p><button class="btn block" data-act="b-start" data-id="${b.id}" ${dis}>▶ Start timer</button>${b.mode==="ghost"?`<button class="btn ghost small" style="margin-top:8px" data-act="b-cancel" data-id="${b.id}" ${dis}>Cancel</button>`:""}`
         :a.ms==null&&!a.void?`<div class="tt-big"><span class="tt-clock" data-start="${a.startAt}"></span></div><button class="btn block" data-act="b-finish" data-id="${b.id}" ${dis}>✓ Done!</button>`
-        :`<p class="sub">${a.void?"Your run didn't count: "+esc(a.void):"Your time: <b>"+fmtMs(a.ms)+"</b>"}.${other?` Waiting for ${bName(b,other)}.`:""}</p>`;}
+        :`<p class="sub">${a.void?"Your run didn't count: "+esc(a.void):"Your time: <b>"+fmtMs(a.ms)+"</b>. A parent will check that it was done well"}.${other?` Waiting for ${bName(b,other)}.`:""}</p>`;}
     else if(b.mode==="judge"){const a=(b.attempts||{})[me];
       body=a&&a.entryId?`<p class="sub">Turned in! ${other&&!((b.attempts||{})[other]||{}).entryId?`Waiting for ${bName(b,other)}.`:""} Then a parent picks the better job.</p>`
         :`<p class="sub">Do your best job on "${esc(b.params.choreName)}", then tap Done. A parent picks the better job.</p><button class="btn block" data-act="b-finish" data-id="${b.id}" ${dis}>✓ Done!</button>`;}
@@ -424,6 +424,10 @@ function battleCard(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Batt
     else if(b.mode==="raid")body=`<p class="sub">Every chore your team does hits the boss. Beat it ${fmtEnd(b.endAt)}!</p>`;
     else body=`<p class="sub">${{race:`First to ${b.params.n} chores wins. Do chores below to score!`,territory:"Every Anyone chore you do is yours. Most claims wins.",grownups:"Every chore adds XP to your team's score."}[b.mode]||"Most chore XP wins. Bigger chores count more."} Ends ${fmtEnd(b.endAt)}.</p>`;}
   else if(b.status==="judging")body=`<p class="b-result">🧑‍⚖️ Both done! A parent is judging.</p>`;
+  else if(b.status==="confirming"&&G.TIMED.includes(b.mode)){const r=b.result||{};const q=b.quality||{};
+    const lead=b.mode==="ghost"?(r.record?"First record":r.winner?"New best":"Not faster this time"):r.tie?"A tie":r.winner?(r.winner===me?"You":bName(b,r.winner)):"";
+    const runs=b.players.filter(p=>((b.attempts||{})[p]||{}).ms!=null).map(p=>`${p===me?"You":bName(b,p)}: ${q[p]===true?"✓ done well":q[p]===false?"✗ didn't pass":"waiting for a check"}`).join(". ");
+    body=`<p class="b-result">⏳ Pending: ${lead}</p><p class="hint">Fast only counts if it's done right. A parent is checking the work. ${runs}.</p>`;}
   else if(b.status==="confirming"){const r=b.result||{};let act;
     if(r.needsParent)act=`<p class="hint">${r.disputedBy?"Someone asked a parent to check.":"That was super fast!"} A parent needs to check this one.</p>`;
     else if(other&&!G.isWinner(b,r,me))act=`<div class="row"><button class="btn" data-act="b-confirm" data-id="${b.id}" ${dis}>Looks good</button><button class="btn ghost" data-act="b-dispute" data-id="${b.id}" ${dis}>Ask a parent</button></div>`;
@@ -515,7 +519,7 @@ function battleStrip(){const bl=battleList().filter(b=>b.live&&b.status!=="pendi
     if(b.mode==="raid"){const ts=(b.teamScores||{}).a;who=`<span class="bs-p">${b.teams.a.map(p=>crHtml(p)).join("")} vs ${esc(b.params.bossEmoji)} <span class="bs-score">${Math.max(0,(b.params.hp||0)-(ts?ts.raw:0))} HP left</span></span>`;}
     else if(b.teams)who=["a","b"].map(sd=>`<span class="bs-p">${b.teams[sd].map(p=>crHtml(p)).join("")} <span class="bs-score">${((b.teamScores||{})[sd]||{}).adj||0}</span></span>`).join(`<span class="vs-x">vs</span>`);
     else who=b.players.map(p=>`<span class="bs-p">${crHtml(p)} <b>${bName(b,p)}</b> <span class="bs-score">${scoreHtml(b,p)}</span></span>`).join(`<span class="vs-x">vs</span>`);
-    const tail=b.status==="judging"?`<em>Judging…</em>`:b.status==="confirming"?`<em>${r.noContest?"No contest":r.tie?"Tie!":b.mode==="ghost"?(r.winner?"New best!":"So close!"):r.winnerSide?b.teams[r.winnerSide].map(p=>bName(b,p)).join(" & ")+" win!":bName(b,r.winner)+" wins!"}</em>`:b.mode==="ghost"?`<span class="vs-x">vs</span><span class="bs-p">👻 best ${b.pb!=null?fmtMs(b.pb):"—"}</span>`:"";
+    const tail=b.status==="judging"?`<em>Judging…</em>`:b.status==="confirming"&&G.TIMED.includes(b.mode)?`<em>⏳ Checking the work…</em>`:b.status==="confirming"?`<em>${r.noContest?"No contest":r.tie?"Tie!":b.mode==="ghost"?(r.winner?"New best!":"So close!"):r.winnerSide?b.teams[r.winnerSide].map(p=>bName(b,p)).join(" & ")+" win!":bName(b,r.winner)+" wins!"}</em>`:b.mode==="ghost"?`<span class="vs-x">vs</span><span class="bs-p">👻 best ${b.pb!=null?fmtMs(b.pb):"—"}</span>`:"";
     return `<div class="bs"><span class="bs-mode">${b.wildcard?"🃏 ":""}${m.emoji} ${esc(m.name)}</span>${who}${tail}</div>`;}).join("")}</div>`;}
 
 /* ---------- parent ---------- */
@@ -529,7 +533,8 @@ function viewParent(){
   return `<div class="wrap"><header class="p-head"><div><h1>Parent</h1><p class="sub">Signed in as ${esc(parentName())}</p></div><button class="btn ghost small" data-act="sign-out">Sign out</button></header>
   <nav class="tabs">${tabs.map(t=>`<button class="${S.ptab===t[0]?"on":""}" data-act="ptab" data-tab="${t[0]}">${esc(t[1])}</button>`).join("")}</nav>${body}</div>`;
 }
-const gameAlerts=()=>battleList().filter(b=>b.live&&(b.status==="judging"||(b.status==="confirming"&&b.result&&b.result.needsParent))).length
+const needsCheck=b=>G.TIMED.includes(b.mode)&&b.players.some(p=>{const a=(b.attempts||{})[p];return a&&a.ms!=null&&!a.void&&(b.quality||{})[p]==null;});
+const gameAlerts=()=>battleList().filter(b=>b.live&&(b.status==="judging"||needsCheck(b)||(b.status==="confirming"&&b.result&&b.result.needsParent))).length
   +Object.values(S.claims).filter(c=>c.status==="pending").length+Object.values(S.bounties).filter(b=>b.status==="claimed").length;
 function pGame(){
   const live=battleList().filter(b=>b.live),cot=cotdId(),fam=cfg().chores.filter(c=>c.kind==="family"),g=game();
@@ -537,16 +542,18 @@ function pGame(){
   const line=b=>{const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Battle"};const r=b.result||{};const names=b.teams?Object.values(b.teams).map(t=>t.map(p=>bName(b,p)).join(" & ")).join(" vs "):b.players.map(p=>bName(b,p)).join(" vs ");
     const mine=b.players.some(p=>{const k=kidCfg(p);return k&&k.email&&k.email.toLowerCase()===email;});
     const times=G.TIMED.includes(b.mode)?" Times: "+b.players.map(p=>`${bName(b,p)} ${scoreHtml(b,p)}`).join(", ")+".":b.scores?" Score: "+b.players.map(p=>`${bName(b,p)} ${scoreHtml(b,p)}`).join(", ")+".":"";
-    const status=b.status==="judging"?"Both are done. Go look, then pick the better job.":b.status==="confirming"?`${resultText(b,null)}${r.needsParent?(r.disputedBy?` ${bName(b,r.disputedBy)} asked you to check.`:" Flagged: a run under a minute."):" Waiting for the other player (auto-confirms after 12 hours)."}`:b.status==="pending"?"Waiting to be accepted.":"In progress.";
-    const btns=b.status==="judging"?(mine?`<small>Another parent needs to judge this one.</small>`:`<span class="row" style="flex:0 1 auto;gap:6px">${b.players.map(p=>`<button class="btn small" data-act="p-judge" data-id="${b.id}" data-winner="${p}">${bName(b,p)}</button>`).join("")}<button class="btn ghost small" data-act="p-judge" data-id="${b.id}" data-winner="tie">Tie</button></span>`)
+    const qc=G.TIMED.includes(b.mode)?b.players.filter(p=>{const a=(b.attempts||{})[p];return a&&a.ms!=null&&!a.void;}):[];
+    const status=qc.length&&!mine?`Check that the chore was done well. Only runs done well count, and the fastest of those wins.`:b.status==="judging"?"Both are done. Go look, then pick the better job.":b.status==="confirming"?`${resultText(b,null)}${r.needsParent?(r.disputedBy?` ${bName(b,r.disputedBy)} asked you to check.`:" Flagged: a run under a minute."):" Waiting for the other player (auto-confirms after 12 hours)."}`:b.status==="pending"?"Waiting to be accepted.":"In progress.";
+    const checks=qc.length?`<div class="qc">${qc.map(p=>{const v=(b.quality||{})[p];return `<div class="qc-row"><span><b>${bName(b,p)}</b> ${fmtMs(b.attempts[p].ms)}</span>${mine?"":`<button class="btn small ${v===true?"":"ghost"}" data-act="p-check" data-id="${b.id}" data-player="${p}" data-ok="1" aria-pressed="${v===true}">✓ Done well</button><button class="btn small ${v===false?"warn":"ghost"}" data-act="p-check" data-id="${b.id}" data-player="${p}" data-ok="" aria-pressed="${v===false}">✗ Not good enough</button>`}</div>`;}).join("")}</div>`:"";
+    const btns=G.TIMED.includes(b.mode)&&b.status==="confirming"?(mine?`<small>Another parent needs to check this one.</small>`:`<button class="btn ghost small" data-act="p-bvoid" data-id="${b.id}">No contest</button>`):b.status==="judging"?(mine?`<small>Another parent needs to judge this one.</small>`:`<span class="row" style="flex:0 1 auto;gap:6px">${b.players.map(p=>`<button class="btn small" data-act="p-judge" data-id="${b.id}" data-winner="${p}">${bName(b,p)}</button>`).join("")}<button class="btn ghost small" data-act="p-judge" data-id="${b.id}" data-winner="tie">Tie</button></span>`)
       :b.status==="confirming"&&!mine?`<button class="btn small" data-act="p-bconfirm" data-id="${b.id}">Confirm</button><button class="btn ghost small" data-act="p-bvoid" data-id="${b.id}">No contest</button>`
       :b.status!=="confirming"?`<button class="btn ghost small" data-act="p-bcancel" data-id="${b.id}">Call off</button>`:`<small>Another parent needs to check this one.</small>`;
-    return `<li><span style="flex:1"><b>${m.emoji} ${esc(m.name)}</b>: ${names}<br><small>${modeParams(b)}. ${status}${times}</small></span>${btns}</li>`;};
+    return `<li class="${qc.length?"has-qc":""}"><span style="flex:1"><b>${m.emoji} ${esc(m.name)}</b>: ${names}<br><small>${modeParams(b)}. ${status}${qc.length?"":times}</small>${checks}</span>${btns}</li>`;};
   const hist=id=>{const h=S.ui.xpHist[id];if(!h)return "";if(h==="loading")return `<p class="sub">Loading…</p>`;
     return h.length?`<ul class="feed">${h.map(e=>`<li><span>${esc(e.reason)}<br><small>${timeOf(e.t)}</small></span><span class="amt pos">+${e.amount} XP</span></li>`).join("")}</ul>`:`<p class="empty">No XP yet.</p>`;};
   return pushCard()+claimsCard()+bountiesCard()+`<section class="card"><div class="sec-head"><h2>Battles</h2><span class="sub">${g.battles.enabled?"On":"Off"}. Change in Settings</span></div>
     ${live.length?`<ul class="feed">${live.sort((a,b)=>(["judging","confirming"].includes(b.status))-(["judging","confirming"].includes(a.status))).map(line).join("")}</ul>`:`<p class="empty">No battles going on.</p>`}
-    <p class="hint">Speed results wait for the other player or a parent to confirm. Runs under a minute and disputes always need a parent. "No contest" ends a battle with no XP.</p></section>
+    <p class="hint">Time Trial and Ghost Race runs count only after a parent checks the chore was done well; the fastest run done well wins. Other speed results wait for the other side or a parent (they confirm on their own after 12 hours). "No contest" ends a battle with no XP.</p></section>
   <section class="card"><div class="sec-head"><h2>Chore of the Day</h2></div>
     ${g.choreOfDay.enabled?`<div class="row"><label>Today's double-XP chore<select data-change="cotd">${fam.map(c=>`<option value="${c.id}" ${c.id===cot?"selected":""}>${esc(c.name)}</option>`).join("")}</select></label></div>
     <p class="hint">It rotates automatically each day. Picking one here changes today only. Point it at the chores nobody picks.</p>`:`<p class="empty">Turned off in Settings.</p>`}</section>
@@ -822,6 +829,7 @@ async function handleAct(act,ds){
   case "b-cancel": await bcall("cancelBattle",{id:ds.id},"Called off.");break;
   case "b-start": await bcall("startAttempt",{id:ds.id},"Timer started. Go!");break;
   case "b-finish":{const r=await bcall("finishAttempt",{id:ds.id});if(r){confetti(80);chime(true);toast(r.ms!=null?`Done in ${fmtMs(r.ms)}! Chore logged.`:"Turned in! Chore logged.");}break;}
+  case "p-check": await bcall("checkRun",{id:ds.id,player:ds.player,ok:!!ds.ok,as:null},ds.ok?"Marked done well.":"Marked not good enough.");break;
   case "p-judge": if(!confirm(ds.winner==="tie"?"Call it a tie?":`${kidCfg(ds.winner).name} did the better job?`))return;await bcall("judgeBattle",{id:ds.id,winner:ds.winner,as:null},"Judged. Thanks!");break;
   case "claim-reward":{const r=await bcall("claimReward",{rewardId:ds.id});if(r){confetti(80);chime(true);toast("Claimed! A parent will approve it.");}break;}
   case "claim-bounty": if(await bcall("claimBounty",{id:ds.id},"Nice! A parent will check it."))confetti(60);break;

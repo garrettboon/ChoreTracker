@@ -841,6 +841,38 @@ exports.finishAttempt = onCall(async (req) => {
   return { ms };
 });
 
+// A parent checks one Time Trial or Ghost Race run: was the chore done well?
+// Once every finished run is checked, the fastest run done well wins.
+exports.checkRun = onCall(async (req) => {
+  if (!isParentAuth(req.auth)) throw new HttpsError("permission-denied", "Only a parent can check the work.");
+  const cfg = await getConfig();
+  const id = String((req.data && req.data.id) || "");
+  const player = String((req.data && req.data.player) || "");
+  const ok = !!(req.data && req.data.ok);
+  const ref = db.doc(`battles/${id}`);
+  await db.runTransaction(async (t) => {
+    const s = await t.get(ref);
+    if (!s.exists) throw new HttpsError("not-found", "That battle is gone.");
+    const b = s.data();
+    if (!G.TIMED.includes(b.mode) || !["active", "confirming"].includes(b.status)) throw new HttpsError("failed-precondition", "There's nothing to check here.");
+    if (ownBattle(cfg, b, req.auth)) throw new HttpsError("permission-denied", "Another parent has to check a battle you're in.");
+    const a = (b.attempts || {})[player];
+    if (!a || a.ms == null || a.void) throw new HttpsError("failed-precondition", "That run isn't finished.");
+    const by = req.auth.token.name || req.auth.token.email;
+    b.quality = { ...(b.quality || {}), [player]: ok };
+    b.checkedBy = by;
+    const u = { [`quality.${player}`]: ok, checkedBy: by };
+    if (b.status === "confirming") {
+      const r = qualityResult(b);
+      if (r) Object.assign(u, { status: "done", result: { ...r, decidedAt: (b.result && b.result.decidedAt) || Date.now(), confirmedBy: by, confirmedAt: Date.now() } });
+    }
+    t.update(ref, u);
+  });
+  if (!ok) await pushTo([player], "🔁 Not quite done right", "A parent checked your timed run. It doesn't count this time, so give that chore another look.");
+  await afterSettle(cfg, id);
+  return { ok: true };
+});
+
 // A parent picks the winner of a Judge's Pick battle (or calls it a tie).
 exports.judgeBattle = onCall(async (req) => {
   if (!isParentAuth(req.auth)) throw new HttpsError("permission-denied", "Only a parent can judge.");
@@ -867,8 +899,26 @@ exports.judgeBattle = onCall(async (req) => {
 function settle(b, result) {
   const now = Date.now();
   if (result.noContest || !SPEED.includes(b.mode)) return { status: "done", result: { ...result, decidedAt: now } };
-  const fast = G.TIMED.includes(b.mode) && Object.values(b.attempts || {}).some((a) => a.ms != null && a.ms < G.MIN_TRIAL_MS);
-  return { status: "confirming", result: { ...result, decidedAt: now, needsParent: fast } };
+  // Timed runs are only a pending result until a parent checks the work was done well.
+  if (G.TIMED.includes(b.mode)) {
+    const done = qualityResult(b);
+    if (done) return { status: "done", result: { ...done, decidedAt: now, confirmedBy: b.checkedBy || "parent", confirmedAt: now } };
+    return { status: "confirming", result: { ...result, decidedAt: now, needsParent: true, qualityCheck: true } };
+  }
+  return { status: "confirming", result: { ...result, decidedAt: now, needsParent: false } };
+}
+// The final result of a timed battle once a parent has checked every finished run, or null.
+// Runs that didn't pass count as not finished, so the fastest run done well wins.
+function qualityResult(b) {
+  const q = b.quality || {};
+  const finished = b.players.filter((p) => { const a = (b.attempts || {})[p]; return a && a.ms != null && !a.void; });
+  if (finished.some((p) => q[p] == null)) return null;
+  const attempts = { ...(b.attempts || {}) };
+  for (const p of finished) if (!q[p]) attempts[p] = { ...attempts[p], void: "Didn't pass the parent's check" };
+  const r = G.decide({ ...b, attempts }, {}, [], true);
+  if (r && r.noContest && finished.length) return { ...r, reason: "No run passed the parent's check" };
+  if (r && !r.noContest && finished.some((p) => !q[p])) return { ...r, reason: b.mode === "ghost" ? r.reason : "Fastest run done well" };
+  return r;
 }
 // True when a signed-in parent is one of this battle's players.
 function ownBattle(cfg, b, auth) {
@@ -885,7 +935,8 @@ async function afterSettle(cfg, id) {
   if (b.status === "confirming" && b.live && !b.notified) {
     await ref.update({ notified: true });
     await pushTo(b.players, "⚔️ Battle over!", "Open Boon Chores to see who won.");
-    if (b.result && b.result.needsParent) await pushParents("⚔️ A battle needs a parent", "A very fast result needs checking in the Game tab.");
+    if (b.result && b.result.qualityCheck) await pushParents("⏱️ Check the work", `${b.players.map((p) => personName(cfg, p)).join(" and ")} finished a timed run. Check it was done well in the Game tab.`);
+    else if (b.result && b.result.needsParent) await pushParents("⚔️ A battle needs a parent", "A result needs checking in the Game tab.");
   }
   if (b.status !== "done" || !b.live) return;
   const mode = G.modeById(b.mode);
@@ -1048,6 +1099,7 @@ exports.confirmResult = onCall(async (req) => {
       if (ownBattle(cfg, b, req.auth)) throw new HttpsError("permission-denied", "Another parent has to check a battle you're in.");
       const by = req.auth.token.name || req.auth.token.email;
       if (action === "void") t.update(ref, { status: "done", result: { ...r, winner: null, winnerSide: null, tie: false, noContest: true, reason: "Called off by a parent", confirmedBy: by, confirmedAt: now } });
+      else if (action === "confirm" && G.TIMED.includes(b.mode)) throw new HttpsError("failed-precondition", "Check each run as done well or not instead.");
       else if (action === "confirm" && b.status === "confirming") t.update(ref, { status: "done", result: { ...r, confirmedBy: by, confirmedAt: now } });
       else throw new HttpsError("invalid-argument", "Unknown action.");
       return;

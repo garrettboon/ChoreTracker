@@ -93,8 +93,8 @@ export const stageFor = (level) => { let s = 1; STAGES.forEach(([l], i) => { if 
 /* ---------- battle modes ---------- */
 export const MODES = [
   { id: "race", emoji: "🏁", name: "Race", level: 1, desc: "First to finish the chores wins." },
-  { id: "timetrial", emoji: "⏱️", name: "Time Trial", level: 1, desc: "Same chore, fastest time wins." },
-  { id: "ghost", emoji: "👻", name: "Ghost Race", level: 1, solo: true, desc: "Beat your own best time on a chore." },
+  { id: "timetrial", emoji: "⏱️", name: "Time Trial", level: 1, desc: "Same chore. Fastest time done well wins." },
+  { id: "ghost", emoji: "👻", name: "Ghost Race", level: 1, solo: true, desc: "Beat your own best time, done well." },
   { id: "blitz", emoji: "⚡", name: "Blitz", level: 3, desc: "Most chore XP before time runs out." },
   { id: "bingo", emoji: "🎱", name: "Chore Bingo", level: 5, desc: "First to finish a row of chores wins." },
   { id: "territory", emoji: "🚩", name: "Territory", level: 6, kidsOnly: true, desc: "Claim the most Anyone chores by midnight." },
@@ -107,7 +107,6 @@ export const MODES = [
 ];
 export const modeById = (id) => MODES.find((m) => m.id === id);
 export const TIMED = ["timetrial", "ghost"];
-export const MIN_TRIAL_MS = 60 * 1000;      // faster than this always needs a parent
 export const MAX_TRIAL_MS = 2 * 3600 * 1000; // longer than this voids the attempt
 
 // Every unlock id a person has at a level, prefixed by kind:
@@ -491,7 +490,11 @@ export function battleXp(b, result) {
     return out;
   }
   const tried = (p) => {
-    if (TIMED.includes(b.mode) || b.mode === "judge") { const at = (b.attempts || {})[p]; return !!(at && (at.ms != null || at.entryId) && !at.void); }
+    if (TIMED.includes(b.mode) || b.mode === "judge") {
+      const at = (b.attempts || {})[p];
+      // A timed run that didn't pass the parent's check earns nothing.
+      return !!(at && (at.ms != null || at.entryId) && !at.void) && (b.quality || {})[p] !== false;
+    }
     if (b.mode === "streakduel" || b.mode === "showdown") return true;
     return ((b.scores && b.scores[p] && b.scores[p].raw) || 0) > 0;
   };
