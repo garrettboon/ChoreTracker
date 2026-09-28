@@ -133,9 +133,17 @@ label > input, label > select{margin-top:4px;font-weight:600}
 .tag.mine{background:var(--sky);border-color:var(--sky);color:#fff}
 .c-val{font-family:var(--display);font-weight:600;font-size:1.25rem;color:var(--pine)}
 
-.buckets{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
-.bucket{border-radius:18px;padding:14px;border:2px solid var(--line);background:var(--surface-2);border-top:8px solid var(--c)}
-.bucket h3{font-size:1.1rem;display:flex;justify-content:space-between;align-items:baseline}
+.buckets{display:grid;grid-template-columns:1fr;gap:10px}
+.bucket{border-radius:18px;padding:0;border:2px solid var(--line);background:var(--surface-2);border-top:8px solid var(--c);overflow:hidden}
+.bucket-head{display:flex;align-items:center;gap:10px;width:100%;padding:12px 14px;background:none;border:0;text-align:left;font:inherit;color:inherit}
+button.bucket-head{cursor:pointer}
+.bh-name{flex:1;min-width:0}
+.bucket-head h3{display:block;font-size:1.1rem}
+.bucket-head h3 small{margin-left:6px}
+.bucket-head p{margin:2px 0 0;font-size:.85rem;color:var(--muted)}
+.bh-total{font-size:1.5rem;white-space:nowrap}
+.chev{color:var(--muted);font-size:1.1rem;flex:none}
+.bucket-body{padding:0 14px 14px}
 .bucket h3 small{font-family:var(--body);font-size:.8rem;color:var(--muted);font-weight:800}
 .bucket .money{font-size:1.9rem}
 .bucket p{margin:4px 0;font-size:.9rem;color:var(--muted)}
@@ -241,6 +249,8 @@ body[data-mode="display"] .walker.cheer{animation:victory 1.4s ease-in-out 2}
 /* Set balances (parent page) */
 .adjust{margin-top:12px;border-top:2px solid var(--line);padding-top:12px}
 .adjust h3{font-size:1.1rem;margin-bottom:4px}
+.adjust h4{font-size:1rem;margin:12px 0 6px}
+.adjust h4 small{display:block;font-family:var(--body);font-size:.85rem;font-weight:700;color:var(--muted)}
 
 /* Kid views (parent page) */
 .kid-list{display:grid;gap:10px}

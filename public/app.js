@@ -7,7 +7,7 @@ import { VAPID_KEY } from "./config.js";
 
 const CREATURES=[["dragon","🐉","Dragon"],["fox","🦊","Fox"],["frog","🐸","Frog"],["dino","🦖","T. rex"],["unicorn","🦄","Unicorn"],["octopus","🐙","Octopus"],["shark","🦈","Shark"],["turtle","🐢","Turtle"],["owl","🦉","Owl"],["bee","🐝","Bee"],["tiger","🐯","Tiger"],["penguin","🐧","Penguin"]];
 const S={phase:"loading",user:null,role:null,device:null,config:null,bank:{},prefs:{},weeks:{},devices:[],codes:[],ptab:"activity",viewKid:null,busy:{},
-  ui:{goalInput:"",newGoal:{name:"",target:""},ded:{kid:"",amount:0.25,reason:"",how:""},buy:null,pgoal:{},editGoal:null,kidView:null,adjust:null,split:{key:null,base:"",dirty:false,shares:{}},draft:null,pickCreature:false,prevPct:{},pair:{code:"",name:""},newCode:{role:"display"},log:{kid:"",chore:""}}};
+  ui:{goalInput:"",newGoal:{name:"",target:""},ded:{kid:"",amount:0.25,reason:"",how:""},buy:null,pgoal:{},editGoal:null,kidView:null,adjust:null,openBuckets:{},split:{key:null,base:"",dirty:false,shares:{}},draft:null,pickCreature:false,prevPct:{},pair:{code:"",name:""},newCode:{role:"display"},log:{kid:"",chore:""}}};
 
 /* ---------- helpers ---------- */
 const $=s=>document.querySelector(s);
@@ -252,16 +252,21 @@ function updateSplitUI(){const el=document.querySelector(".split");if(!el)return
   const proj=ok?splitCents(Number(el.dataset.weekSave)||0,fr):{};rows.forEach(r=>{r.querySelector(".proj").textContent=ok?"+"+money(proj[r.dataset.goal]||0)+" this week":"";});
   const t=el.querySelector(".split-total");t.textContent=`Total ${total}%${ok?"":" (make it 100%)"}`;t.classList.toggle("bad",!ok);
   el.querySelector('[data-act="save-split"]').disabled=!(ok&&JSON.stringify(cur)!==S.ui.split.base);}
-function moneySection(k,ks,w,net){const sp=splitAmt(Math.max(0,net));const goals=ks.goals;const g=S.ui.newGoal;
+function moneySection(k,ks,w,net){const sp=splitAmt(Math.max(0,net)),goals=ks.goals,g=S.ui.newGoal,open=S.ui.openBuckets,pc=cfg().split;
+  // One column of cards, collapsed by default. The header always shows the total; cards with details open on tap.
+  const card=(id,cls,name,total,sub,body)=>{const o=!!open[id],x=!!body;
+    return `<section class="bucket ${cls}${o?" open":""}">${x?`<button class="bucket-head" data-act="toggle-bucket" data-id="${id}" aria-expanded="${o}">`:`<div class="bucket-head">`}<span class="bh-name"><h3>${name} <small>${pc[id]}%</small></h3>${sub?`<p>${sub}</p>`:""}</span><span class="bh-total money">${money(total)}</span>${x?`<span class="chev" aria-hidden="true">${o?"▴":"▾"}</span></button>`:"</div>"}${x&&o?`<div class="bucket-body">${body}</div>`:""}</section>`;};
+  const saved=goals.reduce((a,x)=>a+x.balance,0);
   return `<section class="card"><div class="sec-head"><h2>My money</h2></div><div class="buckets">
-    <div class="bucket b-spend"><h3>Spend <small>${cfg().split.spend}%</small></h3><div class="money">${money(sp.spend)}</div><p>Cash you get Sunday night</p></div>
-    <div class="bucket b-save"><h3>Save <small>${cfg().split.save}%</small></h3><div class="money">${money(goals.reduce((s,x)=>s+x.balance,0))}</div><p>+${money(sp.save)} this week</p>
-      ${goals.map(x=>`<div class="sgoal"><div class="top"><span>${esc(x.name)}</span><span>${money(x.balance)}${x.target?" / "+money(x.target):""}</span></div>${x.target?`<div class="bar"><i style="width:${Math.min(100,x.balance/x.target*100)}%"></i></div>`:""}</div>`).join("")}
+    ${card("spend","b-spend","Spend",sp.spend,"Cash you get Sunday night","")}
+    ${card("save","b-save","Save",saved,`+${money(sp.save)} this week`,
+      `${goals.map(x=>`<div class="sgoal"><div class="top"><span>${esc(x.name)}</span><span>${money(x.balance)}${x.target?" / "+money(x.target):""}</span></div>${x.target?`<div class="bar"><i style="width:${Math.min(100,x.balance/x.target*100)}%"></i></div>`:""}</div>`).join("")}
       ${splitEditor(k,ks,w,goals,sp.save)}
-      <div class="mini-form"><input placeholder="New goal" aria-label="New goal name" data-bind="newGoal.name" value="${esc(g.name)}"><input type="number" inputmode="decimal" placeholder="$" aria-label="Goal amount" data-bind="newGoal.target" value="${esc(g.target)}"><button class="btn small" data-act="add-goal">Add</button></div></div>
-    <div class="bucket b-invest"><h3>Invest <small>${cfg().split.invest}%</small></h3><div class="money">${money(ks.invest)}</div><p>+${money(sp.invest)} this week. Next monthly interest about ${money(calcInterest(ks.invest))}.</p>
-      <label>Interest goes to<select data-change="interestTo">${["invest","spend","give",...goals.map(x=>x.id)].map(o=>`<option value="${o}" ${o===ks.interestTo?"selected":""}>${o==="invest"?"Back into Invest (it grows!)":destName(ks,o)}</option>`).join("")}</select></label></div>
-    <div class="bucket b-give"><h3>Give <small>${cfg().split.give}%</small></h3><div class="money">${money(ks.give)}</div><p>+${money(sp.give)} this week</p></div></div></section>`;}
+      <div class="mini-form"><input placeholder="New goal" aria-label="New goal name" data-bind="newGoal.name" value="${esc(g.name)}"><input type="number" inputmode="decimal" placeholder="$" aria-label="Goal amount" data-bind="newGoal.target" value="${esc(g.target)}"><button class="btn small" data-act="add-goal">Add</button></div>`)}
+    ${card("invest","b-invest","Invest",ks.invest,`+${money(sp.invest)} this week`,
+      `<p>Next monthly interest about ${money(calcInterest(ks.invest))}.</p><label>Interest goes to<select data-change="interestTo">${["invest","spend","give",...goals.map(x=>x.id)].map(o=>`<option value="${o}" ${o===ks.interestTo?"selected":""}>${o==="invest"?"Back into Invest (it grows!)":destName(ks,o)}</option>`).join("")}</select></label>`)}
+    ${card("give","b-give","Give",ks.give,`+${money(sp.give)} this week`,"")}
+  </div></section>`;}
 function badgeList(kidId){const ks=kidState(kidId),st=ks.stats;const live=openWeeks(kidId).reduce((s,w)=>s+choreCount(w),0);const chores=(st.chores||0)+live;
   const saved=ks.goals.reduce((s,g)=>s+g.balance,0)+ks.archived.reduce((s,g)=>s+(g.bought||0),0);
   return [["🧹","First chore",chores>=1],["💪","50 chores",chores>=50],["🎯","Goal getter",st.goalHits>=1],["🏆","5 goals hit",st.goalHits>=5],["🔥","7-day streak",bestStreak(kidId)>=7],["🔁","Comeback kid",st.redemptions>=1],["🐷","$25 saved",saved>=25],["🌱","$100 invested",ks.invest>=100],["💝","$10 given",ks.give>=10],["🎁","Bought a goal",ks.archived.length>=1]];}
@@ -376,8 +381,12 @@ function pGoals(){
 function balanceForm(k,ks){
   const a=S.ui.adjust;if(!a||a.kid!==k.id)return `<div class="row" style="margin-top:12px"><button class="btn ghost small" data-act="adjust-bal" data-kid="${k.id}">Set balances</button></div>`;
   const field=(label,bind,val)=>`<label>${esc(label)}<input type="number" step="0.01" min="0" inputmode="decimal" data-type="num" data-bind="${bind}" value="${esc(val)}"></label>`;
+  const saveTotal=Object.values(a.goalBal).reduce((t,v)=>t+(Number(v)||0),0);
   return `<div class="adjust"><h3>What ${esc(k.name)} has right now</h3><p class="hint" style="margin:0 0 10px">Use this for money from before the app, or to fix a mistake. Spend is handed over as cash each week, so it has no balance here.</p>
-    <div class="grid-2">${ks.goals.map(g=>field(g.name,`adjust.goalBal.${g.id}`,a.goalBal[g.id])).join("")}${field("Invest","adjust.invest",a.invest)}${field("Give","adjust.give",a.give)}</div>
+    <h4>Save <small>Total <b class="save-total">${money(saveTotal)}</b>. Split it between general savings and any goals.</small></h4>
+    <div class="grid-2">${ks.goals.map(g=>field(g.name,`adjust.goalBal.${g.id}`,a.goalBal[g.id])).join("")}</div>
+    <h4>Invest</h4><div class="grid-2">${field("Invest balance","adjust.invest",a.invest)}</div>
+    <h4>Give</h4><div class="grid-2">${field("Give balance","adjust.give",a.give)}</div>
     <div class="row" style="margin-top:12px"><button class="btn small" data-act="save-bal">Save balances</button><button class="btn ghost small" data-act="cancel-bal">Cancel</button></div></div>`;
 }
 function pDevices(){
@@ -508,6 +517,7 @@ async function handleAct(act,ds){
     if(tot!==100){toast("The split needs to add up to 100%.");return;}s.dirty=false;
     guard(setDoc(weekRef(kid,wk),{kidId:kid,week:wk,saveSplit:shares},{mergeFields:["kidId","week","saveSplit"]}),"Savings split saved.");break;}
   case "kid-view": S.ui.kidView=ds.kid||null;S.ui.pickCreature=false;break;
+  case "toggle-bucket": S.ui.openBuckets[ds.id]=!S.ui.openBuckets[ds.id];break;
   case "adjust-bal":{const ks=kidState(ds.kid),gb={};ks.goals.forEach(g=>gb[g.id]=g.balance);S.ui.buy=null;S.ui.editGoal=null;S.ui.adjust={kid:ds.kid,goalBal:gb,invest:ks.invest,give:ks.give};break;}
   case "cancel-bal": S.ui.adjust=null;break;
   case "save-bal":{const a=S.ui.adjust;if(!a)return;const vals=[...Object.values(a.goalBal),a.invest,a.give].map(r2);if(vals.some(n=>n<0)){toast("Balances can't be negative.");return;}
@@ -538,6 +548,7 @@ function handleChange(act,el){const v=el.value,kid=S.viewKid;
 document.addEventListener("click",e=>{const el=e.target.closest("[data-act]");if(!el||el.disabled)return;handleAct(el.dataset.act,el.dataset);});
 document.addEventListener("input",e=>{const el=e.target;if(!el.dataset.bind)return;let v=el.value;if(el.dataset.type==="num")v=v===""?"":Number(v);setPath(S.ui,el.dataset.bind,v);
   if(el.dataset.bind.startsWith("split.shares.")){S.ui.split.dirty=true;updateSplitUI();}
+  if(el.dataset.bind.startsWith("adjust.goalBal.")){const t=document.querySelector(".adjust .save-total");if(t)t.textContent=money([...document.querySelectorAll('.adjust input[data-bind^="adjust.goalBal."]')].reduce((n,i)=>n+(Number(i.value)||0),0));}
   if(el.dataset.bind==="goalInput"){const m=document.querySelector(".goal-set .goal-msg");const n=Number(v)||0;if(m)m.textContent=n>0?`Reach it and you get a +${money(r2(n*.1))} bonus.`:"Bigger goal, bigger bonus.";}});
 document.addEventListener("change",e=>{const el=e.target;if(el.dataset.bind&&el.tagName==="SELECT"){setPath(S.ui,el.dataset.bind,el.value);render();}if(el.dataset.change)handleChange(el.dataset.change,el);});
 document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.id==="pin")handleAct("pair",{});});
