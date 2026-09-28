@@ -129,7 +129,7 @@ exports.completeChore = onCall(async (req) => {
     const kid = cfg && cfg.kids.find((k) => k.id === kidId);
     const ch = cfg && cfg.chores.find((c) => c.id === choreId && c.kind === "family");
     if (!kid || !ch) throw new HttpsError("invalid-argument", "Unknown chore.");
-    if (!by && needsNote(ch) && !note) throw new HttpsError("invalid-argument", "Say what the chore was first.");
+    if (!by && !kid.adult && needsNote(ch) && !note) throw new HttpsError("invalid-argument", "Say what the chore was first.");
     if (ch.assign !== "pool" && ch.assign !== kidId) throw new HttpsError("permission-denied", "That chore belongs to someone else.");
 
     const L = localParts(cfg.timezone || FAMILY_TZ);

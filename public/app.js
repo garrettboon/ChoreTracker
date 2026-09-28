@@ -499,11 +499,11 @@ async function handleAct(act,ds){
   case "goal-chip": S.ui.goalInput=String(ds.v);break;
   case "set-goal":{const v=q(S.ui.goalInput);if(!(v>0)){toast("Pick a goal of at least $0.25.");return;}const wk=activeWeek(kid);S.ui.goalInput="";
     guard(setDoc(weekRef(kid,wk),{kidId:kid,week:wk,goal:v},{merge:true}));confetti(60);chime(false);break;}
-  case "do-chore": if(!choreById(ds.id))return;S.ui.confirmChore={choreId:ds.id,note:""};break;
+  case "do-chore": if(!choreById(ds.id))return;if((kidCfg(kid)||{}).adult){doChore(kid,ds.id,"");return;}S.ui.confirmChore={choreId:ds.id,note:""};break;
   case "cancel-chore": S.ui.confirmChore=null;break;
   case "confirm-chore":{const cc=S.ui.confirmChore;if(!cc)return;const note=String(cc.note||"").trim();if(needsNote(choreById(cc.choreId))&&!note){toast("Say what it was first.");return;}S.ui.confirmChore=null;doChore(kid,cc.choreId,note);return;}
   case "toggle-pr":{const id=ds.id,on=(kidState(kid).prLog[today]||[]).includes(id);
-    if(!on&&needsNote(choreById(id))){S.ui.prNote={id,text:""};break;}
+    if(!on&&needsNote(choreById(id))&&!(kidCfg(kid)||{}).adult){S.ui.prNote={id,text:""};break;}
     setPr(kid,id,!on,"");return;}
   case "cancel-pr-note": S.ui.prNote=null;break;
   case "save-pr-note":{const pn=S.ui.prNote;if(!pn)return;const text=String(pn.text||"").trim();if(!text){toast("Say what it was first.");return;}S.ui.prNote=null;setPr(kid,pn.id,true,text);return;}
