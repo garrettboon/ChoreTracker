@@ -7,7 +7,7 @@ import { VAPID_KEY } from "./config.js";
 
 const CREATURES=[["dragon","🐉","Dragon"],["fox","🦊","Fox"],["frog","🐸","Frog"],["dino","🦖","T. rex"],["unicorn","🦄","Unicorn"],["octopus","🐙","Octopus"],["shark","🦈","Shark"],["turtle","🐢","Turtle"],["owl","🦉","Owl"],["bee","🐝","Bee"],["tiger","🐯","Tiger"],["penguin","🐧","Penguin"]];
 const S={phase:"loading",user:null,role:null,device:null,config:null,bank:{},prefs:{},weeks:{},devices:[],codes:[],ptab:"activity",viewKid:null,busy:{},
-  ui:{goalInput:"",newGoal:{name:"",target:""},ded:{kid:"",amount:0.25,reason:"",how:""},buy:null,pgoal:{},draft:null,pickCreature:false,prevPct:{},pair:{code:"",name:""},newCode:{role:"display"},log:{kid:"",chore:""}}};
+  ui:{goalInput:"",newGoal:{name:"",target:""},ded:{kid:"",amount:0.25,reason:"",how:""},buy:null,open:null,pgoal:{},draft:null,pickCreature:false,prevPct:{},pair:{code:"",name:""},newCode:{role:"display"},log:{kid:"",chore:""}}};
 
 /* ---------- helpers ---------- */
 const $=s=>document.querySelector(s);
@@ -54,7 +54,7 @@ function kidState(id){
   const goals=[{id:"general",name:"General savings",target:0,balance:r2(bal.general||0)}];
   Object.entries(p.goals||{}).filter(([gid])=>!archivedIds.has(gid)).sort((a,c)=>(a[1].created||0)-(c[1].created||0))
     .forEach(([gid,g])=>goals.push({id:gid,name:g.name,target:g.target||0,balance:r2(bal[gid]||0)}));
-  return {creature:p.creature||null,interestTo:p.interestTo||"invest",prLog:p.prLog||{},goals,archived:b.archived||[],invest:r2(b.invest||0),give:r2(b.give||0),
+  return {creature:p.creature||null,interestTo:p.interestTo||"invest",prLog:p.prLog||{},goals,archived:b.archived||[],opening:b.opening||[],invest:r2(b.invest||0),give:r2(b.give||0),
     stats:Object.assign({chores:0,goalHits:0,redemptions:0,earned:0},b.stats||{}),lastInterestMonth:b.lastInterestMonth||null};
 }
 function creatureFor(kidId){const ks=kidState(kidId);const idx=cfg().kids.findIndex(k=>k.id===kidId);const id=ks.creature||CREATURES[Math.max(0,idx)%CREATURES.length][0];return CREATURES.find(c=>c[0]===id)||CREATURES[0];}
@@ -317,7 +317,19 @@ function pGoals(){
       ${b&&b.kid===k.id&&b.goal===g.id?`<span class="row" style="flex:0 1 260px"><input type="number" step="0.25" inputmode="decimal" aria-label="Purchase amount" data-bind="buy.amount" data-type="num" value="${esc(b.amount)}"><button class="btn small" data-act="confirm-buy">Log</button><button class="btn ghost small" data-act="cancel-buy">Cancel</button></span>`
       :`<button class="btn ghost small" data-act="buy-goal" data-kid="${k.id}" data-goal="${g.id}" ${g.balance>0?"":"disabled"}>Log purchase</button>`}</div>`).join("")}
     <div class="mini-form"><input placeholder="New goal" aria-label="New goal name" data-bind="pgoal.${k.id}.name" value="${esc(pg.name)}"><input type="number" inputmode="decimal" placeholder="$" aria-label="Goal amount" data-bind="pgoal.${k.id}.target" value="${esc(pg.target)}"><button class="btn small" data-act="p-add-goal" data-kid="${k.id}">Add</button></div>
+    ${openingForm(k,ks)}
     ${ks.archived.length?`<p class="hint">Bought so far: ${ks.archived.map(a=>`${esc(a.name)} (${money(a.bought)}, ${shortDate(a.date)})`).join(", ")}</p>`:""}</section>`;}).join("");
+}
+function openingForm(k,ks){const o=S.ui.open;
+  const past=ks.opening.length?`<p class="hint">Starting balances added: ${ks.opening.map(x=>`${shortDate(x.date)}: ${[["Save",x.save],["Invest",x.invest],["Give",x.give]].filter(y=>y[1]).map(y=>`${y[0]} ${money(y[1])}`).join(", ")}`).join("; ")}.</p>`:"";
+  if(!o||o.kid!==k.id)return `<div class="flag-row"><span><b>Starting balance</b><br><small>Money ${esc(k.name)} already had before this app</small></span><button class="btn ghost small" data-act="open-start" data-kid="${k.id}">Add starting balance</button></div>${past}`;
+  return `<div class="set-block"><h3>Starting balance for ${esc(k.name)}</h3>
+    <div class="row"><label>Save<input type="number" step="0.01" inputmode="decimal" data-type="num" data-bind="open.save" value="${esc(o.save)}" placeholder="0.00"></label>
+    <label>Into<select data-bind="open.saveTo">${ks.goals.map(g=>`<option value="${g.id}" ${g.id===o.saveTo?"selected":""}>${esc(g.name)}</option>`).join("")}</select></label></div>
+    <div class="row" style="margin-top:10px"><label>Invest<input type="number" step="0.01" inputmode="decimal" data-type="num" data-bind="open.invest" value="${esc(o.invest)}" placeholder="0.00"></label>
+    <label>Give<input type="number" step="0.01" inputmode="decimal" data-type="num" data-bind="open.give" value="${esc(o.give)}" placeholder="0.00"></label></div>
+    <div class="row" style="margin-top:12px"><button class="btn" data-act="save-start">Add to balances</button><button class="btn ghost" data-act="cancel-start">Cancel</button></div>
+    <p class="hint">These amounts are added to what's already there. To fix a mistake, enter a negative amount. Spend money is cash in hand, so it isn't tracked here.</p></div>${past}`;
 }
 function pDevices(){
   const nc=S.ui.newCode;const roleLabel=d=>d.role==="display"?"Leaderboard":((kidCfg(d.kidId)||{}).name||"Removed person")+"'s tablet";
@@ -429,6 +441,20 @@ async function handleAct(act,ds){
   case "cashout": doCashout(ds.kid);return;
   case "buy-goal":{const g=kidState(ds.kid).goals.find(x=>x.id===ds.goal);S.ui.buy={kid:ds.kid,goal:ds.goal,amount:g?g.balance:0};break;}
   case "cancel-buy": S.ui.buy=null;break;
+  case "open-start": S.ui.open={kid:ds.kid,save:"",saveTo:"general",invest:"",give:""};break;
+  case "cancel-start": S.ui.open=null;break;
+  case "save-start":{const o=S.ui.open;const amt={save:r2(o.save),invest:r2(o.invest),give:r2(o.give)};const k=kidCfg(o.kid);
+    if(!amt.save&&!amt.invest&&!amt.give){toast("Enter at least one amount.");return;}
+    const parts=[["Save",amt.save],["Invest",amt.invest],["Give",amt.give]].filter(y=>y[1]).map(y=>`${y[0]} ${money(y[1])}`).join(", ");
+    if(!confirm(`Add to ${k.name}'s balances? ${parts}.`))return;
+    guard(runTransaction(db,async t=>{const ref=doc(db,"bank",o.kid);const s=await t.get(ref);
+      const b=Object.assign({goalBal:{},invest:0,give:0,archived:[],opening:[],stats:{}},s.exists()?s.data():{});b.goalBal=b.goalBal||{};b.opening=b.opening||[];b.stats=b.stats||{};
+      const save=r2((b.goalBal[o.saveTo]||0)+amt.save),invest=r2((b.invest||0)+amt.invest),give=r2((b.give||0)+amt.give);
+      if(save<0||invest<0||give<0)throw new Error("That would make a balance negative.");
+      if(amt.save)b.goalBal[o.saveTo]=save;b.invest=invest;b.give=give;
+      b.stats.earned=r2((b.stats.earned||0)+amt.save+amt.invest+amt.give);
+      b.opening.push({date:ymd(),at:Date.now(),by:parentName(),...amt,saveTo:o.saveTo});
+      t.set(ref,b);}).then(()=>{S.ui.open=null;render();}),`Starting balance added for ${k.name}.`);break;}
   case "confirm-buy":{const b=S.ui.buy;const amt=r2(b.amount);const g0=kidState(b.kid).goals.find(x=>x.id===b.goal);
     if(!g0||!(amt>0)||amt>g0.balance){toast("Amount must be more than $0 and no more than the goal's balance.");return;}S.ui.buy=null;
     guard(runTransaction(db,async t=>{const ref=doc(db,"bank",b.kid);const s=await t.get(ref);const bank=Object.assign({goalBal:{},archived:[]},s.exists()?s.data():{});

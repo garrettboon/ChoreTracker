@@ -85,7 +85,7 @@ For the leaderboard device, keep it plugged in. The app asks the screen to stay 
 ## Everyday use
 
 - **Kids** tap chores, check off their daily list, set their goal after Sunday cash-out, and choose where their bonus, savings, and interest go.
-- **Parents** use **Activity** to review and reverse chores, or log one for someone without their tablet; **Deductions** to add, mark earned back, or remove; **Cash-out** on Sunday night; **Savings goals** to log purchases; **Devices** to pair or unpair; and **Settings** for people, chores, rates, reminder times, and interest.
+- **Parents** use **Activity** to review and reverse chores, or log one for someone without their tablet; **Deductions** to add, mark earned back, or remove; **Cash-out** on Sunday night; **Savings goals** to log purchases and add each person's starting balance (money they already had in Save, Invest, or Give before the app); **Devices** to pair or unpair; and **Settings** for people, chores, rates, reminder times, and interest.
 - **Reminders** go out at each person's reminder times (Mountain time), listing only what's still unchecked. Nothing is sent if everything's done.
 
 ## Troubleshooting
