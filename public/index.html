@@ -177,7 +177,7 @@ body[data-mode="display"]{overflow:hidden}
 .board-head .when b{color:var(--coral)}
 .corner{border:0;background:transparent;color:var(--muted);font-size:1.6rem;padding:4px 10px}
 .lanes{flex:1;display:grid;gap:8px;grid-auto-rows:1fr;min-height:0}
-.lane{background:var(--surface);border:2px solid var(--line);border-radius:18px;padding:6px 12px;display:grid;grid-template-columns:minmax(130px,1.1fr) 3fr minmax(120px,1fr);grid-template-rows:1fr auto;column-gap:12px;align-items:center;min-height:0}
+.lane{background:var(--surface);border:2px solid var(--line);border-radius:18px;padding:6px 12px;display:grid;grid-template-columns:minmax(130px,1.1fr) 3fr minmax(120px,1fr);column-gap:12px;align-items:center;min-height:0}
 .lane.won{border-color:var(--sun);box-shadow:0 0 0 4px color-mix(in srgb,var(--sun) 35%,transparent)}
 .lane-who{display:flex;align-items:center;gap:10px}
 .lane-who h2{font-size:clamp(1.05rem,2.4vw,1.6rem)}
@@ -186,13 +186,10 @@ body[data-mode="display"]{overflow:hidden}
 .lane .trail::before,.lane .trail-fill{top:30px;height:11px}
 .lane .walker{font-size:1.9rem;left:calc((100% - 72px) * var(--f))}
 .lane .flag{font-size:1.6rem;top:2px}
-.lane .chip{padding:0 8px;font-size:.75rem}
 .lane-num{text-align:right}
 .lane-num b{display:block;font-family:var(--display);font-weight:700;font-size:clamp(1.3rem,3.4vw,2.2rem);line-height:1}
 .lane-num span{color:var(--muted);font-weight:700;font-size:.8rem}
 .lane-num em{display:inline;margin-left:6px;font-style:normal;font-family:var(--display);font-weight:600;font-size:1rem;color:var(--pine)}
-.lane-buckets{grid-column:1 / -1;display:flex;gap:6px;flex-wrap:wrap;padding-top:2px}
-.chip{border-radius:99px;padding:2px 10px;font-weight:800;font-size:.85rem;background:var(--surface-2);border:2px solid var(--c)}
 .won-note{font-family:var(--display);font-weight:600;color:var(--sun)}
 body[data-mode="display"] .walker,body[data-mode="display"] .walker.victory{animation:none}
 body[data-mode="display"] .walker.cheer{animation:victory 1.4s ease-in-out 2}
@@ -200,9 +197,8 @@ body[data-mode="display"] .walker.cheer{animation:victory 1.4s ease-in-out 2}
 .ticker b{color:var(--ink)}
 @media (max-width:640px){
   body[data-mode="display"]{overflow:auto}
-  .lane{grid-template-columns:1fr auto;grid-template-rows:auto auto auto}
+  .lane{grid-template-columns:1fr auto;grid-template-rows:auto auto}
   .lane .lane-track{grid-column:1 / -1;grid-row:2}
-  .lane-buckets{grid-row:3}
 }
 
 /* Parent */

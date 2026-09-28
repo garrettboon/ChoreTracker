@@ -281,11 +281,11 @@ function viewDisplay(){
   const all=[];for(const w of Object.values(S.weeks))for(const e of w.entries||[])if(e.status!=="reversed")all.push({...e,kidId:w.kidId});
   const recent=all.sort((a,b)=>b.t-a.t).slice(0,5).map(e=>{const k=kidCfg(e.kidId);return k?`<b>${esc(k.name)}</b> ${esc(e.name.toLowerCase())} +${money(e.amount)}`:"";}).filter(Boolean);
   return `<div class="board"><header class="board-head"><h1>Boon Chore Tracker</h1><div class="when">${new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"})}. <b>${cash}</b></div></header>
-  <div class="lanes">${kidsSorted().map(k=>{const ks=kidState(k.id),w=getWeek(k.id,activeWeek(k.id)),net=weekNet(w),cr=creatureFor(k.id),won=w.goal&&net>=w.goal,s=streak(k.id),saved=ks.goals.reduce((a,g)=>a+g.balance,0);
+  <div class="lanes">${kidsSorted().map(k=>{const ks=kidState(k.id),w=getWeek(k.id,activeWeek(k.id)),net=weekNet(w),cr=creatureFor(k.id),won=w.goal&&net>=w.goal,s=streak(k.id);
     return `<section class="lane ${won?"won":""}" data-kid="${k.id}"><div class="lane-who"><span class="lane-cr">${cr[1]}</span><div><h2>${esc(k.name)}</h2><span class="streak">🔥 ${s}</span></div></div>
       <div class="lane-track">${w.goal?trail(net/w.goal,cr,won,`${esc(k.name)} is at ${Math.round(net/w.goal*100)}% of their goal`):`<p class="sub">Waiting for this week's goal</p>`}</div>
       <div class="lane-num"><b>${money(net)}</b><span>${w.goal?"of "+money(w.goal):"No goal yet"}</span>${w.goal?`<em class="${won?"won-note":""}">${won?"Goal reached!":Math.round(net/w.goal*100)+"%"}</em>`:""}</div>
-      <div class="lane-buckets"><span class="chip" style="--c:var(--sky)">Save ${money(saved)}</span><span class="chip" style="--c:var(--pine)">Invest ${money(ks.invest)}</span><span class="chip" style="--c:var(--coral)">Give ${money(ks.give)}</span></div></section>`;}).join("")}</div>
+</section>`;}).join("")}</div>
   <footer class="ticker">${recent.length?"Latest: "+recent.join("&emsp;"):"No chores done yet this week. Who's first?"}</footer></div>`;
 }
 
