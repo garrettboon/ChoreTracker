@@ -109,14 +109,14 @@ test("backfill scores history once, levels up, and is safe to repeat", async () 
   const parent = await parentClient();
   await parent.call("backfillXp", {});
   const x = await quiet("xp/k2", 2500);
-  // 30 × 10 + 50 goal + 20 earn-back + badges (first chore, goal getter, comeback) 75 = 445 → level 3
-  assert.equal(x.total, 445);
-  assert.equal(x.maxLevel, 3);
-  assert.equal(x.levelUp.level, 3);
+  // 30 × 10 + 50 goal + 20 earn-back + badges (first chore, 10 chores, goal getter, comeback) 100 = 470 → level 4
+  assert.equal(x.total, 470);
+  assert.equal(x.maxLevel, 4);
+  assert.equal(x.levelUp.level, 4);
   assert.ok(x.unlocked.includes("c:sloth") && x.unlocked.includes("m:blitz"));
   assert.ok(x.unlocked.includes("ti:comeback"));
   await parent.call("backfillXp", {});
-  assert.equal((await quiet("xp/k2")).total, 445);
+  assert.equal((await quiet("xp/k2")).total, 470);
   // Kids can't run it.
   const k2 = await kidClient("k2");
   await rejects(k2.call("backfillXp", {}), /Parents only/);

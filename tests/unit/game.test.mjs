@@ -123,10 +123,17 @@ test("chore of the day: deterministic, prefers Anyone chores, honors a same-day 
 });
 
 test("badges", () => {
-  const none = G.badgeList({ chores: 0, goalHits: 0, bestStreak: 0, redemptions: 0, saved: 0, invest: 0, give: 0, bought: 0 });
-  assert.equal(none.filter((b) => b[3]).length, 0);
-  const some = G.badgeList({ chores: 50, goalHits: 1, bestStreak: 7, redemptions: 0, saved: 0, invest: 0, give: 0, bought: 0, wins: 1 });
-  assert.deepEqual(some.filter((b) => b[3]).map((b) => b[0]), ["first", "fifty", "goal1", "streak7", "win1"]);
+  const none = G.badgeList({});
+  assert.equal(none.filter((b) => b[3]).length, 0, "nothing earned from nothing");
+  assert.equal(new Set(none.map((b) => b[0])).size, none.length, "ids are unique");
+  assert.equal(new Set(none.map((b) => b[1])).size, none.length, "emoji are unique");
+  assert.ok(none.every((b) => b[4]), "every badge says how to earn it");
+  for (const id of ["first", "fifty", "goal1", "goal5", "streak7", "comeback", "saved25", "invest100", "give10", "bought", "win1", "win10", "giant"]) {
+    assert.ok(none.some((b) => b[0] === id), `original badge ${id} kept`);
+  }
+  const some = G.badgeList({ chores: 50, goalHits: 1, bestStreak: 7, wins: 1, level: 5, quests: 1 });
+  assert.deepEqual(some.filter((b) => b[3]).map((b) => b[0]),
+    ["first", "chores10", "fifty", "streak3", "streak7", "goal1", "level5", "quest1", "win1"]);
 });
 
 const T0 = 1_000_000;

@@ -330,10 +330,19 @@ function moneySection(k,ks,w,net){const sp=splitAmt(Math.max(0,net)),goals=ks.go
       `<p>Next monthly interest: ${money(qd(calcInterest(ks.invest)))}, rounded down to the nearest quarter.</p><label>Interest goes to<select data-change="interestTo">${["invest","spend","give",...goals.map(x=>x.id)].map(o=>`<option value="${o}" ${o===ks.interestTo?"selected":""}>${o==="invest"?"Back into Invest (it grows!)":destName(ks,o)}</option>`).join("")}</select></label>`)}
     ${card("give","b-give","Give",ks.give,`+${money(sp.give)} this week`,"")}
   </div></section>`;}
-function badgeList(kidId){const ks=kidState(kidId),st=ks.stats,x=xpState(kidId);const live=openWeeks(kidId).reduce((s,w)=>s+choreCount(w),0);const chores=(st.chores||0)+live;
+function badgeList(kidId){const ks=kidState(kidId),st=ks.stats,x=xpState(kidId),c=x.counts;const live=openWeeks(kidId).reduce((s,w)=>s+choreCount(w),0);const chores=(st.chores||0)+live;
   const saved=ks.goals.reduce((s,g)=>s+g.balance,0)+ks.archived.reduce((s,g)=>s+(g.bought||0),0);
-  return G.badgeList({chores,goalHits:st.goalHits||0,bestStreak:bestStreak(kidId),redemptions:st.redemptions||0,saved,invest:ks.invest,give:ks.give,bought:ks.archived.length,wins:x.counts.win||0,giant:x.counts.giant||0}).map(b=>[b[1],b[2],b[3]]);}
-function badgeSection(kidId){const b=badgeList(kidId);return `<section class="card"><div class="sec-head"><h2>Badges</h2><span class="sub">${b.filter(x=>x[2]).length} of ${b.length}. +${G.XP.badge} XP each</span></div><div class="badges">${b.map(x=>`<div class="badge ${x[2]?"":"locked"}"><span>${x[0]}</span>${x[1]}</div>`).join("")}</div></section>`;}
+  return G.badgeList({chores,goalHits:st.goalHits||0,bestStreak:bestStreak(kidId),redemptions:st.redemptions||0,saved,invest:ks.invest,give:ks.give,bought:ks.archived.length,
+    wins:c.win||0,giant:c.giant||0,level:x.level,quests:c.quest||0,bounties:c.bounty||0,checklistDays:c.pr||0});}
+// Earned badges, then the next one of each kind to go for. "Show all" lists every badge.
+const badgeKind=id=>({first:"chores",fifty:"chores",bought:"bought",comeback:"comeback"}[id]||id.replace(/\d+$/,""));
+function badgeSection(kidId){const b=badgeList(kidId),got=b.filter(x=>x[3]),open=S.ui.allBadges,kinds=new Set();
+  const next=b.filter(x=>!x[3]&&!kinds.has(badgeKind(x[0]))&&kinds.add(badgeKind(x[0]))).slice(0,4);
+  const shown=open?b:[...got,...next];
+  const tile=x=>`<div class="badge ${x[3]?"":"locked"}" title="${esc(x[4])}"><span>${x[1]}</span>${esc(x[2])}${!x[3]&&!/\d/.test(x[2])?`<small>${esc(x[4])}</small>`:""}</div>`;
+  return `<section class="card"><div class="sec-head"><h2>Badges</h2><span class="sub">${got.length} of ${b.length}. +${G.XP.badge} XP each</span></div>
+    <div class="badges">${shown.map(tile).join("")}</div>
+    <button class="btn ghost small" style="margin-top:10px" data-act="all-badges" aria-expanded="${!!open}">${open?"Show fewer":`Show all ${b.length}`}</button></section>`;}
 function choreLine(e){const rev=e.status==="reversed";return [`<span class="${rev?"struck":""}">${esc(e.name)}${e.detail?`: ${esc(e.detail)}`:""}<br><small>${timeOf(e.t)}${rev?", reversed":""}</small></span>`,`<span class="amt ${rev?"struck":"pos"}">+${money(e.amount)}</span>`];}
 function dedLine(d){const st={active:"can still earn back",redeemed:"earned back",final:"final"}[d.status]||d.status;return [`<span class="${d.status==="redeemed"?"struck":""}">${esc(d.reason)}<br><small>${timeOf(d.t)}, ${st}</small></span>`,`<span class="amt ${d.status==="redeemed"?"struck":"neg"}">−${money(d.amount)}</span>`];}
 function activitySection(w){const list=[...w.entries.map(e=>({t:e.t,l:choreLine(e)})),...w.deductions.map(d=>({t:d.t,l:dedLine(d)}))].sort((a,b)=>b.t-a.t).slice(0,10);
@@ -796,6 +805,7 @@ async function handleAct(act,ds){
   case "enable-push": enablePush(false);return;
   case "pick-creature": S.ui.pickCreature=!S.ui.pickCreature;break;
   case "wtab": S.ui.wtab=ds.tab;break;
+  case "all-badges": S.ui.allBadges=!S.ui.allBadges;break;
   case "equip": if(ds.slot==="creature")guard(setDoc(doc(db,"prefs",kid),{creature:ds.id},{merge:true}));
     else guard(setDoc(doc(db,"prefs",kid),{equipped:{[ds.slot]:ds.id}},{merge:true}));break;
   case "lu-ok": try{localStorage.setItem(seenKey(S.ui.levelUp.kid),String(S.ui.levelUp.at));}catch(e){} S.ui.levelUp=null;break;

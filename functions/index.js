@@ -384,7 +384,8 @@ async function syncBadges(cfg, personId) {
     chores: (st.chores || 0) + live, goalHits: st.goalHits || 0, redemptions: st.redemptions || 0,
     bestStreak: G.bestStreak(prefs.prLog, prIdsOf(cfg), [...(xd.frozenDates || []), ...doneDates(prefs)]),
     saved, invest: bank.invest || 0, give: bank.give || 0, bought: archived.length,
-    wins: counts.win || 0, giant: counts.giant || 0,
+    wins: counts.win || 0, giant: counts.giant || 0, level: xd.maxLevel || 1,
+    quests: counts.quest || 0, bounties: counts.bounty || 0, checklistDays: counts.pr || 0,
   });
   await applyXp(personId, list.filter((x) => x[3]).map((x) => ({
     key: "badge:" + x[0], amount: G.XP.badge, reason: "Badge: " + x[2], count: ["badge"],

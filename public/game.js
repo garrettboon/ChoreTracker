@@ -202,22 +202,58 @@ export function choreXp(ch, { cotd = false, boost = 1 } = {}) {
 }
 
 /* ---------- badges ---------- */
-// s: { chores, goalHits, bestStreak, redemptions, saved, invest, give, bought, wins, giant }
+// s: { chores, goalHits, bestStreak, redemptions, saved, invest, give, bought, wins, giant,
+//      level, quests, bounties, checklistDays }
+// Each badge: [id, emoji, name, earned, how to earn it]. Ids never change: XP is paid once per id.
 export function badgeList(s) {
+  const n = (v) => Number(v) || 0;
+  const b = (id, emoji, name, earned, how) => [id, emoji, name, !!earned, how];
   return [
-    ["first", "🧹", "First chore", s.chores >= 1],
-    ["fifty", "💪", "50 chores", s.chores >= 50],
-    ["goal1", "🎯", "Goal getter", s.goalHits >= 1],
-    ["goal5", "🏆", "5 goals hit", s.goalHits >= 5],
-    ["streak7", "🔥", "7-day streak", s.bestStreak >= 7],
-    ["comeback", "🔁", "Comeback kid", s.redemptions >= 1],
-    ["saved25", "🐷", "$25 saved", s.saved >= 25],
-    ["invest100", "🌱", "$100 invested", s.invest >= 100],
-    ["give10", "💝", "$10 given", s.give >= 10],
-    ["bought", "🎁", "Bought a goal", s.bought >= 1],
-    ["win1", "⚔️", "First victory", (s.wins || 0) >= 1],
-    ["win10", "🥇", "10 wins", (s.wins || 0) >= 10],
-    ["giant", "🗡️", "Giant slayer", (s.giant || 0) >= 1],
+    // Chores
+    b("first", "🧹", "First chore", n(s.chores) >= 1, "Do your first chore"),
+    b("chores10", "🧽", "10 chores", n(s.chores) >= 10, "Do 10 chores"),
+    b("fifty", "💪", "50 chores", n(s.chores) >= 50, "Do 50 chores"),
+    b("chores100", "🏅", "100 chores", n(s.chores) >= 100, "Do 100 chores"),
+    b("chores250", "🦾", "250 chores", n(s.chores) >= 250, "Do 250 chores"),
+    b("chores500", "🏰", "Chore legend", n(s.chores) >= 500, "Do 500 chores"),
+    // Daily checklist
+    b("streak3", "✨", "3-day streak", n(s.bestStreak) >= 3, "Finish your daily list 3 days in a row"),
+    b("streak7", "🔥", "7-day streak", n(s.bestStreak) >= 7, "Finish your daily list 7 days in a row"),
+    b("streak14", "⚡", "14-day streak", n(s.bestStreak) >= 14, "Finish your daily list 14 days in a row"),
+    b("streak30", "🌋", "30-day streak", n(s.bestStreak) >= 30, "Finish your daily list 30 days in a row"),
+    b("streak100", "💎", "100-day streak", n(s.bestStreak) >= 100, "Finish your daily list 100 days in a row"),
+    b("tidy100", "📅", "100 tidy days", n(s.checklistDays) >= 100, "Finish your daily list on 100 days"),
+    // Weekly goals
+    b("goal1", "🎯", "Goal getter", n(s.goalHits) >= 1, "Reach a weekly goal"),
+    b("goal5", "🏆", "5 goals hit", n(s.goalHits) >= 5, "Reach 5 weekly goals"),
+    b("goal10", "🎖️", "10 goals hit", n(s.goalHits) >= 10, "Reach 10 weekly goals"),
+    b("goal25", "🏵️", "25 goals hit", n(s.goalHits) >= 25, "Reach 25 weekly goals"),
+    b("comeback", "🔁", "Comeback kid", n(s.redemptions) >= 1, "Earn back a deduction"),
+    b("comeback5", "🔄", "Never give up", n(s.redemptions) >= 5, "Earn back 5 deductions"),
+    // Money
+    b("saved10", "🪙", "$10 saved", n(s.saved) >= 10, "Save $10"),
+    b("saved25", "🐷", "$25 saved", n(s.saved) >= 25, "Save $25"),
+    b("saved100", "💰", "$100 saved", n(s.saved) >= 100, "Save $100"),
+    b("invest25", "🌿", "$25 invested", n(s.invest) >= 25, "Have $25 in Invest"),
+    b("invest100", "🌱", "$100 invested", n(s.invest) >= 100, "Have $100 in Invest"),
+    b("invest250", "🌳", "$250 invested", n(s.invest) >= 250, "Have $250 in Invest"),
+    b("give10", "💝", "$10 given", n(s.give) >= 10, "Put $10 in Give"),
+    b("give50", "🤲", "$50 given", n(s.give) >= 50, "Put $50 in Give"),
+    b("bought", "🎁", "Bought a goal", n(s.bought) >= 1, "Buy something you saved for"),
+    b("bought3", "🛍️", "Smart shopper", n(s.bought) >= 3, "Buy 3 things you saved for"),
+    // Levels, quests, bounties
+    b("level5", "⭐", "Level 5", n(s.level) >= 5, "Reach level 5"),
+    b("level10", "🌠", "Level 10", n(s.level) >= 10, "Reach level 10"),
+    b("level20", "🚀", "Level 20", n(s.level) >= 20, "Reach level 20"),
+    b("level30", "👑", "Level 30", n(s.level) >= 30, "Reach the top level"),
+    b("quest1", "🗺️", "Adventurer", n(s.quests) >= 1, "Finish a weekly quest"),
+    b("quest10", "🧭", "Explorer", n(s.quests) >= 10, "Finish 10 weekly quests"),
+    b("bounty1", "🏹", "Bounty hunter", n(s.bounties) >= 1, "Finish a bounty"),
+    // Battles
+    b("win1", "⚔️", "First victory", n(s.wins) >= 1, "Win a battle"),
+    b("win10", "🥇", "10 wins", n(s.wins) >= 10, "Win 10 battles"),
+    b("win25", "🥊", "Battle master", n(s.wins) >= 25, "Win 25 battles"),
+    b("giant", "🗡️", "Giant slayer", n(s.giant) >= 1, "Beat someone older in a battle"),
   ];
 }
 
