@@ -4,6 +4,8 @@ name: Deploy to Firebase
 # claude/... branch (the branches Claude Code works on). Before deploying,
 # the run checks that the pushed commit includes whatever is live right now,
 # so a branch that started from older code can't quietly undo a change.
+# After a successful deploy from a claude/ branch, main is moved forward to
+# that branch, so main always matches the live site.
 on:
   push:
     branches: [main, 'claude/**']
@@ -19,7 +21,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write   # lets the workflow move main forward after a deploy
   id-token: write   # lets GitHub prove its identity to Google (no key file)
 
 jobs:
@@ -72,3 +74,13 @@ jobs:
 
       - name: Deploy hosting, rules, and functions
         run: npx --yes firebase-tools@latest deploy --non-interactive --force
+
+      - name: Keep main at the live site
+        if: github.ref != 'refs/heads/main'
+        run: |
+          if git push origin HEAD:main; then
+            echo "main now matches the live site (${GITHUB_SHA:0:7})."
+          else
+            echo "::error::The site was deployed, but main could not be moved to '$GITHUB_REF_NAME' because main has commits this branch doesn't. Merge main into the branch and push again."
+            exit 1
+          fi
