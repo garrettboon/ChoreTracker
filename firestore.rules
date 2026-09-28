@@ -30,16 +30,16 @@ service cloud.firestore {
     match /prefs/{kidId} { allow read: if canRead(); allow write: if isParent() || isKid(kidId); }
 
     // One doc per person per week. Chore entries are added by the completeChore function.
-    // Kids may only set their goal (once), bonus destination, and savings destination.
+    // Kids may only set their goal (once), bonus destination, and how savings split between goals.
     match /weeks/{weekId} {
       allow read: if canRead();
       allow write: if isParent();
       allow create: if isKid(request.resource.data.kidId)
         && weekId == request.resource.data.week + '_' + request.resource.data.kidId
-        && request.resource.data.keys().hasOnly(['kidId', 'week', 'goal', 'bonusTo', 'saveTo']);
+        && request.resource.data.keys().hasOnly(['kidId', 'week', 'goal', 'bonusTo', 'saveTo', 'saveSplit']);
       allow update: if isKid(resource.data.kidId)
         && resource.data.get('closed', false) == false
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['goal', 'bonusTo', 'saveTo'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['goal', 'bonusTo', 'saveTo', 'saveSplit'])
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['goal'])
             || resource.data.get('goal', null) == null);
     }
