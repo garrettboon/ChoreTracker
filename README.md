@@ -8,7 +8,8 @@ This folder is the complete app. You'll create a Firebase project, fill in three
 |---|---|
 | `public/` | The app itself (what the tablets load) |
 | `public/config.js` | **You edit:** your Web Push key |
-| `functions/index.js` | Server code: device pairing, chore logging, push reminders |
+| `functions/index.js` | Server code: device pairing, chore logging, push reminders, XP, battles |
+| `public/game.js` | Game rules: XP, levels, unlocks, battles (copied to `functions/game.mjs`) |
 | `functions/.env` | **You create:** the parent Google accounts |
 | `firestore.rules` | Security rules: who can read and change what |
 | `.firebaserc` | **You edit:** your Firebase project ID |
@@ -87,11 +88,81 @@ For the leaderboard device, keep it plugged in. The app asks the screen to stay 
 ## Everyday use
 
 - **Kids** tap chores (and confirm, so a stray tap doesn't count; grown-ups' own lanes skip the confirmation and the what-was-it prompt), check off their daily list, set their goal after Sunday cash-out, split the week's savings between their goals, and choose where their bonus and interest go. Under **My money**, each card shows its total; tap Save or Invest to open the details.
-- **Parents** use **Activity** to review and reverse chores, or log one for someone without their tablet; **Views** for the family leaderboard and to open any kid's screen exactly as they see it; **Actions** for deductions (add, mark earned back, or remove) and the Sunday cash-out (if a week was missed, it's combined with the next one into a single lump, with each week's goal judged on its own); **Savings goals** to add or edit goals, log purchases, or set a child's balances (for money from before the app, or to fix a mistake); and **Settings** for devices, people (tick **Adult** for a grown-up, who gets their own lane and tab instead of a place in the kid list), chores (drag the ⠿ handle to reorder them; tick **Ask what it was** on an open-ended chore like Parent choice so kids must describe what they did), rates, reminder times, and interest.
+- **Parents** use **Game** to confirm battle results and see everyone's level; **Activity** to review and reverse chores, or log one for someone without their tablet; **Views** for the family leaderboard and to open any kid's screen exactly as they see it; **Actions** for deductions (add, mark earned back, or remove) and the Sunday cash-out (if a week was missed, it's combined with the next one into a single lump, with each week's goal judged on its own); **Savings goals** to add or edit goals, log purchases, or set a child's balances (for money from before the app, or to fix a mistake); and **Settings** for devices, people (tick **Adult** for a grown-up, who gets their own lane and tab instead of a place in the kid list), chores (drag the ⠿ handle to reorder them; tick **Ask what it was** on an open-ended chore like Parent choice so kids must describe what they did), rates, reminder times, and interest.
 - **Goal bonus** is 25% of the weekly goal, paid at cash-out when the week's earnings reach the goal.
 - **Streaks** count days when every daily item was checked off. Once a day is complete it stays complete, even if the list changes later that day.
 - **Reminders** go out at each person's reminder times (Mountain time), listing only what's still unchecked. Nothing is sent if everything's done.
 - **Interest** on Invest is added once a month at cash-out, rounded down to the nearest quarter. The kid's Invest card shows the exact amount coming.
+
+## Levels, XP, and battles
+
+Everyone (adults too) earns XP and levels up, like a video game. XP never costs money, and it never goes down. The one exception: when a parent reverses a chore, that chore's XP comes off too.
+
+**After the first deploy with levels:** open the Parent screen > **Game** tab > **Count past chores**. This gives everyone XP for the chores, goals, streaks, and badges they already earned. It's safe to run more than once.
+
+**Each adult's Google email:** in **Settings** > People, tick **Adult** and fill in the adult's Google email. That ties each parent's sign-in to their own profile for battles. A parent can't confirm a battle they're in, so another parent (or the other player) has to.
+
+How XP works:
+
+| Earn XP for | XP |
+|---|---|
+| A family chore | 10 × the chore's pay multiplier (the same for everyone, whatever their rate) |
+| Chore of the Day | Double. It rotates daily; change today's pick in the Game tab |
+| A 7+ day checklist streak | ×1.25 on all XP |
+| Finishing the daily checklist | 5 |
+| Streak milestones (3, 7, 14, 30, 60, 100 days) | 25 to 400 |
+| Weekly goal reached / deduction earned back / savings goal bought / new badge | 50 / 20 / 50 / 25 |
+| Battles | 40 for a win, 25 for a tie, 15 for trying |
+
+What levels unlock: new creatures (the first 12 stay free), accessories, screen themes, goal-trail styles, confetti styles, titles, battle modes, and **streak freezes**. Freezes come every 5 levels, and you can hold 2. Just after midnight, a freeze covers anyone who missed yesterday's checklist. Creatures also grow as you level: they get a ring at level 5, a glow at 10, and an aura at 20.
+
+**Battles** are opt-in challenges. You earn XP from them, never money:
+
+| Mode | Unlocks at | How it works |
+|---|---|---|
+| Race | level 1 | First to finish N chores |
+| Time Trial | level 1 | Same chore, fastest time done well. The timer's Done button logs the chore, and a parent checks the work |
+| Ghost Race | level 1 | Beat your own best time, done well (a parent checks) |
+| Blitz | level 3 | Most chore XP in a time window |
+| Chore Bingo | level 5 | First to finish a row, column, or diagonal on a 3×3 card of chores |
+| Territory | level 6 | Kids only. Most Anyone chores by midnight |
+| Judge's Pick | level 8 | Same chore; a parent picks the better job in the Game tab |
+| Streak Duel | level 10 | Whoever misses their daily list first loses (up to 14 days) |
+| Goal Showdown | level 12 | Best share of the weekly goal, decided at cash-out |
+| Boss Raid | level 15 | Team up (2 to 4 people) and beat a boss with chores |
+| Kids vs. Grown-ups | level 15 | Team battle; the kids' team gets a handicap |
+| Wildcard | level 20 | A random mode, often with a twist like "Clean bathroom counts double" |
+
+Younger players get an automatic handicap: their score is multiplied by 8% per year of age difference, up to ×1.5. Adults count as 18. In Bingo the younger player gets free squares instead.
+
+**Time Trial and Ghost Race need a parent's quality check.** When a kid finishes a timed run, the result is only pending. In the **Game** tab a parent marks each run **✓ Done well** or **✗ Not good enough** (you can check each run as soon as it's finished). Only runs done well count, so the fastest run done well wins, and a run that fails the check earns no XP. Unchecked runs become no contest after 48 hours.
+
+Other speed results are final once someone on the other side or a parent confirms them, or on their own after 12 hours. Disputed results wait for a parent in the **Game** tab. Streak Duel, Goal Showdown, and Boss Raid are decided from the family's records and need no confirming.
+
+To limit battles, go to **Settings** > Game. You can set quiet hours (no battles from 8:30 PM to 7 AM by default), a daily limit per person (3), turn off single modes, or turn battles off entirely.
+
+**More ways to play:**
+
+- **Weekly quests:** everyone gets 3 quests each Monday, like "Do 3 different chores in one day" or "Do a chore before 9 AM". They pay 30 to 50 XP and are checked automatically. You can turn them off in Settings > Game.
+- **Rewards:** in Settings > Game, list real-world rewards by level (for example level 5: pick Friday dinner, again every 5 levels). Kids claim them from their screen, and you approve them and mark them given in the Game tab.
+- **Bounties:** in the Game tab, post a one-off job worth extra XP ("Clean out the garage together, 200 XP"), for anyone or one person. A kid taps "I did it" and you award the XP.
+- **Family goal:** in the Game tab, set a shared reward ("Pizza night") and how much XP the whole family needs to earn together. The bar shows on every screen and the family display, and celebrates when it fills.
+- **Raises (off by default):** in Settings > Game you can have the Game tab suggest a per-chore raise every few levels. Nothing changes until you tap Give raise.
+- **Notifications for parents:** in the Game tab, tap "Notify this phone" to get a push when a reward is claimed, a bounty is done, or a battle needs a parent.
+
+## Developing and testing
+
+The game rules live in `public/game.js`. The functions use an identical copy at `functions/game.mjs`, so after editing the rules run `npm run sync`.
+
+```
+npm ci && npm ci --prefix functions
+npm test                  # game rules (fast, no emulators)
+npm run test:emulators    # functions + security rules against the Firebase emulators (needs Java 21)
+```
+
+GitHub runs both on every pull request and before every deploy. A failing test blocks the deploy.
+
+To click around locally, run `npx firebase emulators:start --project demo-boon` and open http://127.0.0.1:5002. On localhost, the app talks to the emulators instead of your real data.
 
 ## Troubleshooting
 
@@ -99,6 +170,7 @@ For the leaderboard device, keep it plugged in. The app asks the screen to stay 
 - **A tablet shows the pairing screen again.** It was unpaired, or the browser's data was cleared. Make a new code and pair it again.
 - **No reminders.** Check that the tablet shows "Reminders on" under Devices in Settings, that notifications for Chrome and the app are allowed in Android settings, and that the reminder time has passed while something was still unchecked.
 - **Deploy error about billing or APIs.** Confirm the project is on Blaze, then run `firebase deploy` again.
+- **First deploy with levels fails with an Eventarc or "service agent" permission error.** XP is awarded by functions that react to database changes, and those use Google's Eventarc service. On a project's first such deploy, Google sometimes needs a few minutes to set up permissions. Wait 5 minutes and deploy again (in GitHub: Actions > Deploy to Firebase > **Re-run jobs**). If it says an API must be enabled, enable it in the Google Cloud console (APIs & Services) and re-run.
 - **See server logs:** Firebase console > Functions > pick a function > **Logs**.
 
 ## Notes

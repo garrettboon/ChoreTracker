@@ -1,0 +1,17 @@
+{
+  "name": "boon-bank-dev",
+  "private": true,
+  "type": "module",
+  "description": "Dev tooling only: tests and the game-rules sync. The app itself is in public/ and functions/.",
+  "scripts": {
+    "sync": "node scripts/sync-game.mjs",
+    "test": "node --test \"tests/unit/*.test.mjs\"",
+    "test:emulators": "firebase emulators:exec --only auth,firestore,functions --project demo-boon \"node --test --test-concurrency=1 tests/emulator/*.test.mjs\"",
+    "test:all": "npm test && npm run test:emulators"
+  },
+  "devDependencies": {
+    "firebase": "^12.19.0",
+    "firebase-admin": "^14.5.0",
+    "firebase-tools": "^15.31.0"
+  }
+}

@@ -2,3 +2,7 @@ node_modules/
 functions/.env
 .firebase/
 *.log
+firestore-debug.log
+auth-debug.log
+firebase-debug.log
+ui-debug.log
