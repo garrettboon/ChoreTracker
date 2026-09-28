@@ -186,6 +186,7 @@ New creatures (the 12 starters stay free):
 | 2 | 🦔 Hedgehog | 13 | 🦅 Eagle |
 | 3 | 🦥 Sloth | 14 | 🤖 Robot |
 | 4 | 🐺 Wolf | 16 | 👾 Space Invader |
+| 5 | 🐱 Cat | | |
 | 6 | 🦁 Lion | 18 | 🧙 Wizard |
 | 7 | 🐼 Panda | 20 | 🐲 Elder Dragon |
 | 9 | 🦩 Flamingo | 25 | 🦸 Hero |

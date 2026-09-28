@@ -62,7 +62,7 @@ export const CREATURES = [
   ["dragon", "🐉", "Dragon", 1], ["fox", "🦊", "Fox", 1], ["frog", "🐸", "Frog", 1], ["dino", "🦖", "T. rex", 1],
   ["unicorn", "🦄", "Unicorn", 1], ["octopus", "🐙", "Octopus", 1], ["shark", "🦈", "Shark", 1], ["turtle", "🐢", "Turtle", 1],
   ["owl", "🦉", "Owl", 1], ["bee", "🐝", "Bee", 1], ["tiger", "🐯", "Tiger", 1], ["penguin", "🐧", "Penguin", 1],
-  ["hedgehog", "🦔", "Hedgehog", 2], ["sloth", "🦥", "Sloth", 3], ["wolf", "🐺", "Wolf", 4], ["lion", "🦁", "Lion", 6],
+  ["hedgehog", "🦔", "Hedgehog", 2], ["sloth", "🦥", "Sloth", 3], ["wolf", "🐺", "Wolf", 4], ["cat", "🐱", "Cat", 5], ["lion", "🦁", "Lion", 6],
   ["panda", "🐼", "Panda", 7], ["flamingo", "🦩", "Flamingo", 9], ["whale", "🐳", "Whale", 11], ["eagle", "🦅", "Eagle", 13],
   ["robot", "🤖", "Robot", 14], ["invader", "👾", "Space Invader", 16], ["wizard", "🧙", "Wizard", 18],
   ["elder", "🐲", "Elder Dragon", 20], ["hero", "🦸", "Hero", 25], ["peacock", "🦚", "Peacock", 30],

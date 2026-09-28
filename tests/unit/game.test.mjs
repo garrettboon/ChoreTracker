@@ -286,3 +286,16 @@ test("weekly quests: three per person, stable, and scored from the week's data",
   const st = G.questStatus("2026-09-28", "k1", ctx);
   assert.ok(st.every((q) => q.progress <= q.target));
 });
+
+test("security rules list every creature at the same level as game.js", () => {
+  const rules = readFileSync(new URL("../../firestore.rules", import.meta.url), "utf8");
+  const block = rules.slice(rules.indexOf("function creatureLevels()"), rules.indexOf("function okCreature"));
+  const map = Object.fromEntries([...block.matchAll(/'([a-z]+)': (\d+)/g)].map((m) => [m[1], Number(m[2])]));
+  assert.deepEqual(map, Object.fromEntries(G.CREATURES.map((c) => [c[0], c[3]])));
+});
+
+test("the cat unlocks at level 5", () => {
+  assert.ok(!G.unlockedIds(4, {}).includes("c:cat"));
+  assert.ok(G.unlockedIds(5, {}).includes("c:cat"));
+  assert.deepEqual(G.describeUnlocks(["c:cat"])[0].slice(0, 2), ["🐱", "Cat"]);
+});

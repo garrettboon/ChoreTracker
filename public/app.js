@@ -68,7 +68,7 @@ function creatureFor(kidId){const ks=kidState(kidId);const idx=cfg().kids.findIn
 
 /* ---------- game state ---------- */
 function xpState(id){const x=S.xp[id]||{};const level=x.maxLevel||1,total=x.total||0,need=level>=G.MAX_LEVEL?0:G.xpToNext(level);
-  return {total,level,need,into:Math.max(0,Math.min(need,total-G.levelStart(level))),unlocked:new Set([...G.STARTERS.map(c=>"c:"+c),...(x.unlocked||G.unlockedIds(level,x))]),
+  return {total,level,need,into:Math.max(0,Math.min(need,total-G.levelStart(level))),unlocked:new Set([...G.STARTERS.map(c=>"c:"+c),...(x.unlocked||[]),...G.unlockedIds(level,x)]),
     freezes:x.freezes||0,frozen:x.frozenDates||[],counts:x.counts||{},pb:x.pb||{},levelUp:x.levelUp||null,notice:x.notice||null};}
 function equipped(id){const e=(S.prefs[id]||{}).equipped||{},u=xpState(id).unlocked;const ok=(k,p)=>e[k]&&u.has(p+e[k])?e[k]:"";
   return {hat:ok("hat","h:"),theme:ok("theme","t:"),trail:ok("trail","r:"),confetti:ok("confetti","f:"),title:ok("title","ti:")};}

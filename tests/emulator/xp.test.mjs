@@ -141,3 +141,15 @@ test("a streak freeze covers a missed day, and comes back if the day gets finish
   const x2 = await waitFor(async () => { const x = await xpOf("k3"); return x.freezes === 1 && x; }, { msg: "refund" });
   assert.deepEqual(x2.frozenDates, []);
 });
+
+test("a creature added later works right away for anyone already past its level", async () => {
+  await reset();
+  const k1 = await kidClient("k1"), k2 = await kidClient("k2");
+  // Saved unlock lists from before the cat existed.
+  await db.doc("xp/k1").set({ total: 1500, maxLevel: 6, unlocked: ["c:hedgehog"] });
+  await db.doc("xp/k2").set({ total: 500, maxLevel: 4, unlocked: [] });
+  await setDoc(doc(k1.db, "prefs", "k1"), { creature: "cat" }, { merge: true });
+  await rejects(setDoc(doc(k2.db, "prefs", "k2"), { creature: "cat" }, { merge: true }), /permission|PERMISSION/i);
+  await rejects(setDoc(doc(k1.db, "prefs", "k1"), { creature: "peacock" }, { merge: true }), /permission|PERMISSION/i);
+  await rejects(setDoc(doc(k1.db, "prefs", "k1"), { creature: "made-up" }, { merge: true }), /permission|PERMISSION/i);
+});
