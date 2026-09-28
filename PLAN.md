@@ -2,7 +2,14 @@
 
 XP, levels, unlocks, streak mechanics, rewards, quests, and chore battles.
 
-Status: **Phases 0–4 built** on branch `claude/busy-knuth-poq8va` (not yet merged or deployed). Phases 5–7 are still planned. Each phase is sized to ship on its own and deploys through the existing GitHub Action (push to `main`).
+Status: **All phases (0–7) built.** Phases 0–4 are live. Phases 5–7 ship from branch `claude/busy-knuth-poq8va`, which deploys on push.
+
+What changed from the plan in Phases 5–7:
+- The family XP bar adds up everyone's XP totals in the app; there's no separate family ledger. The goal lives in `app/game`, apart from Settings, so saving Settings can't overwrite it.
+- Weekly quests aren't stored anywhere: each person's three quests come from a hash of the week and their id, so every device agrees. The server pays them from the week's records. Parents can turn them off.
+- Raises are suggestions in the Game tab that a parent applies, not automatic.
+- Team battles (Boss Raid, Kids vs. Grown-ups) start only when every invitee accepts. A winning teammate who did no chores gets no XP.
+- Bosses are beaten in order (Sock Goblin, Dish Hydra, Toy Kraken, Mess Tornado, Chaos Dragon, then stronger Chaos Dragons); the count is kept on `xp/_family`.
 
 What changed from the plan while building:
 - The shared rules live at `public/game.js`, the one file the browser can load. The functions keep an identical copy at `functions/game.mjs`, updated with `npm run sync`; a unit test fails if the two drift. This replaced the `shared/` folder and the predeploy copy step.

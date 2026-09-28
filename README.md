@@ -116,18 +116,37 @@ How XP works:
 
 What levels unlock: new creatures (the first 12 stay free), accessories, screen themes, goal-trail styles, confetti styles, titles, battle modes, and **streak freezes**. Freezes come every 5 levels, and you can hold 2. Just after midnight, a freeze covers anyone who missed yesterday's checklist. Creatures also grow as you level: they get a ring at level 5, a glow at 10, and an aura at 20.
 
-**Battles** are opt-in challenges between two people. You earn XP from them, never money:
+**Battles** are opt-in challenges. You earn XP from them, never money:
 
-- **Race:** first to finish N chores.
-- **Time Trial:** same chore, fastest time. The timer's Done button logs the chore.
-- **Ghost Race:** beat your own best time.
-- **Blitz** (level 3): most chore XP in a time window.
+| Mode | Unlocks at | How it works |
+|---|---|---|
+| Race | level 1 | First to finish N chores |
+| Time Trial | level 1 | Same chore, fastest time. The timer's Done button logs the chore |
+| Ghost Race | level 1 | Beat your own best time |
+| Blitz | level 3 | Most chore XP in a time window |
+| Chore Bingo | level 5 | First to finish a row, column, or diagonal on a 3×3 card of chores |
+| Territory | level 6 | Kids only. Most Anyone chores by midnight |
+| Judge's Pick | level 8 | Same chore; a parent picks the better job in the Game tab |
+| Streak Duel | level 10 | Whoever misses their daily list first loses (up to 14 days) |
+| Goal Showdown | level 12 | Best share of the weekly goal, decided at cash-out |
+| Boss Raid | level 15 | Team up (2 to 4 people) and beat a boss with chores |
+| Kids vs. Grown-ups | level 15 | Team battle; the kids' team gets a handicap |
+| Wildcard | level 20 | A random mode, often with a twist like "Clean bathroom counts double" |
 
-Younger players get an automatic handicap: their score is multiplied by 8% per year of age difference, up to ×1.5. Adults count as 18.
+Younger players get an automatic handicap: their score is multiplied by 8% per year of age difference, up to ×1.5. Adults count as 18. In Bingo the younger player gets free squares instead.
 
-A result is final once the other player or a parent confirms it, or on its own after 12 hours. Times under a minute and disputed results wait for a parent in the **Game** tab.
+A speed result is final once someone on the other side or a parent confirms it, or on its own after 12 hours. Times under a minute and disputed results wait for a parent in the **Game** tab. Streak Duel, Goal Showdown, and Boss Raid are decided from the family's records and need no confirming.
 
 To limit battles, go to **Settings** > Game. You can set quiet hours (no battles from 8:30 PM to 7 AM by default), a daily limit per person (3), turn off single modes, or turn battles off entirely.
+
+**More ways to play:**
+
+- **Weekly quests:** everyone gets 3 quests each Monday, like "Do 3 different chores in one day" or "Do a chore before 9 AM". They pay 30 to 50 XP and are checked automatically. You can turn them off in Settings > Game.
+- **Rewards:** in Settings > Game, list real-world rewards by level (for example level 5: pick Friday dinner, again every 5 levels). Kids claim them from their screen, and you approve them and mark them given in the Game tab.
+- **Bounties:** in the Game tab, post a one-off job worth extra XP ("Clean out the garage together, 200 XP"), for anyone or one person. A kid taps "I did it" and you award the XP.
+- **Family goal:** in the Game tab, set a shared reward ("Pizza night") and how much XP the whole family needs to earn together. The bar shows on every screen and the family display, and celebrates when it fills.
+- **Raises (off by default):** in Settings > Game you can have the Game tab suggest a per-chore raise every few levels. Nothing changes until you tap Give raise.
+- **Notifications for parents:** in the Game tab, tap "Notify this phone" to get a push when a reward is claimed, a bounty is done, or a battle needs a parent.
 
 ## Developing and testing
 

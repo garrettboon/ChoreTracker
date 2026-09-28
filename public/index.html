@@ -341,6 +341,40 @@ body[data-kidtheme="gold"]{--bg:#FAF2DA;--surface-2:#FDF8EA;--pine:#8A5F04;--tra
   :root:not([data-theme="light"]) body[data-kidtheme="candy"]{--bg:#21111A;--surface:#2B1822;--surface-2:#34202B;--pine:#F07AAE;--track:#45293A;--line:#4A2E3E}
   :root:not([data-theme="light"]) body[data-kidtheme="gold"]{--bg:#1C160A;--surface:#261F10;--surface-2:#2E2616;--pine:#F2BC3A;--track:#3D321A;--line:#42371E}
 }
+
+/* Quests, rewards, family goal */
+.quests{display:grid;gap:8px}
+.quest{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;background:var(--surface-2);border:2px solid var(--line);border-radius:14px;padding:10px 12px}
+.quest.done{border-color:var(--pine)}
+.quest .q-e{font-size:1.6rem}
+.quest b{display:block;font-size:.95rem}
+.quest small{color:var(--muted);font-weight:700}
+.quest .bar i{background:var(--sun)}
+.quest.done .bar i{background:var(--pine)}
+.q-xp{font-family:var(--display);font-weight:600;color:var(--pine);white-space:nowrap}
+.fambar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--surface);border:2px solid var(--line);border-radius:16px;padding:8px 14px;margin-top:12px}
+.fambar.compact{padding:6px 12px}
+.fambar.done{border-color:var(--sun);box-shadow:0 0 0 3px color-mix(in srgb,var(--sun) 35%,transparent)}
+.fb-name{font-weight:800}
+.fb-track{flex:1 1 140px;height:14px;border-radius:99px;background:var(--track);overflow:hidden}
+.fb-track i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--sky),var(--pine));transition:width .6s ease}
+.fambar.done .fb-track i{background:linear-gradient(90deg,var(--sun),var(--coral))}
+.fb-num{font-weight:800;font-size:.85rem;color:var(--muted);white-space:nowrap}
+.board .fambar{margin-top:0}
+
+/* Battle modes: bingo, teams, raid */
+.bingo{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:6px 0 10px}
+.bingo .sq{min-height:58px;display:grid;place-items:center;text-align:center;border:2px solid var(--line);border-radius:12px;background:var(--surface);font-weight:800;font-size:.78rem;padding:4px;line-height:1.2}
+.bingo .sq.on{background:var(--pine);border-color:var(--pine);color:var(--pine-ink)}
+.team-crs{display:flex;justify-content:center;gap:2px}
+.team-crs .cr{font-size:1.9rem}
+.raid{text-align:center;margin:8px 0}
+.raid .boss{display:grid;justify-items:center;font-size:3rem;line-height:1.1}
+.raid .boss b{font-family:var(--display);font-size:1.1rem;font-weight:600}
+.raid .hp{height:16px;border-radius:99px;background:var(--track);overflow:hidden;margin:8px 0 4px}
+.raid .hp i{display:block;height:100%;background:linear-gradient(90deg,var(--coral),#E3A20F);transition:width .6s ease}
+.bcard.judging{border-color:var(--sky)}
+
 @media (prefers-reduced-motion: reduce){
   .cr.stage-4,.avatar.stage-3 .cr,.overlay,.lu-card{animation:none}
   .xp-track i{transition:none}
