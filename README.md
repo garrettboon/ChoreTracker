@@ -77,17 +77,18 @@ You don't have to deploy by hand, though. Pushing to GitHub does it: every push 
 
 Repeat for each kid's tablet and the leaderboard device:
 
-1. On your phone: **Devices** tab > choose who the device is for > **Create pairing code**. Codes last 15 minutes.
+1. On your phone: **Settings** tab > **Devices** > choose who the device is for > **Create pairing code**. Codes last 15 minutes.
 2. On the tablet: open the Hosting URL in Chrome, open Chrome's menu, and tap **Add to Home screen** (or **Install app**). Open Boon Chores from the new home-screen icon.
 3. Tap **Pair this device**, enter the code, and give the device a name.
-4. On a kid's tablet, tap **Turn on chore reminders** and allow notifications. The Devices tab on your phone will show "Reminders on."
+4. On a kid's tablet, tap **Turn on chore reminders** and allow notifications. The Devices section under Settings on your phone will show "Reminders on."
 
 For the leaderboard device, keep it plugged in. The app asks the screen to stay awake while it's open; if it still dims, turn on **Stay awake** in Android's Developer options (it keeps the screen on while charging).
 
 ## Everyday use
 
-- **Kids** tap chores, check off their daily list, set their goal after Sunday cash-out, split the week's savings between their goals, and choose where their bonus and interest go. Under **My money**, each card shows its total; tap Save or Invest to open the details.
-- **Parents** use **Activity** to review and reverse chores, or log one for someone without their tablet; **Leaderboard** to see the family board on a phone; **Kid views** to open any kid's screen exactly as they see it; **Deductions** to add, mark earned back, or remove; **Cash-out** on Sunday night (if a week was missed, it's combined with the next one into a single lump, with each week's goal judged on its own); **Savings goals** to add or edit goals, log purchases, or set a child's balances (for money from before the app, or to fix a mistake); **Devices** to pair or unpair; and **Settings** for people, chores (drag the ⠿ handle to reorder them), rates, reminder times, and interest.
+- **Kids** tap chores (and confirm, so a stray tap doesn't count), check off their daily list, set their goal after Sunday cash-out, split the week's savings between their goals, and choose where their bonus and interest go. Under **My money**, each card shows its total; tap Save or Invest to open the details.
+- **Parents** use **Activity** to review and reverse chores, or log one for someone without their tablet; **Views** for the family leaderboard and to open any kid's screen exactly as they see it; **Actions** for deductions (add, mark earned back, or remove) and the Sunday cash-out (if a week was missed, it's combined with the next one into a single lump, with each week's goal judged on its own); **Savings goals** to add or edit goals, log purchases, or set a child's balances (for money from before the app, or to fix a mistake); and **Settings** for devices, people, chores (drag the ⠿ handle to reorder them; tick **Ask what it was** on an open-ended chore like Parent choice so kids must describe what they did), rates, reminder times, and interest.
+- **Goal bonus** is 25% of the weekly goal, paid at cash-out when the week's earnings reach the goal.
 - **Streaks** count days when every daily item was checked off. Once a day is complete it stays complete, even if the list changes later that day.
 - **Reminders** go out at each person's reminder times (Mountain time), listing only what's still unchecked. Nothing is sent if everything's done.
 - **Interest** on Invest is added once a month at cash-out, rounded down to the nearest quarter. The kid's Invest card shows the exact amount coming.
@@ -96,7 +97,7 @@ For the leaderboard device, keep it plugged in. The app asks the screen to stay 
 
 - **"This Google account isn't on this family's parent list."** The email isn't in `functions/.env`, or you haven't redeployed since adding it.
 - **A tablet shows the pairing screen again.** It was unpaired, or the browser's data was cleared. Make a new code and pair it again.
-- **No reminders.** Check that the tablet shows "Reminders on" in Devices, that notifications for Chrome and the app are allowed in Android settings, and that the reminder time has passed while something was still unchecked.
+- **No reminders.** Check that the tablet shows "Reminders on" under Devices in Settings, that notifications for Chrome and the app are allowed in Android settings, and that the reminder time has passed while something was still unchecked.
 - **Deploy error about billing or APIs.** Confirm the project is on Blaze, then run `firebase deploy` again.
 - **See server logs:** Firebase console > Functions > pick a function > **Logs**.
 

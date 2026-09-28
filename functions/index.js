@@ -42,6 +42,8 @@ const DEFAULT_CONFIG = {
 function parentList() {
   return PARENT_EMAILS.value().split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
 }
+// Chores that make the kid say what they actually did (a chore named "Parent choice" does by default).
+const needsNote = (c) => c.ask === true || (c.ask == null && /parent'?s?\s*choice/i.test(c.name || ""));
 function isParentAuth(auth) {
   return !!(auth && auth.token && auth.token.email && auth.token.email_verified &&
     parentList().includes(String(auth.token.email).toLowerCase()));
@@ -112,6 +114,7 @@ exports.completeChore = onCall(async (req) => {
   if (!auth) throw new HttpsError("unauthenticated", "Not signed in.");
   const kidId = String((req.data && req.data.kidId) || "");
   const choreId = String((req.data && req.data.choreId) || "");
+  const note = String((req.data && req.data.note) || "").trim().slice(0, 200);
   let by = null;
   if (isParentAuth(auth)) {
     by = auth.token.name || auth.token.email;
@@ -126,6 +129,7 @@ exports.completeChore = onCall(async (req) => {
     const kid = cfg && cfg.kids.find((k) => k.id === kidId);
     const ch = cfg && cfg.chores.find((c) => c.id === choreId && c.kind === "family");
     if (!kid || !ch) throw new HttpsError("invalid-argument", "Unknown chore.");
+    if (!by && needsNote(ch) && !note) throw new HttpsError("invalid-argument", "Say what the chore was first.");
     if (ch.assign !== "pool" && ch.assign !== kidId) throw new HttpsError("permission-denied", "That chore belongs to someone else.");
 
     const L = localParts(cfg.timezone || FAMILY_TZ);
@@ -151,6 +155,7 @@ exports.completeChore = onCall(async (req) => {
       choreId, name: ch.name, amount, date: L.date, status: "ok",
     };
     if (by) entry.by = by;
+    if (note) entry.detail = note;
     t.set(db.doc(`weeks/${wk}_${kidId}`), { kidId, week: wk, entries: FieldValue.arrayUnion(entry) }, { merge: true });
     return { amount, week: wk };
   });

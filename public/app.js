@@ -7,7 +7,7 @@ import { VAPID_KEY } from "./config.js";
 
 const CREATURES=[["dragon","🐉","Dragon"],["fox","🦊","Fox"],["frog","🐸","Frog"],["dino","🦖","T. rex"],["unicorn","🦄","Unicorn"],["octopus","🐙","Octopus"],["shark","🦈","Shark"],["turtle","🐢","Turtle"],["owl","🦉","Owl"],["bee","🐝","Bee"],["tiger","🐯","Tiger"],["penguin","🐧","Penguin"]];
 const S={phase:"loading",user:null,role:null,device:null,config:null,bank:{},prefs:{},weeks:{},devices:[],codes:[],ptab:"activity",viewKid:null,busy:{},
-  ui:{goalInput:"",newGoal:{name:"",target:""},ded:{kid:"",amount:0.25,reason:"",how:""},buy:null,pgoal:{},editGoal:null,kidView:null,adjust:null,openBuckets:{},split:{key:null,base:"",dirty:false,shares:{}},draft:null,pickCreature:false,prevPct:{},pair:{code:"",name:""},newCode:{role:"display"},log:{kid:"",chore:""}}};
+  ui:{goalInput:"",newGoal:{name:"",target:""},ded:{kid:"",amount:0.25,reason:"",how:""},buy:null,pgoal:{},editGoal:null,kidView:null,adjust:null,openBuckets:{},confirmChore:null,prNote:null,split:{key:null,base:"",dirty:false,shares:{}},draft:null,pickCreature:false,prevPct:{},pair:{code:"",name:""},newCode:{role:"display"},log:{kid:"",chore:"",note:""}}};
 
 /* ---------- helpers ---------- */
 const $=s=>document.querySelector(s);
@@ -15,6 +15,7 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const r2=n=>Math.round((Number(n)||0)*100)/100;
 const q=n=>Math.round((Number(n)||0)*4)/4;
 const qd=n=>Math.floor((Number(n)||0)*4+1e-9)/4;   // round down to the nearest quarter
+const BONUS_RATE=.25;   // bonus for reaching the weekly goal, as a share of the goal
 const money=n=>(n<0?"−":"")+"$"+Math.abs(r2(n)).toFixed(2);
 const uid=()=>Math.random().toString(36).slice(2,10);
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -46,6 +47,7 @@ const cfg=()=>S.config;
 const kidCfg=id=>cfg().kids.find(k=>k.id===id);
 const kidsSorted=()=>[...cfg().kids].sort((a,b)=>(!!b.adult-!!a.adult)||((b.age||0)-(a.age||0)));
 const choreById=id=>cfg().chores.find(c=>c.id===id);
+const needsNote=c=>!!c&&(c.ask===true||(c.ask==null&&/parent'?s?\s*choice/i.test(c.name||"")));
 const prChores=()=>cfg().chores.filter(c=>c.kind==="pr");
 const famChoresFor=kidId=>cfg().chores.filter(c=>c.kind==="family"&&(c.assign==="pool"||c.assign===kidId));
 const choreValue=(kid,ch)=>r2((kid.rate||0)*(ch.mult||1));
@@ -55,7 +57,7 @@ function kidState(id){
   const goals=[{id:"general",name:"General savings",target:0,balance:r2(bal.general||0)}];
   Object.entries(p.goals||{}).filter(([gid])=>!archivedIds.has(gid)).sort((a,c)=>(a[1].created||0)-(c[1].created||0))
     .forEach(([gid,g])=>goals.push({id:gid,name:g.name,target:g.target||0,balance:r2(bal[gid]||0)}));
-  return {creature:p.creature||null,interestTo:p.interestTo||"invest",prLog:p.prLog||{},prDone:p.prDone||{},goals,archived:b.archived||[],invest:r2(b.invest||0),give:r2(b.give||0),
+  return {creature:p.creature||null,interestTo:p.interestTo||"invest",prLog:p.prLog||{},prDone:p.prDone||{},prNotes:p.prNotes||{},goals,archived:b.archived||[],invest:r2(b.invest||0),give:r2(b.give||0),
     stats:Object.assign({chores:0,goalHits:0,redemptions:0,earned:0},b.stats||{}),lastInterestMonth:b.lastInterestMonth||null};
 }
 function creatureFor(kidId){const ks=kidState(kidId);const idx=cfg().kids.findIndex(k=>k.id===kidId);const id=ks.creature||CREATURES[Math.max(0,idx)%CREATURES.length][0];return CREATURES.find(c=>c[0]===id)||CREATURES[0];}
@@ -114,8 +116,8 @@ function startData(){
   unsubs.push(onSnapshot(collection(db,"bank"),s=>{const m={};s.forEach(d=>m[d.id]=d.data());S.bank=m;softRender();},onErr));
   unsubs.push(onSnapshot(collection(db,"prefs"),s=>{const m={};s.forEach(d=>m[d.id]=d.data());S.prefs=m;backfillPrDone();softRender();},onErr));
   if(S.role==="parent"){
-    unsubs.push(onSnapshot(collection(db,"devices"),s=>{S.devices=s.docs.map(d=>({id:d.id,...d.data()}));softRender();},onErr));
-    unsubs.push(onSnapshot(collection(db,"pairCodes"),s=>{S.codes=s.docs.map(d=>({id:d.id,...d.data()}));softRender();},onErr));
+    unsubs.push(onSnapshot(collection(db,"devices"),s=>{S.devices=s.docs.map(d=>({id:d.id,...d.data()}));softRender(true);},onErr));
+    unsubs.push(onSnapshot(collection(db,"pairCodes"),s=>{S.codes=s.docs.map(d=>({id:d.id,...d.data()}));softRender(true);},onErr));
   }
   subscribeWeeks();
 }
@@ -162,7 +164,7 @@ function render(){
   else h=viewParent();
   $("#app").innerHTML=h;document.body.dataset.mode=mode();afterRender();
 }
-function softRender(){if(S.role==="parent"&&S.ptab==="settings"&&S.ui.draft)return;const a=document.activeElement;
+function softRender(force){if(!force&&S.role==="parent"&&S.ptab==="settings"&&S.ui.draft)return;const a=document.activeElement;
   if(a&&a.tagName==="INPUT"&&S.role!=="display"){const b=a.dataset.bind;render();if(b){const el=document.querySelector(`[data-bind="${b}"]`);if(el){el.focus();try{const l=el.value.length;el.setSelectionRange(l,l)}catch(e){}}}return;}render();}
 function afterRender(){
   if(S.role==="display"&&S.config){for(const k of cfg().kids){const w=getWeek(k.id,activeWeek(k.id));const p=w.goal?weekNet(w)/w.goal:0;const prev=S.ui.prevPct[k.id];
@@ -219,11 +221,11 @@ function goalSetter(k,wk){
     <p class="sub">${last>0?`Last week you earned ${money(last)}. `:""}Doing every chore every day would earn about ${money(max)}.</p>
     <div class="chips">${[...new Set(chips)].filter(c=>c>0).map(c=>`<button data-act="goal-chip" data-v="${c}">${money(c)}</button>`).join("")}</div>
     <div class="money-in">$<input type="number" inputmode="decimal" step="0.25" min="0.25" aria-label="Weekly goal in dollars" data-bind="goalInput" value="${esc(S.ui.goalInput)}"></div>
-    <p class="goal-msg">${v>0?`Reach it and you get a +${money(r2(v*.1))} bonus.`:"Bigger goal, bigger bonus."}</p>
+    <p class="goal-msg">${v>0?`Reach it and you get a +${money(r2(v*BONUS_RATE))} bonus.`:"Bigger goal, bigger bonus."}</p>
     <button class="btn block" data-act="set-goal">Lock in my goal</button></section>`;
 }
 function goalCard(k,ks,w,net,cr){
-  const won=net>=w.goal,bonus=r2(w.goal*.1),bt=w.bonusTo||"split";
+  const won=net>=w.goal,bonus=r2(w.goal*BONUS_RATE),bt=w.bonusTo||"split";
   return `<section class="card goal ${won?"won":""}"><div class="goal-top"><div><div class="big">${money(net)}</div><p class="sub">of your ${money(w.goal)} goal</p></div>
     <div class="bonus">${won?"Bonus earned":"Bonus if you make it"}<b>+${money(bonus)}</b></div></div>${trail(net/w.goal,cr,won)}
     <p class="goal-msg">${won?"Goal reached! Your bonus is locked in.":`${money(w.goal-net)} to go`}</p>
@@ -231,13 +233,14 @@ function goalCard(k,ks,w,net,cr){
 }
 function challengeCards(kidId){let h="";for(const w of openWeeks(kidId))for(const d of w.deductions)if(d.status==="active")
   h+=`<section class="card challenge"><h3>Earn back ${money(d.amount)}</h3><p><b>${esc(d.reason)}</b></p>${d.how?`<p>How: ${esc(d.how)}</p>`:""}<p class="hint">When you've done it, ask a parent to mark it earned back. You have until Sunday's cash-out.</p></section>`;return h;}
-function prSection(k,ks,today){const prs=prChores();if(!prs.length)return "";const done=ks.prLog[today]||[];const s=streak(k.id);
-  return `<section class="card"><div class="sec-head"><h2>Every day</h2><span class="streak">🔥 ${s} day${s===1?"":"s"} in a row</span></div><div class="checks">${prs.map(c=>{const on=done.includes(c.id);
-    return `<button class="check ${on?"on":""}" data-act="toggle-pr" data-id="${c.id}" aria-pressed="${on}"><span class="box">${on?"✓":""}</span><span><b>${esc(c.name)}</b>${c.note?`<small>${esc(c.note)}</small>`:""}</span></button>`;}).join("")}</div>
+function prSection(k,ks,today){const prs=prChores();if(!prs.length)return "";const done=ks.prLog[today]||[],notes=ks.prNotes[today]||{},pn=S.ui.prNote;const s=streak(k.id);
+  return `<section class="card"><div class="sec-head"><h2>Every day</h2><span class="streak">🔥 ${s} day${s===1?"":"s"} in a row</span></div><div class="checks">${prs.map(c=>{const on=done.includes(c.id),asking=pn&&pn.id===c.id,sub=on&&notes[c.id]?notes[c.id]:c.note;
+    return `<button class="check ${on?"on":""}" data-act="toggle-pr" data-id="${c.id}" aria-pressed="${on}" ${asking?"disabled":""}><span class="box">${on?"✓":""}</span><span><b>${esc(c.name)}</b>${sub?`<small>${esc(sub)}</small>`:""}</span></button>${asking?`<div class="confirm"><label>What was it?<input data-bind="prNote.text" maxlength="120" placeholder="Say what you did" value="${esc(pn.text)}"></label><div class="row"><button class="btn small" data-act="save-pr-note" ${String(pn.text||"").trim()?"":"disabled"}>Check it off</button><button class="btn ghost small" data-act="cancel-pr-note">Cancel</button></div></div>`:""}`;}).join("")}</div>
     <p class="hint">These don't pay. They're part of taking care of yourself. Finish all of them to keep your streak going.</p></section>`;}
-function choreSection(k,today){const list=famChoresFor(k.id).sort((a,b)=>(a.assign==="pool")-(b.assign==="pool"));
-  return `<section class="card"><div class="sec-head"><h2>Family chores</h2></div>${list.length?list.map(c=>{const n=choreCountToday(k.id,c,today),lim=c.limit||1,full=n>=lim,busy=S.busy["c:"+c.id];
-    return `<div class="chore"><div><b>${esc(c.name)}</b><small><span class="tag ${c.assign===k.id?"mine":""}">${c.assign===k.id?"Yours":"Anyone"}</span>${n} of ${lim} done today</small></div><div class="c-val">+${money(choreValue(k,c))}</div><button class="btn small" data-act="do-chore" data-id="${c.id}" ${full||busy?"disabled":""}>${busy?"Saving…":full?"All done":"I did it"}</button></div>`;}).join(""):`<p class="empty">No chores set up yet.</p>`}</section>`;}
+function choreSection(k,today){const list=famChoresFor(k.id).sort((a,b)=>(a.assign==="pool")-(b.assign==="pool")),cc=S.ui.confirmChore;
+  return `<section class="card"><div class="sec-head"><h2>Family chores</h2></div>${list.length?list.map(c=>{const n=choreCountToday(k.id,c,today),lim=c.limit||1,full=n>=lim,busy=S.busy["c:"+c.id],asking=cc&&cc.choreId===c.id,ask=needsNote(c);
+    return `<div class="chore"><div><b>${esc(c.name)}</b><small><span class="tag ${c.assign===k.id?"mine":""}">${c.assign===k.id?"Yours":"Anyone"}</span>${n} of ${lim} done today</small></div><div class="c-val">+${money(choreValue(k,c))}</div><button class="btn small" data-act="do-chore" data-id="${c.id}" ${full||busy||asking?"disabled":""}>${busy?"Saving…":full?"All done":"I did it"}</button>
+      ${asking?`<div class="confirm"><b>Did you do "${esc(c.name)}"?</b>${ask?`<label>What was it?<input data-bind="confirmChore.note" maxlength="120" placeholder="Say what you did" value="${esc(cc.note)}"></label>`:""}<div class="row"><button class="btn small" data-act="confirm-chore" ${ask&&!String(cc.note||"").trim()?"disabled":""}>Yes, I did it</button><button class="btn ghost small" data-act="cancel-chore">Not yet</button></div></div>`:""}</div>`;}).join(""):`<p class="empty">No chores set up yet.</p>`}</section>`;}
 function splitEditor(k,ks,w,goals,weekSave){
   if(goals.length<2)return "";
   const key=weekDocId(k.id,w.week),eff=saveSplitFor(w,ks),stored={};goals.forEach(g=>stored[g.id]=Math.round((eff[g.id]||0)*100));const base=JSON.stringify(stored);
@@ -272,7 +275,7 @@ function badgeList(kidId){const ks=kidState(kidId),st=ks.stats;const live=openWe
   const saved=ks.goals.reduce((s,g)=>s+g.balance,0)+ks.archived.reduce((s,g)=>s+(g.bought||0),0);
   return [["🧹","First chore",chores>=1],["💪","50 chores",chores>=50],["🎯","Goal getter",st.goalHits>=1],["🏆","5 goals hit",st.goalHits>=5],["🔥","7-day streak",bestStreak(kidId)>=7],["🔁","Comeback kid",st.redemptions>=1],["🐷","$25 saved",saved>=25],["🌱","$100 invested",ks.invest>=100],["💝","$10 given",ks.give>=10],["🎁","Bought a goal",ks.archived.length>=1]];}
 function badgeSection(kidId){const b=badgeList(kidId);return `<section class="card"><div class="sec-head"><h2>Badges</h2><span class="sub">${b.filter(x=>x[2]).length} of ${b.length}</span></div><div class="badges">${b.map(x=>`<div class="badge ${x[2]?"":"locked"}"><span>${x[0]}</span>${x[1]}</div>`).join("")}</div></section>`;}
-function choreLine(e){const rev=e.status==="reversed";return [`<span class="${rev?"struck":""}">${esc(e.name)}<br><small>${timeOf(e.t)}${rev?", reversed":""}</small></span>`,`<span class="amt ${rev?"struck":"pos"}">+${money(e.amount)}</span>`];}
+function choreLine(e){const rev=e.status==="reversed";return [`<span class="${rev?"struck":""}">${esc(e.name)}${e.detail?`: ${esc(e.detail)}`:""}<br><small>${timeOf(e.t)}${rev?", reversed":""}</small></span>`,`<span class="amt ${rev?"struck":"pos"}">+${money(e.amount)}</span>`];}
 function dedLine(d){const st={active:"can still earn back",redeemed:"earned back",final:"final"}[d.status]||d.status;return [`<span class="${d.status==="redeemed"?"struck":""}">${esc(d.reason)}<br><small>${timeOf(d.t)}, ${st}</small></span>`,`<span class="amt ${d.status==="redeemed"?"struck":"neg"}">−${money(d.amount)}</span>`];}
 function activitySection(w){const list=[...w.entries.map(e=>({t:e.t,l:choreLine(e)})),...w.deductions.map(d=>({t:d.t,l:dedLine(d)}))].sort((a,b)=>b.t-a.t).slice(0,10);
   return `<section class="card"><div class="sec-head"><h2>This week</h2></div>${list.length?`<ul class="feed">${list.map(x=>`<li>${x.l.join("")}</li>`).join("")}</ul>`:`<p class="empty">Nothing yet. Pick a chore and get your creature moving.</p>`}</section>`;}
@@ -280,7 +283,7 @@ function activitySection(w){const list=[...w.entries.map(e=>({t:e.t,l:choreLine(
 function viewDisplay(){
   const d=(7-new Date().getDay())%7;const cash=d===0?"Cash-out tonight":`Cash-out in ${d} day${d===1?"":"s"}`;
   const all=[];for(const w of Object.values(S.weeks))for(const e of w.entries||[])if(e.status!=="reversed")all.push({...e,kidId:w.kidId});
-  const recent=all.sort((a,b)=>b.t-a.t).slice(0,5).map(e=>{const k=kidCfg(e.kidId);return k?`<b>${esc(k.name)}</b> ${esc(e.name.toLowerCase())} +${money(e.amount)}`:"";}).filter(Boolean);
+  const recent=all.sort((a,b)=>b.t-a.t).slice(0,5).map(e=>{const k=kidCfg(e.kidId);return k?`<b>${esc(k.name)}</b> ${esc(e.name.toLowerCase())}${e.detail?` (${esc(e.detail)})`:""} +${money(e.amount)}`:"";}).filter(Boolean);
   return `<div class="board"><header class="board-head"><h1>Boon Chore Tracker</h1><div class="when">${new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"})}. <b>${cash}</b></div></header>
   <div class="lanes">${kidsSorted().map(k=>{const ks=kidState(k.id),w=getWeek(k.id,activeWeek(k.id)),net=weekNet(w),cr=creatureFor(k.id),won=w.goal&&net>=w.goal,s=streak(k.id);
     return `<section class="lane ${won?"won":""}" data-kid="${k.id}"><div class="lane-who"><span class="lane-cr">${cr[1]}</span><div><h2>${esc(k.name)}</h2><span class="streak">🔥 ${s}</span></div></div>
@@ -293,21 +296,20 @@ function viewDisplay(){
 /* ---------- parent ---------- */
 function viewParent(){
   const adults=kidsSorted().filter(k=>k.adult);
-  const tabs=[...adults.map(a=>["me:"+a.id,a.name]),["activity","Activity"],["board","Leaderboard"],["kids","Kid views"],["deductions","Deductions"],["cashout","Cash-out"],["goals","Savings goals"],["devices","Devices"],["settings","Settings"]];
+  const tabs=[...adults.map(a=>["me:"+a.id,a.name]),["activity","Activity"],["views","Views"],["actions","Actions"],["goals","Savings goals"],["settings","Settings"]];
   if(!tabs.some(t=>t[0]===S.ptab))S.ptab="activity";
   let body;if(S.ptab.startsWith("me:")){S.viewKid=S.ptab.slice(3);body=viewKid(S.viewKid,true);}
-  else body={activity:pActivity,board:pBoard,kids:pKids,deductions:pDeductions,cashout:pCashout,goals:pGoals,devices:pDevices,settings:pSettings}[S.ptab]();
+  else body={activity:pActivity,views:pViews,actions:pActions,goals:pGoals,settings:pSettings}[S.ptab]();
   return `<div class="wrap"><header class="p-head"><div><h1>Parent</h1><p class="sub">Signed in as ${esc(parentName())}</p></div><button class="btn ghost small" data-act="sign-out">Sign out</button></header>
   <nav class="tabs">${tabs.map(t=>`<button class="${S.ptab===t[0]?"on":""}" data-act="ptab" data-tab="${t[0]}">${esc(t[1])}</button>`).join("")}</nav>${body}</div>`;
 }
-function pBoard(){return `<div class="pboard">${viewDisplay()}</div>`;}
-function pKids(){
+function pViews(){
   const kids=kidsSorted().filter(k=>!k.adult),cur=kids.find(k=>k.id===S.ui.kidView);
-  if(!cur)return `<section class="card"><div class="sec-head"><h2>See a kid's screen</h2></div><p class="hint" style="margin:0 0 12px">Opens their tablet's screen exactly as they see it. Anything you tap there counts as them.</p>
+  if(cur){S.viewKid=cur.id;return `<div class="asbar"><button class="btn ghost small" data-act="kid-view" data-kid="">← Back</button><span>This is <b>${esc(cur.name)}</b>'s screen. Taps here count as ${esc(cur.name)}.</span></div>${viewKid(cur.id,true)}`;}
+  return `<div class="pboard">${viewDisplay()}</div><section class="card"><div class="sec-head"><h2>See a kid's screen</h2></div><p class="hint" style="margin:0 0 12px">Opens their tablet's screen exactly as they see it. Anything you tap there counts as them.</p>
     ${kids.length?`<div class="kid-list">${kids.map(k=>`<button class="choice" data-act="kid-view" data-kid="${k.id}"><span class="e">${creatureFor(k.id)[1]}</span><span><b>${esc(k.name)}</b><small>🔥 ${streak(k.id)} day streak</small></span></button>`).join("")}</div>`:`<p class="empty">No kids set up yet.</p>`}</section>`;
-  S.viewKid=cur.id;
-  return `<div class="asbar"><button class="btn ghost small" data-act="kid-view" data-kid="">← All kids</button><span>This is <b>${esc(cur.name)}</b>'s screen. Taps here count as ${esc(cur.name)}.</span></div>${viewKid(cur.id,true)}`;
 }
+function pActions(){return `<h2 class="tab-h">Deductions</h2>${pDeductions()}<h2 class="tab-h">Cash-out</h2>${pCashout()}`;}
 function pActivity(){
   const y=addDays(ymd(),-1);let flags="";
   for(const k of kidsSorted().filter(k=>!k.adult)){const ksy=kidState(k.id),done=ksy.prLog[y]||[];
@@ -318,7 +320,7 @@ function pActivity(){
   all.sort((a,b)=>b.e.t-a.e.t);
   return `<section class="card"><div class="sec-head"><h2>Log a chore</h2></div><p class="hint" style="margin-top:0">For anyone without their tablet handy.</p>
     <div class="row"><label>Who<select data-bind="log.kid">${kidsSorted().map(k=>`<option value="${k.id}" ${k.id===lk.id?"selected":""}>${esc(k.name)}</option>`).join("")}</select></label>
-    <label>Chore<select data-bind="log.chore">${lchores.map(c=>`<option value="${c.id}" ${c.id===L.chore?"selected":""}>${esc(c.name)} (+${money(choreValue(lk,c))})</option>`).join("")}</select></label>
+    <label>Chore<select data-bind="log.chore">${lchores.map(c=>`<option value="${c.id}" ${c.id===L.chore?"selected":""}>${esc(c.name)} (+${money(choreValue(lk,c))})</option>`).join("")}</select></label>${needsNote(choreById(L.chore))?`<label>What was it<input data-bind="log.note" maxlength="120" placeholder="What the chore was" value="${esc(L.note||"")}"></label>`:""}
     <button class="btn" style="flex:0 0 auto" data-act="log-chore" ${S.busy.log?"disabled":""}>${S.busy.log?"Saving…":"Log it"}</button></div></section>
   <section class="card"><div class="sec-head"><h2>Missed yesterday</h2></div>${flags||`<p class="empty">Nothing missed yesterday.</p>`}<p class="hint">Nothing is deducted automatically. You decide.</p></section>
   <section class="card"><div class="sec-head"><h2>This week's chores</h2></div>${all.length?`<ul class="feed">${all.slice(0,50).map(({e,w})=>{const k=kidCfg(w.kidId);const l=choreLine(e);
@@ -346,7 +348,7 @@ function cashWeeks(kidId){const thisMon=mondayOf(new Date()),prev=addDays(thisMo
 function cashoutPlan(kidId,weeks){
   const ks=kidState(kidId),sp=cfg().split,ex={spend:0,save:0,invest:0,give:0};const addSplit=a=>{for(const b in ex)ex[b]+=a*sp[b]/100;};
   const parts=weeks.map(wk=>{const w=getWeek(kidId,wk),net=weekNet(w),goal=w.goal||0,met=goal>0&&net>=goal;
-    return {wk,w,net,goal,met,bonus:met?r2(goal*.1):0,bonusTo:w.bonusTo||"split",chores:choreCount(w),activeDed:w.deductions.filter(e=>e.status==="active").length};});
+    return {wk,w,net,goal,met,bonus:met?r2(goal*BONUS_RATE):0,bonusTo:w.bonusTo||"split",chores:choreCount(w),activeDed:w.deductions.filter(e=>e.status==="active").length};});
   const net=r2(parts.reduce((t,p)=>t+p.net,0));if(net>0)addSplit(net);const owed=net<0?q(-net):0;
   let bonus=0;for(const p of parts)if(p.bonus){bonus=r2(bonus+p.bonus);if(p.bonusTo==="split")addSplit(p.bonus);else ex[p.bonusTo]+=p.bonus;}
   const month=ymd().slice(0,7);const interestDue=ks.lastInterestMonth!==month&&ks.invest>0;const interest=interestDue?qd(calcInterest(ks.invest)):0;const interestTo=ks.interestTo||"invest";
@@ -407,15 +409,15 @@ function pDevices(){
   <section class="card"><div class="sec-head"><h2>Paired devices</h2></div>${S.devices.length?S.devices.map(d=>`<div class="flag-row"><span><b>${esc(d.name)}</b><br><small>${esc(roleLabel(d))}</small> ${d.role==="kid"?`<span class="pill ${d.fcmToken?"on":""}">${d.fcmToken?"Reminders on":"Reminders off"}</span>`:""}</span><button class="btn ghost small" data-act="unpair" data-id="${d.id}">Unpair</button></div>`).join(""):`<p class="empty">No devices paired yet.</p>`}
   <p class="hint">Unpairing locks a device out right away. Use it for a lost tablet or to switch a tablet to someone else.</p></section>`;
 }
-function startDraft(){const c=clone(cfg());c.kids.forEach(k=>k.remindStr=(k.remind||[]).join(", "));S.ui.draft=c;}
+function startDraft(){const c=clone(cfg());c.kids.forEach(k=>k.remindStr=(k.remind||[]).join(", "));c.chores.forEach(ch=>ch.ask=needsNote(ch));S.ui.draft=c;}
 function pSettings(){
   if(!S.ui.draft)startDraft();const d=S.ui.draft;
-  const choreRow=(c,i)=>`<div class="set-block" data-drag="chore" data-kind="${c.kind}" data-i="${i}"><div class="row"><span class="drag-handle" data-handle role="button" aria-label="Drag to reorder" title="Drag to reorder">⠿</span><label>Chore<input data-bind="draft.chores.${i}.name" value="${esc(c.name)}"></label>
+  const choreRow=(c,i)=>`<div class="set-block" data-drag="chore" data-kind="${c.kind}" data-i="${i}"><div class="row"><span class="drag-handle" data-handle role="button" aria-label="Drag to reorder" title="Drag to reorder">⠿</span><label>Chore<input data-bind="draft.chores.${i}.name" value="${esc(c.name)}"></label><label class="chk"><input type="checkbox" data-bind="draft.chores.${i}.ask" ${c.ask?"checked":""}>Ask what it was</label>
     ${c.kind==="pr"?`<label>Details<input data-bind="draft.chores.${i}.note" value="${esc(c.note||"")}"></label>`:`<label>Pays (× base rate)<input type="number" step="0.5" min="0" data-type="num" data-bind="draft.chores.${i}.mult" value="${esc(c.mult)}"></label>
     <label>Daily limit<input type="number" step="1" min="1" data-type="num" data-bind="draft.chores.${i}.limit" value="${esc(c.limit)}"></label>
     <label>Who<select data-bind="draft.chores.${i}.assign"><option value="pool" ${c.assign==="pool"?"selected":""}>Anyone</option>${d.kids.map(k=>`<option value="${k.id}" ${c.assign===k.id?"selected":""}>${esc(k.name)}</option>`).join("")}</select></label>`}
     <button class="btn ghost small" style="flex:0 0 auto" data-act="rm-chore" data-i="${i}">Remove</button></div></div>`;
-  return `<section class="card"><div class="sec-head"><h2>People</h2><button class="btn ghost small" data-act="add-kid">Add person</button></div>
+  return pDevices()+`<section class="card"><div class="sec-head"><h2>People</h2><button class="btn ghost small" data-act="add-kid">Add person</button></div>
     ${d.kids.map((k,i)=>`<div class="set-block"><div class="row"><label>Name<input data-bind="draft.kids.${i}.name" value="${esc(k.name)}"></label>${k.adult?"":`<label>Age<input type="number" data-type="num" data-bind="draft.kids.${i}.age" value="${esc(k.age)}"></label>`}
     <label>Base rate per chore<input type="number" step="0.05" data-type="num" data-bind="draft.kids.${i}.rate" value="${esc(k.rate)}"></label>
     <label>Reminder times<input data-bind="draft.kids.${i}.remindStr" value="${esc(k.remindStr)}" placeholder="15:30, 19:30"></label>
@@ -435,12 +437,18 @@ const weekRef=(kid,wk)=>doc(db,"weeks",weekDocId(kid,wk));
 async function txWeek(kid,wk,mut){await runTransaction(db,async t=>{const s=await t.get(weekRef(kid,wk));const w=Object.assign({kidId:kid,week:wk,entries:[],deductions:[]},s.exists()?s.data():{});mut(w);t.set(weekRef(kid,wk),w);});}
 function guard(p,okMsg){return p.then(()=>{if(okMsg)toast(okMsg);}).catch(e=>toast("Couldn't save: "+errMsg(e)));}
 
-async function doChore(kidId,choreId){
+// Check a daily item on or off; a description is kept when one was asked for.
+function setPr(kid,id,on,note){const today=ymd(),ks=kidState(kid),done=ks.prLog[today]||[];
+  const complete=on&&prChores().every(c=>c.id===id||done.includes(c.id));const upd={prLog:{[today]:on?arrayUnion(id):arrayRemove(id)}};
+  if(complete)upd.prDone={[today]:true};else if(!on)upd.prDone={[today]:false};if(note)upd.prNotes={[today]:{[id]:note}};
+  guard(setDoc(doc(db,"prefs",kid),upd,{merge:true}));
+  if(complete){confetti(90);chime(true);toast(ks.prDone[today]?"All done for today.":"All done for today. Streak +1!");}}
+async function doChore(kidId,choreId,note){
   const k=kidCfg(kidId),ch=choreById(choreId),today=ymd();if(!k||!ch)return;
   if(choreCountToday(k.id,ch,today)>=(ch.limit||1)){toast("That one's done for today.");return;}
   const wk=activeWeek(k.id),w=getWeek(k.id,wk),before=weekNet(w),amt=choreValue(k,ch);
   S.busy["c:"+choreId]=true;render();
-  try{await call("completeChore")({kidId,choreId});
+  try{await call("completeChore")({kidId,choreId,note:note||""});
     if(w.goal&&before<w.goal&&before+amt>=w.goal){confetti(260);chime(true);toast("Goal reached! Bonus locked in.");}else{confetti(50);chime(false);toast(`+${money(amt)} for ${ch.name.toLowerCase()}`);}}
   catch(e){toast(errMsg(e));}
   finally{delete S.busy["c:"+choreId];render();}
@@ -491,18 +499,20 @@ async function handleAct(act,ds){
   case "goal-chip": S.ui.goalInput=String(ds.v);break;
   case "set-goal":{const v=q(S.ui.goalInput);if(!(v>0)){toast("Pick a goal of at least $0.25.");return;}const wk=activeWeek(kid);S.ui.goalInput="";
     guard(setDoc(weekRef(kid,wk),{kidId:kid,week:wk,goal:v},{merge:true}));confetti(60);chime(false);break;}
-  case "do-chore": doChore(kid,ds.id);return;
-  case "toggle-pr":{const id=ds.id,ks=kidState(kid),done=ks.prLog[today]||[],on=done.includes(id);
-    const complete=!on&&prChores().every(c=>c.id===id||done.includes(c.id));const upd={prLog:{[today]:on?arrayRemove(id):arrayUnion(id)}};
-    if(complete)upd.prDone={[today]:true};else if(on)upd.prDone={[today]:false};
-    guard(setDoc(doc(db,"prefs",kid),upd,{merge:true}));
-    if(complete){confetti(90);chime(true);toast(ks.prDone[today]?"All done for today.":"All done for today. Streak +1!");}return;}
+  case "do-chore": if(!choreById(ds.id))return;S.ui.confirmChore={choreId:ds.id,note:""};break;
+  case "cancel-chore": S.ui.confirmChore=null;break;
+  case "confirm-chore":{const cc=S.ui.confirmChore;if(!cc)return;const note=String(cc.note||"").trim();if(needsNote(choreById(cc.choreId))&&!note){toast("Say what it was first.");return;}S.ui.confirmChore=null;doChore(kid,cc.choreId,note);return;}
+  case "toggle-pr":{const id=ds.id,on=(kidState(kid).prLog[today]||[]).includes(id);
+    if(!on&&needsNote(choreById(id))){S.ui.prNote={id,text:""};break;}
+    setPr(kid,id,!on,"");return;}
+  case "cancel-pr-note": S.ui.prNote=null;break;
+  case "save-pr-note":{const pn=S.ui.prNote;if(!pn)return;const text=String(pn.text||"").trim();if(!text){toast("Say what it was first.");return;}S.ui.prNote=null;setPr(kid,pn.id,true,text);return;}
   case "add-goal":{const g=S.ui.newGoal;const name=String(g.name||"").trim();const t=r2(g.target);if(!name||!(t>0)){toast("Give the goal a name and an amount.");return;}
     S.ui.newGoal={name:"",target:""};guard(setDoc(doc(db,"prefs",kid),{goals:{[uid()]:{name,target:t,created:Date.now()}}},{merge:true}));break;}
   case "ptab": if(S.ptab==="settings"&&ds.tab!=="settings")S.ui.draft=null;S.ptab=ds.tab;S.ui.pickCreature=false;break;
-  case "log-chore":{const L=S.ui.log;if(!L.chore)return;S.busy.log=true;render();try{const r=await call("completeChore")({kidId:L.kid,choreId:L.chore});toast(`Logged +${money(r.data.amount)} for ${kidCfg(L.kid).name}.`);}catch(e){toast(errMsg(e));}finally{delete S.busy.log;render();}return;}
+  case "log-chore":{const L=S.ui.log;if(!L.chore)return;S.busy.log=true;render();try{const r=await call("completeChore")({kidId:L.kid,choreId:L.chore,note:String(L.note||"").trim()});L.note="";toast(`Logged +${money(r.data.amount)} for ${kidCfg(L.kid).name}.`);}catch(e){toast(errMsg(e));}finally{delete S.busy.log;render();}return;}
   case "reverse": case "restore": guard(txWeek(ds.kid,ds.wk,w=>{const e=w.entries.find(x=>x.id===ds.id);if(e)e.status=act==="reverse"?"reversed":"ok";}));return;
-  case "prefill-ded": S.ui.ded={kid:ds.kid,amount:0.25,reason:ds.reason,how:"Do it today plus one extra chore"};S.ptab="deductions";break;
+  case "prefill-ded": S.ui.ded={kid:ds.kid,amount:0.25,reason:ds.reason,how:"Do it today plus one extra chore"};S.ptab="actions";break;
   case "add-ded":{const d=S.ui.ded;const amt=q(d.amount);if(!(amt>0)||!String(d.reason).trim()){toast("Add an amount and a reason.");return;}const wk=activeWeek(d.kid);
     guard(setDoc(weekRef(d.kid,wk),{kidId:d.kid,week:wk,deductions:arrayUnion({id:uid(),t:Date.now(),amount:amt,reason:String(d.reason).trim(),how:String(d.how||"").trim(),status:"active",by:parentName()})},{merge:true}),"Deduction added.");
     S.ui.ded={kid:d.kid,amount:0.25,reason:"",how:""};break;}
@@ -540,12 +550,12 @@ async function handleAct(act,ds){
   case "unpair": if(!confirm("Unpair this device? It will need a new code to reconnect."))return;guard(deleteDoc(doc(db,"devices",ds.id)),"Device unpaired.");return;
   case "add-kid": S.ui.draft.kids.push({id:uid(),name:"New person",age:8,rate:0.25,remind:[],remindStr:"15:30, 19:30"});break;
   case "rm-kid": if(!confirm("Remove this person from the app? Their saved money records stay in the database."))return;S.ui.draft.kids.splice(Number(ds.i),1);break;
-  case "add-chore": S.ui.draft.chores.push(ds.kind==="pr"?{id:uid(),kind:"pr",name:"New item",note:""}:{id:uid(),kind:"family",name:"New chore",mult:1,limit:1,assign:"pool"});break;
+  case "add-chore": S.ui.draft.chores.push(ds.kind==="pr"?{id:uid(),kind:"pr",name:"New item",note:"",ask:false}:{id:uid(),kind:"family",name:"New chore",mult:1,limit:1,assign:"pool",ask:false});break;
   case "rm-chore": S.ui.draft.chores.splice(Number(ds.i),1);break;
   case "discard-settings": S.ui.draft=null;break;
   case "save-settings":{const d=clone(S.ui.draft);
     d.kids.forEach(k=>{k.remind=String(k.remindStr||"").split(",").map(s=>s.trim()).filter(s=>/^\d{1,2}:\d{2}$/.test(s)).map(s=>s.padStart(5,"0"));delete k.remindStr;k.rate=r2(k.rate);k.age=Number(k.age)||0;});
-    d.chores.forEach(c=>{if(c.kind==="family"){c.mult=Number(c.mult)||1;c.limit=Math.max(1,Math.round(Number(c.limit)||1));if(c.assign!=="pool"&&!d.kids.some(k=>k.id===c.assign))c.assign="pool";}});
+    d.chores.forEach(c=>{c.ask=!!c.ask;if(c.kind==="family"){c.mult=Number(c.mult)||1;c.limit=Math.max(1,Math.round(Number(c.limit)||1));if(c.assign!=="pool"&&!d.kids.some(k=>k.id===c.assign))c.assign="pool";}});
     S.ui.draft=null;guard(setDoc(doc(db,"app/config"),d),"Settings saved.");break;}
   }
   render();
@@ -556,10 +566,11 @@ function handleChange(act,el){const v=el.value,kid=S.viewKid;
 
 /* ---------- events ---------- */
 document.addEventListener("click",e=>{const el=e.target.closest("[data-act]");if(!el||el.disabled)return;handleAct(el.dataset.act,el.dataset);});
-document.addEventListener("input",e=>{const el=e.target;if(!el.dataset.bind)return;let v=el.value;if(el.dataset.type==="num")v=v===""?"":Number(v);setPath(S.ui,el.dataset.bind,v);
+document.addEventListener("input",e=>{const el=e.target;if(!el.dataset.bind)return;let v=el.value;if(el.type==="checkbox")v=el.checked;else if(el.dataset.type==="num")v=v===""?"":Number(v);setPath(S.ui,el.dataset.bind,v);
+  if(el.dataset.bind==="confirmChore.note"||el.dataset.bind==="prNote.text"){const b=document.querySelector(el.dataset.bind==="confirmChore.note"?'[data-act="confirm-chore"]':'[data-act="save-pr-note"]');if(b)b.disabled=!String(v).trim();}
   if(el.dataset.bind.startsWith("split.shares.")){S.ui.split.dirty=true;updateSplitUI();}
   if(el.dataset.bind.startsWith("adjust.goalBal.")){const t=document.querySelector(".adjust .save-total");if(t)t.textContent=money([...document.querySelectorAll('.adjust input[data-bind^="adjust.goalBal."]')].reduce((n,i)=>n+(Number(i.value)||0),0));}
-  if(el.dataset.bind==="goalInput"){const m=document.querySelector(".goal-set .goal-msg");const n=Number(v)||0;if(m)m.textContent=n>0?`Reach it and you get a +${money(r2(n*.1))} bonus.`:"Bigger goal, bigger bonus.";}});
+  if(el.dataset.bind==="goalInput"){const m=document.querySelector(".goal-set .goal-msg");const n=Number(v)||0;if(m)m.textContent=n>0?`Reach it and you get a +${money(r2(n*BONUS_RATE))} bonus.`:"Bigger goal, bigger bonus.";}});
 document.addEventListener("change",e=>{const el=e.target;if(el.dataset.bind&&el.tagName==="SELECT"){setPath(S.ui,el.dataset.bind,el.value);render();}if(el.dataset.change)handleChange(el.dataset.change,el);});
 document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.id==="pin")handleAct("pair",{});});
 
