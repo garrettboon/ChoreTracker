@@ -3,19 +3,44 @@ name: Deploy to Firebase
 on:
   push:
     branches: [main]
+  pull_request:          # runs the tests only; deploy is skipped
   workflow_dispatch:
-
-concurrency:
-  group: firebase-deploy
-  cancel-in-progress: false
 
 permissions:
   contents: read
   id-token: write   # lets GitHub prove its identity to Google (no key file)
 
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - uses: actions/setup-java@v4   # the Firestore emulator needs Java
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        run: npm ci && npm ci --prefix functions
+
+      - name: Unit tests (game rules)
+        run: npm test
+
+      - name: Emulator tests (functions and security rules)
+        run: npm run test:emulators
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: firebase-deploy
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
