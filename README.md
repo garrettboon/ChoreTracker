@@ -87,9 +87,10 @@ For the leaderboard device, keep it plugged in. The app asks the screen to stay 
 ## Everyday use
 
 - **Kids** tap chores, check off their daily list, set their goal after Sunday cash-out, split the week's savings between their goals, and choose where their bonus and interest go. Under **My money**, each card shows its total; tap Save or Invest to open the details.
-- **Parents** use **Activity** to review and reverse chores, or log one for someone without their tablet; **Leaderboard** to see the family board on a phone; **Kid views** to open any kid's screen exactly as they see it; **Deductions** to add, mark earned back, or remove; **Cash-out** on Sunday night; **Savings goals** to add or edit goals, log purchases, or set a child's balances (for money from before the app, or to fix a mistake); **Devices** to pair or unpair; and **Settings** for people, chores (drag the ⠿ handle to reorder them), rates, reminder times, and interest.
+- **Parents** use **Activity** to review and reverse chores, or log one for someone without their tablet; **Leaderboard** to see the family board on a phone; **Kid views** to open any kid's screen exactly as they see it; **Deductions** to add, mark earned back, or remove; **Cash-out** on Sunday night (if a week was missed, it's combined with the next one into a single lump, with each week's goal judged on its own); **Savings goals** to add or edit goals, log purchases, or set a child's balances (for money from before the app, or to fix a mistake); **Devices** to pair or unpair; and **Settings** for people, chores (drag the ⠿ handle to reorder them), rates, reminder times, and interest.
 - **Streaks** count days when every daily item was checked off. Once a day is complete it stays complete, even if the list changes later that day.
 - **Reminders** go out at each person's reminder times (Mountain time), listing only what's still unchecked. Nothing is sent if everything's done.
+- **Interest** on Invest is added once a month at cash-out, rounded down to the nearest quarter. The kid's Invest card shows the exact amount coming.
 
 ## Troubleshooting
 

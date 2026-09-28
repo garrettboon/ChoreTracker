@@ -14,6 +14,7 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const r2=n=>Math.round((Number(n)||0)*100)/100;
 const q=n=>Math.round((Number(n)||0)*4)/4;
+const qd=n=>Math.floor((Number(n)||0)*4+1e-9)/4;   // round down to the nearest quarter
 const money=n=>(n<0?"−":"")+"$"+Math.abs(r2(n)).toFixed(2);
 const uid=()=>Math.random().toString(36).slice(2,10);
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -264,7 +265,7 @@ function moneySection(k,ks,w,net){const sp=splitAmt(Math.max(0,net)),goals=ks.go
       ${splitEditor(k,ks,w,goals,sp.save)}
       <div class="mini-form"><input placeholder="New goal" aria-label="New goal name" data-bind="newGoal.name" value="${esc(g.name)}"><input type="number" inputmode="decimal" placeholder="$" aria-label="Goal amount" data-bind="newGoal.target" value="${esc(g.target)}"><button class="btn small" data-act="add-goal">Add</button></div>`)}
     ${card("invest","b-invest","Invest",ks.invest,`+${money(sp.invest)} this week`,
-      `<p>Next monthly interest about ${money(calcInterest(ks.invest))}.</p><label>Interest goes to<select data-change="interestTo">${["invest","spend","give",...goals.map(x=>x.id)].map(o=>`<option value="${o}" ${o===ks.interestTo?"selected":""}>${o==="invest"?"Back into Invest (it grows!)":destName(ks,o)}</option>`).join("")}</select></label>`)}
+      `<p>Next monthly interest: ${money(qd(calcInterest(ks.invest)))}, rounded down to the nearest quarter.</p><label>Interest goes to<select data-change="interestTo">${["invest","spend","give",...goals.map(x=>x.id)].map(o=>`<option value="${o}" ${o===ks.interestTo?"selected":""}>${o==="invest"?"Back into Invest (it grows!)":destName(ks,o)}</option>`).join("")}</select></label>`)}
     ${card("give","b-give","Give",ks.give,`+${money(sp.give)} this week`,"")}
   </div></section>`;}
 function badgeList(kidId){const ks=kidState(kidId),st=ks.stats;const live=openWeeks(kidId).reduce((s,w)=>s+choreCount(w),0);const chores=(st.chores||0)+live;
@@ -338,34 +339,41 @@ function pDeductions(){
     <p class="hint">They can earn it back any time before Sunday's cash-out. After that it's final. Deductions never show on the leaderboard.</p></section>
     <section class="card"><div class="sec-head"><h2>This week</h2></div>${list?`<ul class="feed">${list}</ul>`:`<p class="empty">No deductions this week.</p>`}</section>`;
 }
-function cashWeek(kidId){const thisMon=mondayOf(new Date()),prev=addDays(thisMon,-7);const pw=S.weeks[weekDocId(kidId,prev)];
-  if(pw&&!pw.closed&&((pw.entries||[]).length||(pw.deductions||[]).length||pw.goal))return prev;const tw=S.weeks[weekDocId(kidId,thisMon)];if(tw&&tw.closed)return null;return thisMon;}
-function cashoutPlan(kidId,wk){
-  const w=getWeek(kidId,wk),ks=kidState(kidId),sp=cfg().split,net=weekNet(w),goal=w.goal||0,met=goal>0&&net>=goal,bonus=met?r2(goal*.1):0;
-  const ex={spend:0,save:0,invest:0,give:0};const addSplit=a=>{for(const b in ex)ex[b]+=a*sp[b]/100;};
-  if(net>0)addSplit(net);const owed=net<0?q(-net):0;
-  const bonusTo=w.bonusTo||"split";if(bonus){if(bonusTo==="split")addSplit(bonus);else ex[bonusTo]+=bonus;}
-  const saveTo=(ks.goals.find(g=>g.id===w.saveTo)||ks.goals[0]).id;
-  const month=ymd().slice(0,7);const interestDue=ks.lastInterestMonth!==month&&ks.invest>0;const interest=interestDue?r2(calcInterest(ks.invest)):0;const interestTo=ks.interestTo||"invest";
+// Every week that still needs cashing out: last week if it was missed, plus this week. They settle as one lump.
+function cashWeeks(kidId){const thisMon=mondayOf(new Date()),prev=addDays(thisMon,-7),out=[];
+  const pw=S.weeks[weekDocId(kidId,prev)];if(pw&&!pw.closed&&((pw.entries||[]).length||(pw.deductions||[]).length||pw.goal))out.push(prev);
+  const tw=S.weeks[weekDocId(kidId,thisMon)];if(!(tw&&tw.closed))out.push(thisMon);return out.length?out:null;}
+function cashoutPlan(kidId,weeks){
+  const ks=kidState(kidId),sp=cfg().split,ex={spend:0,save:0,invest:0,give:0};const addSplit=a=>{for(const b in ex)ex[b]+=a*sp[b]/100;};
+  const parts=weeks.map(wk=>{const w=getWeek(kidId,wk),net=weekNet(w),goal=w.goal||0,met=goal>0&&net>=goal;
+    return {wk,w,net,goal,met,bonus:met?r2(goal*.1):0,bonusTo:w.bonusTo||"split",chores:choreCount(w),activeDed:w.deductions.filter(e=>e.status==="active").length};});
+  const net=r2(parts.reduce((t,p)=>t+p.net,0));if(net>0)addSplit(net);const owed=net<0?q(-net):0;
+  let bonus=0;for(const p of parts)if(p.bonus){bonus=r2(bonus+p.bonus);if(p.bonusTo==="split")addSplit(p.bonus);else ex[p.bonusTo]+=p.bonus;}
+  const month=ymd().slice(0,7);const interestDue=ks.lastInterestMonth!==month&&ks.invest>0;const interest=interestDue?qd(calcInterest(ks.invest)):0;const interestTo=ks.interestTo||"invest";
   let goalInterest=0;if(interest){if(interestTo in ex)ex[interestTo]+=interest;else goalInterest=interest;}
   const total=q(ex.spend+ex.save+ex.invest+ex.give);const storage={save:q(ex.save),invest:q(ex.invest),give:q(ex.give)};
   let cash=r2(total-storage.save-storage.invest-storage.give);if(cash<0){storage.save=r2(storage.save+cash);cash=0;}
-  const saveParts=splitCents(storage.save,saveSplitFor(w,ks));
-  return {wk,net,goal,met,bonus,bonusTo,owed,saveTo,saveParts,interestDue,interest,interestTo,goalInterest,cash,storage,chores:choreCount(w),activeDed:w.deductions.filter(e=>e.status==="active").length};
+  // The savings split comes from the newest week that set one.
+  const splitW=[...parts].reverse().map(p=>p.w).find(w=>(w.saveSplit&&Object.keys(w.saveSplit).length)||w.saveTo)||parts[parts.length-1].w;
+  const saveParts=splitCents(storage.save,saveSplitFor(splitW,ks));
+  return {weeks,parts,net,bonus,owed,interestDue,interest,interestTo,goalInterest,cash,storage,saveParts,
+    chores:parts.reduce((t,p)=>t+p.chores,0),activeDed:parts.reduce((t,p)=>t+p.activeDed,0),goalHits:parts.filter(p=>p.met).length,earned:r2(parts.reduce((t,p)=>t+Math.max(0,p.net),0))};
 }
 function pCashout(){
-  return (new Date().getDay()===0?"":`<p class="hint">It isn't Sunday yet. Cashing out now closes the week early.</p>`)+kidsSorted().map(k=>{
-    const ks=kidState(k.id),wk=cashWeek(k.id);
-    if(!wk){const c=getWeek(k.id,mondayOf(new Date())).cashout;return `<section class="card"><div class="sec-head"><h2>${esc(k.name)}</h2><span class="sub">Cashed out</span></div>${c?`<div class="handoff">Handed <b>${money(c.cash)}</b> in cash. Into storage: Save <b>${money(c.storage.save)}</b>, Invest <b>${money(c.storage.invest)}</b>, Give <b>${money(c.storage.give)}</b>.${c.owed?` Collected <b>${money(c.owed)}</b> from Spend.`:""}</div>`:""}</section>`;}
-    const p=cashoutPlan(k.id,wk);
-    return `<section class="card"><div class="sec-head"><h2>${esc(k.name)}</h2><span class="sub">Week of ${shortDate(wk)}</span></div>
-    <dl class="kv"><dt>Earned (after deductions)</dt><dd>${money(p.net)}</dd><dt>Goal</dt><dd>${p.goal?money(p.goal)+(p.met?" reached":" missed"):"None set"}</dd>
-    ${p.bonus?`<dt>Bonus (${esc(destName(ks,p.bonusTo))})</dt><dd>+${money(p.bonus)}</dd>`:""}
+  return (new Date().getDay()===0?"":`<p class="hint">It isn't Sunday yet. Cashing out now closes this week early.</p>`)+kidsSorted().map(k=>{
+    const ks=kidState(k.id),weeks=cashWeeks(k.id);
+    if(!weeks){const c=getWeek(k.id,mondayOf(new Date())).cashout;return `<section class="card"><div class="sec-head"><h2>${esc(k.name)}</h2><span class="sub">Cashed out</span></div>${c?`<div class="handoff">Handed <b>${money(c.cash)}</b> in cash. Into storage: Save <b>${money(c.storage.save)}</b>, Invest <b>${money(c.storage.invest)}</b>, Give <b>${money(c.storage.give)}</b>.${c.owed?` Collected <b>${money(c.owed)}</b> from Spend.`:""}</div>`:""}</section>`;}
+    const p=cashoutPlan(k.id,weeks),multi=weeks.length>1,one=p.parts[0];
+    return `<section class="card"><div class="sec-head"><h2>${esc(k.name)}</h2><span class="sub">${multi?`${weeks.length} weeks in one lump`:`Week of ${shortDate(weeks[0])}`}</span></div>
+    ${multi?`<p class="hint" style="margin:0 0 6px">Last week wasn't cashed out, so it's combined with this week. Each week's goal still counts on its own.</p>`:""}
+    <dl class="kv">${multi?p.parts.map(x=>`<dt>Week of ${shortDate(x.wk)}</dt><dd>${money(x.net)}${x.goal?`, goal ${money(x.goal)} ${x.met?"reached":"missed"}`:", no goal"}</dd>`).join(""):""}
+    <dt>Earned (after deductions)</dt><dd>${money(p.net)}</dd>${multi?"":`<dt>Goal</dt><dd>${one.goal?money(one.goal)+(one.met?" reached":" missed"):"None set"}</dd>`}
+    ${p.bonus?`<dt>Bonus${multi?"":" ("+esc(destName(ks,one.bonusTo))+")"}</dt><dd>+${money(p.bonus)}</dd>`:""}
     ${p.interestDue?`<dt>Monthly interest (to ${esc(destName(ks,p.interestTo))})</dt><dd>+${money(p.interest)}</dd>`:""}
     ${p.activeDed?`<dt>Open deductions becoming final</dt><dd>${p.activeDed}</dd>`:""}</dl>
     <div class="handoff">${p.owed?`Earnings came up short. Collect <b>${money(p.owed)}</b> from ${esc(k.name)}'s Spend cash.<br>`:""}Hand ${esc(k.name)} <b>${money(p.cash)}</b> in cash.<br>
       Into storage: Save <b>${money(p.storage.save)}</b> (${savePartsText(ks,p.saveParts)}), Invest <b>${money(p.storage.invest)}</b>, Give <b>${money(p.storage.give)}</b>.${p.goalInterest?` Interest of <b>${money(p.goalInterest)}</b> goes to ${esc(goalName(ks,p.interestTo))}.`:""}</div>
-    <button class="btn block" style="margin-top:12px" data-act="cashout" data-kid="${k.id}" ${S.busy["co:"+k.id]?"disabled":""}>Confirm cash-out for ${esc(k.name)}</button></section>`;}).join("");
+    <button class="btn block" style="margin-top:12px" data-act="cashout" data-kid="${k.id}" ${S.busy["co:"+k.id]?"disabled":""}>Confirm cash-out for ${esc(k.name)}${multi?` (${weeks.length} weeks)`:""}</button></section>`;}).join("");
 }
 function pGoals(){
   return kidsSorted().map(k=>{const ks=kidState(k.id),b=S.ui.buy,pg=S.ui.pgoal[k.id]||(S.ui.pgoal[k.id]={name:"",target:""});
@@ -418,7 +426,7 @@ function pSettings(){
     <label>Rate up to threshold (%)<input type="number" step="0.5" data-type="num" data-bind="draft.interest.low" value="${esc(d.interest.low)}"></label>
     <label>Threshold ($)<input type="number" step="1" data-type="num" data-bind="draft.interest.threshold" value="${esc(d.interest.threshold)}"></label>
     <label>Rate above threshold (%)<input type="number" step="0.5" data-type="num" data-bind="draft.interest.high" value="${esc(d.interest.high)}"></label></div>
-    <p class="hint">At today's balances, this month's interest would cost ${money(cfg().kids.reduce((s,k)=>s+calcInterest(kidState(k.id).invest),0))} in total.</p></section>
+    <p class="hint">At today's balances, this month's interest would cost ${money(cfg().kids.reduce((s,k)=>s+qd(calcInterest(kidState(k.id).invest)),0))} in total, rounded down to the nearest quarter per person.</p></section>
   <div class="row" style="margin-top:14px"><button class="btn" data-act="save-settings">Save settings</button><button class="btn ghost" data-act="discard-settings">Discard changes</button></div>`;
 }
 
@@ -438,20 +446,22 @@ async function doChore(kidId,choreId){
   finally{delete S.busy["c:"+choreId];render();}
 }
 async function doCashout(kidId){
-  const wk=cashWeek(kidId);if(!wk)return;const p=cashoutPlan(kidId,wk);const k=kidCfg(kidId);
-  if(!confirm(`Cash out ${k.name}? Hand over ${money(p.cash)} in cash${p.owed?` and collect ${money(p.owed)}`:""}.`))return;
+  const weeks=cashWeeks(kidId);if(!weeks)return;const p=cashoutPlan(kidId,weeks);const k=kidCfg(kidId);
+  if(!confirm(`Cash out ${k.name}${weeks.length>1?` for ${weeks.length} weeks in one lump`:""}? Hand over ${money(p.cash)} in cash${p.owed?` and collect ${money(p.owed)}`:""}.`))return;
   const month=ymd().slice(0,7);S.busy["co:"+kidId]=true;render();
   try{await runTransaction(db,async t=>{
-    const wref=weekRef(kidId,wk),bref=doc(db,"bank",kidId);const ws=await t.get(wref),bs=await t.get(bref);
-    const w=Object.assign({kidId,week:wk,entries:[],deductions:[]},ws.exists()?ws.data():{});if(w.closed)throw new Error("That week is already cashed out.");
+    const refs=weeks.map(wk=>weekRef(kidId,wk)),bref=doc(db,"bank",kidId);const snaps=[];for(const r of refs)snaps.push(await t.get(r));const bs=await t.get(bref);
+    const ws=snaps.map((sn,i)=>Object.assign({kidId,week:weeks[i],entries:[],deductions:[]},sn.exists()?sn.data():{}));if(ws.some(w=>w.closed))throw new Error("One of those weeks is already cashed out.");
     const b=Object.assign({goalBal:{},invest:0,give:0,archived:[],stats:{}},bs.exists()?bs.data():{});
     const addGoal=(id,amt)=>{if(amt)b.goalBal[id]=r2((b.goalBal[id]||0)+amt);};
     for(const id in p.saveParts)addGoal(id,p.saveParts[id]);b.invest=r2((b.invest||0)+p.storage.invest);b.give=r2((b.give||0)+p.storage.give);
     if(p.interestDue){b.lastInterestMonth=month;addGoal(p.interestTo,p.goalInterest);}
-    b.stats.chores=(b.stats.chores||0)+p.chores;b.stats.goalHits=(b.stats.goalHits||0)+(p.met?1:0);b.stats.earned=r2((b.stats.earned||0)+Math.max(0,p.net)+p.bonus);
-    w.closed=true;w.cashout={at:Date.now(),by:parentName(),net:p.net,goal:p.goal,met:p.met,bonus:p.bonus,interest:p.interest,cash:p.cash,owed:p.owed,storage:p.storage,saveTo:p.saveTo,saveParts:p.saveParts,goalInterest:p.goalInterest};
-    w.deductions=w.deductions.map(d=>d.status==="active"?{...d,status:"final"}:d);
-    t.set(wref,w);t.set(bref,b);});toast(`${k.name} is cashed out.`);}
+    b.stats.chores=(b.stats.chores||0)+p.chores;b.stats.goalHits=(b.stats.goalHits||0)+p.goalHits;b.stats.earned=r2((b.stats.earned||0)+p.earned+p.bonus);
+    const at=Date.now(),last=ws.length-1;
+    ws.forEach((w,i)=>{const x=p.parts[i],final=i===last;w.closed=true;
+      w.cashout={at,by:parentName(),weeks,net:x.net,goal:x.goal,met:x.met,bonus:x.bonus,interest:final?p.interest:0,cash:final?p.cash:0,owed:final?p.owed:0,storage:final?p.storage:{save:0,invest:0,give:0},saveParts:final?p.saveParts:{},goalInterest:final?p.goalInterest:0,combinedInto:final?null:weeks[last]};
+      w.deductions=w.deductions.map(d=>d.status==="active"?{...d,status:"final"}:d);t.set(refs[i],w);});
+    t.set(bref,b);});toast(`${k.name} is cashed out.`);}
   catch(e){toast("Couldn't cash out: "+errMsg(e));}
   finally{delete S.busy["co:"+kidId];render();}
 }
