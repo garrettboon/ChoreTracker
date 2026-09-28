@@ -7,7 +7,7 @@ import { VAPID_KEY } from "./config.js";
 
 const CREATURES=[["dragon","🐉","Dragon"],["fox","🦊","Fox"],["frog","🐸","Frog"],["dino","🦖","T. rex"],["unicorn","🦄","Unicorn"],["octopus","🐙","Octopus"],["shark","🦈","Shark"],["turtle","🐢","Turtle"],["owl","🦉","Owl"],["bee","🐝","Bee"],["tiger","🐯","Tiger"],["penguin","🐧","Penguin"]];
 const S={phase:"loading",user:null,role:null,device:null,config:null,bank:{},prefs:{},weeks:{},devices:[],codes:[],ptab:"activity",viewKid:null,busy:{},
-  ui:{goalInput:"",newGoal:{name:"",target:""},ded:{kid:"",amount:0.25,reason:"",how:""},buy:null,pgoal:{},editGoal:null,split:{key:null,base:"",dirty:false,shares:{}},draft:null,pickCreature:false,prevPct:{},pair:{code:"",name:""},newCode:{role:"display"},log:{kid:"",chore:""}}};
+  ui:{goalInput:"",newGoal:{name:"",target:""},ded:{kid:"",amount:0.25,reason:"",how:""},buy:null,pgoal:{},editGoal:null,kidView:null,adjust:null,split:{key:null,base:"",dirty:false,shares:{}},draft:null,pickCreature:false,prevPct:{},pair:{code:"",name:""},newCode:{role:"display"},log:{kid:"",chore:""}}};
 
 /* ---------- helpers ---------- */
 const $=s=>document.querySelector(s);
@@ -287,14 +287,21 @@ function viewDisplay(){
 /* ---------- parent ---------- */
 function viewParent(){
   const adults=kidsSorted().filter(k=>k.adult);
-  const tabs=[...adults.map(a=>["me:"+a.id,a.name]),["activity","Activity"],["board","Leaderboard"],["deductions","Deductions"],["cashout","Cash-out"],["goals","Savings goals"],["devices","Devices"],["settings","Settings"]];
+  const tabs=[...adults.map(a=>["me:"+a.id,a.name]),["activity","Activity"],["board","Leaderboard"],["kids","Kid views"],["deductions","Deductions"],["cashout","Cash-out"],["goals","Savings goals"],["devices","Devices"],["settings","Settings"]];
   if(!tabs.some(t=>t[0]===S.ptab))S.ptab="activity";
   let body;if(S.ptab.startsWith("me:")){S.viewKid=S.ptab.slice(3);body=viewKid(S.viewKid,true);}
-  else body={activity:pActivity,board:pBoard,deductions:pDeductions,cashout:pCashout,goals:pGoals,devices:pDevices,settings:pSettings}[S.ptab]();
+  else body={activity:pActivity,board:pBoard,kids:pKids,deductions:pDeductions,cashout:pCashout,goals:pGoals,devices:pDevices,settings:pSettings}[S.ptab]();
   return `<div class="wrap"><header class="p-head"><div><h1>Parent</h1><p class="sub">Signed in as ${esc(parentName())}</p></div><button class="btn ghost small" data-act="sign-out">Sign out</button></header>
   <nav class="tabs">${tabs.map(t=>`<button class="${S.ptab===t[0]?"on":""}" data-act="ptab" data-tab="${t[0]}">${esc(t[1])}</button>`).join("")}</nav>${body}</div>`;
 }
 function pBoard(){return `<div class="pboard">${viewDisplay()}</div>`;}
+function pKids(){
+  const kids=kidsSorted().filter(k=>!k.adult),cur=kids.find(k=>k.id===S.ui.kidView);
+  if(!cur)return `<section class="card"><div class="sec-head"><h2>See a kid's screen</h2></div><p class="hint" style="margin:0 0 12px">Opens their tablet's screen exactly as they see it. Anything you tap there counts as them.</p>
+    ${kids.length?`<div class="kid-list">${kids.map(k=>`<button class="choice" data-act="kid-view" data-kid="${k.id}"><span class="e">${creatureFor(k.id)[1]}</span><span><b>${esc(k.name)}</b><small>🔥 ${streak(k.id)} day streak</small></span></button>`).join("")}</div>`:`<p class="empty">No kids set up yet.</p>`}</section>`;
+  S.viewKid=cur.id;
+  return `<div class="asbar"><button class="btn ghost small" data-act="kid-view" data-kid="">← All kids</button><span>This is <b>${esc(cur.name)}</b>'s screen. Taps here count as ${esc(cur.name)}.</span></div>${viewKid(cur.id,true)}`;
+}
 function pActivity(){
   const y=addDays(ymd(),-1);let flags="";
   for(const k of kidsSorted().filter(k=>!k.adult)){const ksy=kidState(k.id),done=ksy.prLog[y]||[];
@@ -363,7 +370,15 @@ function pGoals(){
       ${b&&b.kid===k.id&&b.goal===g.id?`<span class="row" style="flex:0 1 260px"><input type="number" step="0.25" inputmode="decimal" aria-label="Purchase amount" data-bind="buy.amount" data-type="num" value="${esc(b.amount)}"><button class="btn small" data-act="confirm-buy">Log</button><button class="btn ghost small" data-act="cancel-buy">Cancel</button></span>`
       :`<span class="row" style="flex:0 0 auto;gap:6px">${g.id==="general"?"":`<button class="btn ghost small" data-act="edit-goal" data-kid="${k.id}" data-goal="${g.id}">Edit</button>`}<button class="btn ghost small" data-act="buy-goal" data-kid="${k.id}" data-goal="${g.id}" ${g.balance>0?"":"disabled"}>Log purchase</button></span>`}</div>`;}).join("")}
     <div class="mini-form"><input placeholder="New goal" aria-label="New goal name" data-bind="pgoal.${k.id}.name" value="${esc(pg.name)}"><input type="number" inputmode="decimal" placeholder="$" aria-label="Goal amount" data-bind="pgoal.${k.id}.target" value="${esc(pg.target)}"><button class="btn small" data-act="p-add-goal" data-kid="${k.id}">Add</button></div>
-    ${ks.archived.length?`<p class="hint">Bought so far: ${ks.archived.map(a=>`${esc(a.name)} (${money(a.bought)}, ${shortDate(a.date)})`).join(", ")}</p>`:""}</section>`;}).join("");
+    ${ks.archived.length?`<p class="hint">Bought so far: ${ks.archived.map(a=>`${esc(a.name)} (${money(a.bought)}, ${shortDate(a.date)})`).join(", ")}</p>`:""}
+    ${balanceForm(k,ks)}</section>`;}).join("");
+}
+function balanceForm(k,ks){
+  const a=S.ui.adjust;if(!a||a.kid!==k.id)return `<div class="row" style="margin-top:12px"><button class="btn ghost small" data-act="adjust-bal" data-kid="${k.id}">Set balances</button></div>`;
+  const field=(label,bind,val)=>`<label>${esc(label)}<input type="number" step="0.01" min="0" inputmode="decimal" data-type="num" data-bind="${bind}" value="${esc(val)}"></label>`;
+  return `<div class="adjust"><h3>What ${esc(k.name)} has right now</h3><p class="hint" style="margin:0 0 10px">Use this for money from before the app, or to fix a mistake. Spend is handed over as cash each week, so it has no balance here.</p>
+    <div class="grid-2">${ks.goals.map(g=>field(g.name,`adjust.goalBal.${g.id}`,a.goalBal[g.id])).join("")}${field("Invest","adjust.invest",a.invest)}${field("Give","adjust.give",a.give)}</div>
+    <div class="row" style="margin-top:12px"><button class="btn small" data-act="save-bal">Save balances</button><button class="btn ghost small" data-act="cancel-bal">Cancel</button></div></div>`;
 }
 function pDevices(){
   const nc=S.ui.newCode;const roleLabel=d=>d.role==="display"?"Leaderboard":((kidCfg(d.kidId)||{}).name||"Removed person")+"'s tablet";
@@ -492,6 +507,12 @@ async function handleAct(act,ds){
   case "save-split":{const s=S.ui.split,wk=activeWeek(kid),shares={};let tot=0;for(const g of kidState(kid).goals){const v=Math.max(0,Math.round(Number(s.shares[g.id])||0));if(v>0){shares[g.id]=v;tot+=v;}}
     if(tot!==100){toast("The split needs to add up to 100%.");return;}s.dirty=false;
     guard(setDoc(weekRef(kid,wk),{kidId:kid,week:wk,saveSplit:shares},{mergeFields:["kidId","week","saveSplit"]}),"Savings split saved.");break;}
+  case "kid-view": S.ui.kidView=ds.kid||null;S.ui.pickCreature=false;break;
+  case "adjust-bal":{const ks=kidState(ds.kid),gb={};ks.goals.forEach(g=>gb[g.id]=g.balance);S.ui.buy=null;S.ui.editGoal=null;S.ui.adjust={kid:ds.kid,goalBal:gb,invest:ks.invest,give:ks.give};break;}
+  case "cancel-bal": S.ui.adjust=null;break;
+  case "save-bal":{const a=S.ui.adjust;if(!a)return;const vals=[...Object.values(a.goalBal),a.invest,a.give].map(r2);if(vals.some(n=>n<0)){toast("Balances can't be negative.");return;}
+    const goalBal={};for(const id in a.goalBal)goalBal[id]=r2(a.goalBal[id]);S.ui.adjust=null;
+    guard(setDoc(doc(db,"bank",a.kid),{goalBal,invest:r2(a.invest),give:r2(a.give)},{merge:true}),"Balances saved.");break;}
   case "p-add-goal":{const pg=S.ui.pgoal[ds.kid]||{};const name=String(pg.name||"").trim();const t=r2(pg.target);if(!name||!(t>0)){toast("Give the goal a name and an amount.");return;}
     S.ui.pgoal[ds.kid]={name:"",target:""};guard(setDoc(doc(db,"prefs",ds.kid),{goals:{[uid()]:{name,target:t,created:Date.now()}}},{merge:true}));break;}
   case "make-code":{const role=S.ui.newCode.role;const code=String(Math.floor(100000+Math.random()*900000));

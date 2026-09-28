@@ -65,7 +65,7 @@ The first deploy takes a few minutes and may ask to enable some Google Cloud API
 
 Run `firebase deploy` again any time you change a file.
 
-You don't have to deploy by hand, though. Pushing to GitHub does it: every push to `main`, and every push to a `claude/` branch (the branches Claude Code works on), runs the **Deploy to Firebase** action in `.github/workflows/deploy.yml`. Before deploying, the action checks that the pushed commit includes whatever is live now, so a branch that started from older code can't quietly undo a change. If it refuses, merge the branch it names into yours and push again, or run the action by hand from the **Actions** tab with **force** ticked to deploy anyway. Because a deploy can come from a `claude/` branch, merge that branch into `main` afterwards (a pull request works) so `main` stays current. Progress and errors show under the repository's **Actions** tab.
+You don't have to deploy by hand, though. Pushing to GitHub does it: every push to `main`, and every push to a `claude/` branch (the branches Claude Code works on), runs the **Deploy to Firebase** action in `.github/workflows/deploy.yml`. Before deploying, the action checks that the pushed commit includes whatever is live now, so a branch that started from older code can't quietly undo a change. If it refuses, merge the branch it names into yours and push again, or run the action by hand from the **Actions** tab with **force** ticked to deploy anyway. After a successful deploy from a `claude/` branch, the action moves `main` forward to that branch, so `main` always matches the live site. Progress and errors show under the repository's **Actions** tab.
 
 ## 6. First sign-in (your phone)
 
@@ -87,7 +87,7 @@ For the leaderboard device, keep it plugged in. The app asks the screen to stay 
 ## Everyday use
 
 - **Kids** tap chores, check off their daily list, set their goal after Sunday cash-out, split the week's savings between their goals, and choose where their bonus and interest go.
-- **Parents** use **Activity** to review and reverse chores, or log one for someone without their tablet; **Leaderboard** to see the family board on a phone; **Deductions** to add, mark earned back, or remove; **Cash-out** on Sunday night; **Savings goals** to add or edit goals and log purchases; **Devices** to pair or unpair; and **Settings** for people, chores (drag the ⠿ handle to reorder them), rates, reminder times, and interest.
+- **Parents** use **Activity** to review and reverse chores, or log one for someone without their tablet; **Leaderboard** to see the family board on a phone; **Kid views** to open any kid's screen exactly as they see it; **Deductions** to add, mark earned back, or remove; **Cash-out** on Sunday night; **Savings goals** to add or edit goals, log purchases, or set a child's balances (for money from before the app, or to fix a mistake); **Devices** to pair or unpair; and **Settings** for people, chores (drag the ⠿ handle to reorder them), rates, reminder times, and interest.
 - **Streaks** count days when every daily item was checked off. Once a day is complete it stays complete, even if the list changes later that day.
 - **Reminders** go out at each person's reminder times (Mountain time), listing only what's still unchecked. Nothing is sent if everything's done.
 
