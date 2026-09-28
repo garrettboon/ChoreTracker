@@ -1,6 +1,6 @@
 {
-  "name": "Boon Bank",
-  "short_name": "Boon Bank",
+  "name": "Boon Chore Tracker",
+  "short_name": "Boon Chores",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#EDF3EA",

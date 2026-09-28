@@ -1,4 +1,4 @@
-# Boon Bank: Game Layer Plan
+# Boon Chore Tracker: Game Layer Plan
 
 XP, levels, unlocks, streak mechanics, rewards, quests, and chore battles.
 

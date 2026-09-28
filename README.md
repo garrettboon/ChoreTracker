@@ -1,4 +1,4 @@
-# Boon Bank: Firebase setup
+# Boon Chore Tracker: Firebase setup
 
 This folder is the complete app. You'll create a Firebase project, fill in three small settings, and deploy with one command. Plan on about 45 minutes the first time.
 
@@ -66,28 +66,33 @@ The first deploy takes a few minutes and may ask to enable some Google Cloud API
 
 Run `firebase deploy` again any time you change a file.
 
+You don't have to deploy by hand, though. Pushing to GitHub does it: every push to `main`, and every push to a `claude/` branch (the branches Claude Code works on), runs the **Deploy to Firebase** action in `.github/workflows/deploy.yml`. Before deploying, the action checks that the pushed commit includes whatever is live now, so a branch that started from older code can't quietly undo a change. If it refuses, merge the branch it names into yours and push again, or run the action by hand from the **Actions** tab with **force** ticked to deploy anyway. After a successful deploy from a `claude/` branch, the action moves `main` forward to that branch, so `main` always matches the live site. Progress and errors show under the repository's **Actions** tab.
+
 ## 6. First sign-in (your phone)
 
 1. Open the Hosting URL in Chrome and tap **Parent sign-in**. Sign in with one of the accounts in `PARENT_EMAILS`.
 2. The first parent sign-in creates the starter setup: Dad, Teslyn, Warren, and Maggie, with your chores, rates, and interest tiers. Check the **Settings** tab and adjust anything.
-3. Your lane as Dad is its own tab at the start of the Parent screen.
+3. Your lane as Dad is its own tab at the start of the Parent screen. To give another grown-up a lane, add them under **Settings** > **People** and tick **Adult**.
 
 ## 7. Pair each tablet
 
 Repeat for each kid's tablet and the leaderboard device:
 
-1. On your phone: **Devices** tab > choose who the device is for > **Create pairing code**. Codes last 15 minutes.
-2. On the tablet: open the Hosting URL in Chrome, open Chrome's menu, and tap **Add to Home screen** (or **Install app**). Open Boon Bank from the new home-screen icon.
+1. On your phone: **Settings** tab > **Devices** > choose who the device is for > **Create pairing code**. Codes last 15 minutes.
+2. On the tablet: open the Hosting URL in Chrome, open Chrome's menu, and tap **Add to Home screen** (or **Install app**). Open Boon Chores from the new home-screen icon.
 3. Tap **Pair this device**, enter the code, and give the device a name.
-4. On a kid's tablet, tap **Turn on chore reminders** and allow notifications. The Devices tab on your phone will show "Reminders on."
+4. On a kid's tablet, tap **Turn on chore reminders** and allow notifications. The Devices section under Settings on your phone will show "Reminders on."
 
 For the leaderboard device, keep it plugged in. The app asks the screen to stay awake while it's open; if it still dims, turn on **Stay awake** in Android's Developer options (it keeps the screen on while charging).
 
 ## Everyday use
 
-- **Kids** tap chores, check off their daily list, set their goal after Sunday cash-out, and choose where their bonus, savings, and interest go.
-- **Parents** use **Game** to confirm battle results and see everyone's level; **Activity** to review and reverse chores, or log one for someone without their tablet; **Deductions** to add, mark earned back, or remove; **Cash-out** on Sunday night; **Savings goals** to log purchases; **Devices** to pair or unpair; and **Settings** for people, chores, rates, reminder times, and interest.
+- **Kids** tap chores (and confirm, so a stray tap doesn't count), check off their daily list, set their goal after Sunday cash-out, split the week's savings between their goals, and choose where their bonus and interest go. Under **My money**, each card shows its total; tap Save or Invest to open the details.
+- **Parents** use **Game** to confirm battle results and see everyone's level; **Activity** to review and reverse chores, or log one for someone without their tablet; **Views** for the family leaderboard and to open any kid's screen exactly as they see it; **Actions** for deductions (add, mark earned back, or remove) and the Sunday cash-out (if a week was missed, it's combined with the next one into a single lump, with each week's goal judged on its own); **Savings goals** to add or edit goals, log purchases, or set a child's balances (for money from before the app, or to fix a mistake); and **Settings** for devices, people (tick **Adult** for a grown-up, who gets their own lane and tab instead of a place in the kid list), chores (drag the ⠿ handle to reorder them; tick **Ask what it was** on an open-ended chore like Parent choice so kids must describe what they did), rates, reminder times, and interest.
+- **Goal bonus** is 25% of the weekly goal, paid at cash-out when the week's earnings reach the goal.
+- **Streaks** count days when every daily item was checked off. Once a day is complete it stays complete, even if the list changes later that day.
 - **Reminders** go out at each person's reminder times (Mountain time), listing only what's still unchecked. Nothing is sent if everything's done.
+- **Interest** on Invest is added once a month at cash-out, rounded down to the nearest quarter. The kid's Invest card shows the exact amount coming.
 
 ## Levels, XP, and battles
 
@@ -142,7 +147,7 @@ To click around locally, run `npx firebase emulators:start --project demo-boon` 
 
 - **"This Google account isn't on this family's parent list."** The email isn't in `functions/.env`, or you haven't redeployed since adding it.
 - **A tablet shows the pairing screen again.** It was unpaired, or the browser's data was cleared. Make a new code and pair it again.
-- **No reminders.** Check that the tablet shows "Reminders on" in Devices, that notifications for Chrome and the app are allowed in Android settings, and that the reminder time has passed while something was still unchecked.
+- **No reminders.** Check that the tablet shows "Reminders on" under Devices in Settings, that notifications for Chrome and the app are allowed in Android settings, and that the reminder time has passed while something was still unchecked.
 - **Deploy error about billing or APIs.** Confirm the project is on Blaze, then run `firebase deploy` again.
 - **First deploy with levels fails with an Eventarc or "service agent" permission error.** XP is awarded by functions that react to database changes, and those use Google's Eventarc service. On a project's first such deploy, Google sometimes needs a few minutes to set up permissions. Wait 5 minutes and deploy again (in GitHub: Actions > Deploy to Firebase > **Re-run jobs**). If it says an API must be enabled, enable it in the Google Cloud console (APIs & Services) and re-run.
 - **See server logs:** Firebase console > Functions > pick a function > **Logs**.

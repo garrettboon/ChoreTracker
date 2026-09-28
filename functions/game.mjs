@@ -1,4 +1,4 @@
-// Boon Bank game rules: XP, levels, unlocks, streaks, badges, and battles.
+// Boon Chore Tracker game rules: XP, levels, unlocks, streaks, badges, and battles.
 // Pure functions only. The browser imports this file directly; Cloud Functions
 // load an identical copy at functions/game.mjs (run `npm run sync` after editing).
 

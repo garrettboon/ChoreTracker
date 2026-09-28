@@ -45,6 +45,8 @@ const DEFAULT_CONFIG = {
 function parentList() {
   return PARENT_EMAILS.value().split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
 }
+// Chores that make the kid say what they actually did (a chore named "Parent choice" does by default).
+const needsNote = (c) => c.ask === true || (c.ask == null && /parent'?s?\s*choice/i.test(c.name || ""));
 function isParentAuth(auth) {
   return !!(auth && auth.token && auth.token.email && auth.token.email_verified &&
     parentList().includes(String(auth.token.email).toLowerCase()));
@@ -110,12 +112,13 @@ exports.pairDevice = onCall(async (req) => {
 });
 
 // Logs one chore inside a transaction. Shared by completeChore and Time Trial finishes.
-function logChore(kidId, choreId, by) {
+function logChore(kidId, choreId, by, note = "") {
   return db.runTransaction(async (t) => {
     const cfg = (await t.get(db.doc("app/config"))).data();
     const kid = cfg && cfg.kids.find((k) => k.id === kidId);
     const ch = cfg && cfg.chores.find((c) => c.id === choreId && c.kind === "family");
     if (!kid || !ch) throw new HttpsError("invalid-argument", "Unknown chore.");
+    if (!by && needsNote(ch) && !note) throw new HttpsError("invalid-argument", "Say what the chore was first.");
     if (ch.assign !== "pool" && ch.assign !== kidId) throw new HttpsError("permission-denied", "That chore belongs to someone else.");
 
     const L = localParts(cfg.timezone || FAMILY_TZ);
@@ -141,6 +144,7 @@ function logChore(kidId, choreId, by) {
       choreId, name: ch.name, amount, date: L.date, status: "ok",
     };
     if (by) entry.by = by;
+    if (note) entry.detail = note;
     t.set(db.doc(`weeks/${wk}_${kidId}`), { kidId, week: wk, entries: FieldValue.arrayUnion(entry) }, { merge: true });
     return { amount, week: wk, entryId: entry.id };
   });
@@ -152,6 +156,7 @@ exports.completeChore = onCall(async (req) => {
   if (!auth) throw new HttpsError("unauthenticated", "Not signed in.");
   const kidId = String((req.data && req.data.kidId) || "");
   const choreId = String((req.data && req.data.choreId) || "");
+  const note = String((req.data && req.data.note) || "").trim().slice(0, 200);
   let by = null;
   if (isParentAuth(auth)) {
     by = auth.token.name || auth.token.email;
@@ -161,7 +166,7 @@ exports.completeChore = onCall(async (req) => {
       throw new HttpsError("permission-denied", "This device can't log chores for that person.");
     }
   }
-  const r = await logChore(kidId, choreId, by);
+  const r = await logChore(kidId, choreId, by, note);
   return { amount: r.amount, week: r.week };
 });
 
@@ -220,6 +225,8 @@ async function getConfig() {
 }
 const tzOf = (cfg) => (cfg && cfg.timezone) || FAMILY_TZ;
 const prIdsOf = (cfg) => cfg.chores.filter((c) => c.kind === "pr").map((c) => c.id);
+// Days the app marked complete (prefs.prDone). They stay complete even if the checklist changes later.
+const doneDates = (prefs) => Object.keys((prefs && prefs.prDone) || {}).filter((d) => prefs.prDone[d]);
 // Milliseconds until the next local midnight.
 function endOfLocalDay(cfg, now = Date.now()) {
   const L = localParts(tzOf(cfg), new Date(now));
@@ -228,15 +235,16 @@ function endOfLocalDay(cfg, now = Date.now()) {
 const personName = (cfg, id) => ((cfg.kids.find((k) => k.id === id) || {}).name || "Someone");
 
 // Who the caller is acting as. Kid tablets act as their paired person. A signed-in parent
-// acts as an adult profile passed in `as`, which must be theirs if it has an email set.
+// acts as the person passed in `as` (their own adult tab, or a kid's screen opened from Views).
+// An adult profile with an email set belongs to that parent only.
 async function actor(req, cfg) {
   const auth = req.auth;
   if (!auth) throw new HttpsError("unauthenticated", "Not signed in.");
   if (isParentAuth(auth)) {
     const as = String((req.data && req.data.as) || "");
     const p = cfg.kids.find((k) => k.id === as);
-    if (!p || !p.adult) throw new HttpsError("permission-denied", "Open your own profile tab first.");
-    if (p.email && p.email.toLowerCase() !== String(auth.token.email).toLowerCase()) {
+    if (!p) throw new HttpsError("permission-denied", "Open a person's screen first.");
+    if (p.adult && p.email && p.email.toLowerCase() !== String(auth.token.email).toLowerCase()) {
       throw new HttpsError("permission-denied", `That's ${p.name}'s profile.`);
     }
     return { id: p.id, parent: true, by: auth.token.name || auth.token.email };
@@ -318,7 +326,7 @@ async function applyXp(personId, adds = [], removes = [], mutate = null) {
 async function choreBoost(cfg, personId) {
   const [p, x] = await db.getAll(db.doc(`prefs/${personId}`), db.doc(`xp/${personId}`));
   const prefs = p.exists ? p.data() : {};
-  const frozen = (x.exists && x.data().frozenDates) || [];
+  const frozen = [...((x.exists && x.data().frozenDates) || []), ...doneDates(prefs)];
   const today = localParts(tzOf(cfg)).date;
   return G.streakBoost(cfg, G.streak(prefs.prLog, prIdsOf(cfg), today, frozen));
 }
@@ -374,7 +382,7 @@ async function syncBadges(cfg, personId) {
   const counts = xd.counts || {};
   const list = G.badgeList({
     chores: (st.chores || 0) + live, goalHits: st.goalHits || 0, redemptions: st.redemptions || 0,
-    bestStreak: G.bestStreak(prefs.prLog, prIdsOf(cfg), xd.frozenDates || []),
+    bestStreak: G.bestStreak(prefs.prLog, prIdsOf(cfg), [...(xd.frozenDates || []), ...doneDates(prefs)]),
     saved, invest: bank.invest || 0, give: bank.give || 0, bought: archived.length,
     wins: counts.win || 0, giant: counts.giant || 0,
   });
@@ -385,13 +393,13 @@ async function syncBadges(cfg, personId) {
 
 // Checklist XP and streak milestones. `sinceDate` limits milestones to runs reaching them
 // on or after that date (triggers only pay for today and yesterday).
-function checklistXp(cfg, prLog, frozen, dates, sinceDate) {
+function checklistXp(cfg, prLog, done, frozen, dates, sinceDate) {
   const prIds = prIdsOf(cfg);
   const adds = [];
   for (const d of dates) {
-    if (G.dayComplete(prLog, prIds, d, [])) adds.push({ key: "pr:" + d, amount: G.XP.checklist, reason: "Daily checklist done", count: ["pr"] });
+    if (G.dayComplete(prLog, prIds, d, done)) adds.push({ key: "pr:" + d, amount: G.XP.checklist, reason: "Daily checklist done", count: ["pr"] });
   }
-  for (const m of G.streakMilestones(prLog, prIds, frozen)) {
+  for (const m of G.streakMilestones(prLog, prIds, [...frozen, ...done])) {
     if (!sinceDate || m.date >= sinceDate) {
       adds.push({ key: m.key, amount: m.amount, reason: `${m.days}-day streak`, count: ["streak"], freeze: m.days === 30 });
     }
@@ -399,13 +407,13 @@ function checklistXp(cfg, prLog, frozen, dates, sinceDate) {
   return adds;
 }
 // Keeps bestStreak current and refunds a freeze if the frozen day was completed after all.
-function streakMutator(cfg, prLog) {
+function streakMutator(cfg, prLog, done) {
   const prIds = prIdsOf(cfg);
   return (x) => {
     let changed = false;
-    const best = G.bestStreak(prLog, prIds, x.frozenDates || []);
+    const best = G.bestStreak(prLog, prIds, [...(x.frozenDates || []), ...done]);
     if (best > (x.bestStreak || 0)) { x.bestStreak = best; changed = true; }
-    const refund = (x.frozenDates || []).filter((d) => G.dayComplete(prLog, prIds, d, []));
+    const refund = (x.frozenDates || []).filter((d) => G.dayComplete(prLog, prIds, d, done));
     if (refund.length) {
       x.frozenDates = x.frozenDates.filter((d) => !refund.includes(d));
       x.freezes = Math.min(G.FREEZE_CAP, (x.freezes || 0) + refund.length);
@@ -431,13 +439,15 @@ exports.onPrefsWrite = onDocumentWritten("prefs/{id}", async (event) => {
   const before = event.data.before.exists ? event.data.before.data() : {};
   const after = event.data.after.exists ? event.data.after.data() : null;
   const personId = event.params.id;
-  if (!after || JSON.stringify(before.prLog || {}) === JSON.stringify(after.prLog || {})) return;
+  const same = (k) => JSON.stringify(before[k] || {}) === JSON.stringify(after[k] || {});
+  if (!after || (same("prLog") && same("prDone"))) return;
   const cfg = await getConfig();
   if (!cfg || !cfg.kids.some((k) => k.id === personId)) return;
   const today = localParts(tzOf(cfg)).date, yesterday = addDays(today, -1);
   const xs = await db.doc(`xp/${personId}`).get();
   const frozen = (xs.exists && xs.data().frozenDates) || [];
-  await applyXp(personId, checklistXp(cfg, after.prLog, frozen, [today, yesterday], yesterday), [], streakMutator(cfg, after.prLog));
+  const done = doneDates(after);
+  await applyXp(personId, checklistXp(cfg, after.prLog, done, frozen, [today, yesterday], yesterday), [], streakMutator(cfg, after.prLog, done));
   await syncBadges(cfg, personId);
 });
 
@@ -459,12 +469,13 @@ async function backfillPerson(cfg, personId) {
   for (const d of weeks.docs) adds.push(...(await weekXp(cfg, personId, null, d.data(), true)).adds);
   const [p, b, x] = await db.getAll(db.doc(`prefs/${personId}`), db.doc(`bank/${personId}`), db.doc(`xp/${personId}`));
   const prLog = (p.exists && p.data().prLog) || {};
+  const done = doneDates(p.exists ? p.data() : {});
   const frozen = (x.exists && x.data().frozenDates) || [];
-  adds.push(...checklistXp(cfg, prLog, frozen, Object.keys(prLog), null));
+  adds.push(...checklistXp(cfg, prLog, done, frozen, [...new Set([...Object.keys(prLog), ...done])], null));
   ((b.exists && b.data().archived) || []).forEach((a, i) => adds.push({
     key: "buy:" + i, amount: G.XP.savingsGoal, reason: "Bought: " + (a.name || "savings goal"), count: ["sgoal"],
   }));
-  await applyXp(personId, adds, [], streakMutator(cfg, prLog));
+  await applyXp(personId, adds, [], streakMutator(cfg, prLog, done));
   await syncBadges(cfg, personId);
   const after = await db.doc(`xp/${personId}`).get();
   return after.exists ? { total: after.data().total, level: after.data().maxLevel } : { total: 0, level: 1 };
@@ -489,7 +500,7 @@ async function runFreezes() {
     const [p, x] = await db.getAll(db.doc(`prefs/${k.id}`), db.doc(`xp/${k.id}`));
     if (!x.exists || !(x.data().freezes > 0)) continue;
     const prLog = (p.exists && p.data().prLog) || {};
-    const frozen = x.data().frozenDates || [];
+    const frozen = [...(x.data().frozenDates || []), ...doneDates(p.exists ? p.data() : {})];
     if (G.dayComplete(prLog, prIds, y, frozen)) continue;
     if (G.streakEnding(prLog, prIds, addDays(y, -1), frozen) < 1) continue;
     await applyXp(k.id, [], [], (xd) => {
@@ -577,6 +588,7 @@ exports.createBattle = onCall(async (req) => {
   if (G.TIMED.includes(mode.id)) {
     const ch = cfg.chores.find((c) => c.id === String(data.choreId || "") && c.kind === "family");
     if (!ch) throw new HttpsError("invalid-argument", "Pick a chore.");
+    if (needsNote(ch)) throw new HttpsError("invalid-argument", "Pick a chore that doesn't need a description.");
     if (mode.id === "timetrial" && ch.assign !== "pool") throw new HttpsError("invalid-argument", "Time Trials need an Anyone chore.");
     if (mode.id === "ghost" && ch.assign !== "pool" && ch.assign !== me.id) throw new HttpsError("invalid-argument", "That chore belongs to someone else.");
     const room = await choreRoom(cfg, ch, players);
@@ -622,7 +634,7 @@ exports.createBattle = onCall(async (req) => {
     b.pb = (xd.pb || {})[params.choreId] ?? null;
   }
   const ref = await db.collection("battles").add(b);
-  if (opp) await pushTo([opp.id], `⚔️ ${meP.name} challenged you!`, `${mode.emoji} ${mode.name}. Open Boon Bank to accept or pass.`);
+  if (opp) await pushTo([opp.id], `⚔️ ${meP.name} challenged you!`, `${mode.emoji} ${mode.name}. Open Boon Chores to accept or pass.`);
   return { id: ref.id };
 });
 
@@ -740,7 +752,7 @@ async function afterSettle(cfg, id) {
   const b = s.data();
   if (b.status === "confirming" && b.live && !b.notified) {
     await ref.update({ notified: true });
-    await pushTo(b.players, "⚔️ Battle over!", "Open Boon Bank to see who won.");
+    await pushTo(b.players, "⚔️ Battle over!", "Open Boon Chores to see who won.");
   }
   if (b.status !== "done" || !b.live) return;
   const mode = G.modeById(b.mode);

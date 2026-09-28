@@ -99,7 +99,7 @@ test("ghost race and adults: a parent acts as their own adult profile only", asy
   await reset();
   const mom = await parentClient("parent@test.com"), dad = await parentClient("dad@test.com");
   await rejects(mom.call("createBattle", { mode: "ghost", choreId: "c1", as: "dad" }), /Dad's profile/);
-  await rejects(dad.call("createBattle", { mode: "ghost", choreId: "c1", as: "k1" }), /own profile/);
+  await rejects(dad.call("createBattle", { mode: "ghost", choreId: "c1", as: "nobody" }), /Open a person/);
   const { id } = await dad.call("createBattle", { mode: "ghost", choreId: "c1", as: "dad" });
   assert.equal((await battle(id)).status, "active");
   await dad.call("startAttempt", { id, as: "dad" });

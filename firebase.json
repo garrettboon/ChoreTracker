@@ -3,7 +3,7 @@
     "public": "public",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "headers": [
-      { "source": "**/*.@(js|html|webmanifest)", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
+      { "source": "**/*.@(js|html|webmanifest|json)", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
     ]
   },
   "firestore": { "rules": "firestore.rules", "indexes": "firestore.indexes.json" },

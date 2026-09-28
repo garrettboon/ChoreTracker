@@ -1,13 +1,27 @@
 name: Deploy to Firebase
 
+# The live site updates on every push to main and on every push to a
+# claude/... branch (the branches Claude Code works on). Before deploying,
+# the run checks that the pushed commit includes whatever is live right now,
+# so a branch that started from older code can't quietly undo a change.
+# After a successful deploy from a claude/ branch, main is moved forward to
+# that branch, so main always matches the live site.
 on:
   push:
-    branches: [main]
-  pull_request:          # runs the tests only; deploy is skipped
+    branches: [main, 'claude/**']
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Deploy even if this would undo changes that are live now"
+        type: boolean
+        default: false
+
+concurrency:
+  group: firebase-deploy
+  cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write   # lets the workflow move main forward after a deploy
   id-token: write   # lets GitHub prove its identity to Google (no key file)
 
 jobs:
@@ -35,14 +49,33 @@ jobs:
         run: npm run test:emulators
 
   deploy:
-    needs: test
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: test   # a failing test blocks the deploy
     runs-on: ubuntu-latest
-    concurrency:
-      group: firebase-deploy
-      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history, so the live commit can be compared
+
+      - name: Check that this commit includes what is live now
+        if: ${{ !inputs.force }}
+        run: |
+          site="https://$(jq -r .projects.default .firebaserc).web.app"
+          live="$(curl -sf --max-time 15 "$site/version.json?t=$(date +%s)" | jq -r '.commit // empty' || true)"
+          if ! [[ "$live" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "No live commit recorded at $site/version.json yet; skipping the check."
+          elif ! git cat-file -e "$live^{commit}" 2>/dev/null; then
+            echo "::warning::Live commit $live is not in this repository's history; skipping the check."
+          elif ! git merge-base --is-ancestor "$live" HEAD; then
+            echo "::error::The live site is at commit $live, which '$GITHUB_REF_NAME' does not include. Merge the branch that has it (named under 'branch' in $site/version.json), or main if it is already there, into this branch and push again. Nothing was deployed."
+            exit 1
+          else
+            echo "OK: this commit includes the live commit $live."
+          fi
+
+      - name: Record this commit in the site for the check above
+        run: |
+          jq -n --arg commit "$GITHUB_SHA" --arg branch "$GITHUB_REF_NAME" --arg deployedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{commit: $commit, branch: $branch, deployedAt: $deployedAt}' > public/version.json
 
       - uses: actions/setup-node@v4
         with:
@@ -65,3 +98,13 @@ jobs:
 
       - name: Deploy hosting, rules, and functions
         run: npx --yes firebase-tools@latest deploy --non-interactive --force
+
+      - name: Keep main at the live site
+        if: github.ref != 'refs/heads/main'
+        run: |
+          if git push origin HEAD:main; then
+            echo "main now matches the live site (${GITHUB_SHA:0:7})."
+          else
+            echo "::error::The site was deployed, but main could not be moved to '$GITHUB_REF_NAME' because main has commits this branch doesn't. Merge main into the branch and push again."
+            exit 1
+          fi
