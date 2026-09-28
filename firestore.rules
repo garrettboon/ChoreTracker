@@ -26,8 +26,40 @@ service cloud.firestore {
     // Money balances and stats: only parents change them.
     match /bank/{kidId} { allow read: if canRead(); allow write: if isParent(); }
 
-    // A kid's own choices: creature, savings goals, interest destination, daily checklist.
-    match /prefs/{kidId} { allow read: if canRead(); allow write: if isParent() || isKid(kidId); }
+    // A kid's own choices: creature, cosmetics, savings goals, interest destination, daily checklist.
+    // Creatures and cosmetics beyond the starters must be unlocked (xp/{kidId}.unlocked, written by functions).
+    match /prefs/{kidId} {
+      allow read: if canRead();
+      allow write: if isParent() || (isKid(kidId) && okCreature(kidId) && okEquipped(kidId));
+    }
+    function unlockedFor(kidId) {
+      let x = /databases/$(database)/documents/xp/$(kidId);
+      return exists(x) ? get(x).data.get('unlocked', []) : [];
+    }
+    function okCreature(kidId) {
+      let c = request.resource.data.get('creature', null);
+      return c == null
+        || c in ['dragon', 'fox', 'frog', 'dino', 'unicorn', 'octopus', 'shark', 'turtle', 'owl', 'bee', 'tiger', 'penguin']
+        || ('c:' + c) in unlockedFor(kidId);
+    }
+    function okSlot(kidId, e, slot, prefix) {
+      let v = e.get(slot, null);
+      return v == null || v == '' || (prefix + v) in unlockedFor(kidId);
+    }
+    function okEquipped(kidId) {
+      let e = request.resource.data.get('equipped', {});
+      return e.keys().hasOnly(['hat', 'theme', 'trail', 'confetti', 'title'])
+        && okSlot(kidId, e, 'hat', 'h:') && okSlot(kidId, e, 'theme', 't:') && okSlot(kidId, e, 'trail', 'r:')
+        && okSlot(kidId, e, 'confetti', 'f:') && okSlot(kidId, e, 'title', 'ti:');
+    }
+
+    // XP, levels, unlocks, and battles: written only by Cloud Functions.
+    match /xp/{personId} {
+      allow read: if canRead();
+      allow write: if false;
+      match /events/{eventId} { allow read: if isParent(); allow write: if false; }
+    }
+    match /battles/{battleId} { allow read: if canRead(); allow write: if false; }
 
     // One doc per person per week. Chore entries are added by the completeChore function.
     // Kids may only set their goal (once), bonus destination, and savings destination.
