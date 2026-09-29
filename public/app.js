@@ -8,7 +8,7 @@ import * as G from "./game.js";
 
 const CREATURES=G.CREATURES;
 const S={phase:"loading",user:null,role:null,device:null,config:null,bank:{},prefs:{},weeks:{},xp:{},battles:{},claims:{},bounties:{},game:{},devices:[],codes:[],ptab:"activity",viewKid:null,busy:{},
-  ui:{goalInput:"",newGoal:{name:"",target:""},ded:{kid:"",amount:0.25,reason:"",how:""},buy:null,pgoal:{},editGoal:null,kidView:null,adjust:null,openBuckets:{},confirmChore:null,prNote:null,split:{key:null,base:"",dirty:false,shares:{}},draft:null,pickCreature:false,wtab:"creature",prevPct:{},prevLvl:{},bb:null,levelUp:null,xpHist:{},pair:{code:"",name:""},newCode:{role:"display"},log:{kid:"",chore:"",note:""}}};
+  ui:{goalInput:"",newGoal:{name:"",target:""},ded:{kid:"",amount:0.25,reason:"",how:"",type:"ded"},buy:null,pgoal:{},editGoal:null,kidView:null,adjust:null,openBuckets:{},confirmChore:null,prNote:null,split:{key:null,base:"",dirty:false,shares:{}},draft:null,pickCreature:false,wtab:"creature",prevPct:{},prevLvl:{},bb:null,levelUp:null,xpHist:{},pair:{code:"",name:""},newCode:{role:"display"},log:{kid:"",chore:"",note:""}}};
 
 /* ---------- helpers ---------- */
 const $=s=>document.querySelector(s);
@@ -60,7 +60,7 @@ function kidState(id){
   const goals=[{id:"general",name:"General savings",target:0,balance:r2(bal.general||0)}];
   Object.entries(p.goals||{}).filter(([gid])=>!archivedIds.has(gid)).sort((a,c)=>(a[1].created||0)-(c[1].created||0))
     .forEach(([gid,g])=>goals.push({id:gid,name:g.name,target:g.target||0,balance:r2(bal[gid]||0)}));
-  return {creature:p.creature||null,interestTo:p.interestTo||"invest",prLog:p.prLog||{},prDone:p.prDone||{},prNotes:p.prNotes||{},goals,archived:b.archived||[],invest:r2(b.invest||0),give:r2(b.give||0),
+  return {creature:p.creature||null,interestTo:p.interestTo||"invest",prLog:p.prLog||{},prDone:p.prDone||{},prNotes:p.prNotes||{},seenWarnings:p.seenWarnings||[],goals,archived:b.archived||[],invest:r2(b.invest||0),give:r2(b.give||0),
     stats:Object.assign({chores:0,goalHits:0,redemptions:0,earned:0},b.stats||{}),lastInterestMonth:b.lastInterestMonth||null};
 }
 function creatureFor(kidId){const ks=kidState(kidId);const idx=cfg().kids.findIndex(k=>k.id===kidId);const starters=CREATURES.filter(c=>c[3]===1);
@@ -80,7 +80,7 @@ const cotdId=()=>G.choreOfDay(cfg().chores,ymd(),cfg());
 const choreXpFor=(kidId,ch)=>G.choreXp(ch,{cotd:cotdId()===ch.id,boost:G.streakBoost(cfg(),streak(kidId))});
 const battleList=()=>Object.entries(S.battles).map(([id,b])=>({id,...b})).sort((a,b)=>b.createdAt-a.createdAt);
 const weekDocId=(kid,wk)=>wk+"_"+kid;
-function getWeek(kid,wk){return Object.assign({kidId:kid,week:wk,goal:null,entries:[],deductions:[],closed:false},S.weeks[weekDocId(kid,wk)]||{});}
+function getWeek(kid,wk){return Object.assign({kidId:kid,week:wk,goal:null,entries:[],deductions:[],warnings:[],closed:false},S.weeks[weekDocId(kid,wk)]||{});}
 function activeWeek(kid){const wk=mondayOf(new Date());const w=S.weeks[weekDocId(kid,wk)];return (w&&w.closed)?addDays(wk,7):wk;}
 function weekNet(w){let n=0;for(const e of w.entries||[])if(e.status!=="reversed")n+=e.amount;for(const d of w.deductions||[])if(d.status==="active"||d.status==="final")n-=d.amount;return r2(n);}
 const choreCount=w=>(w.entries||[]).filter(e=>e.status!=="reversed").length;
@@ -257,7 +257,7 @@ function viewKid(kidId,embedded){
   if(S.ui.pickCreature)h+=wardrobe(k.id);
   h+=familyBar(true)+freezeNotice(k.id)+reminderBanner(k,ks,today);
   h+=w.goal==null?goalSetter(k,wk):goalCard(k,ks,w,net,cr);
-  h+=battleSection(k)+bountySection(k)+challengeCards(k.id)+prSection(k,ks,today)+choreSection(k,today)+moneySection(k,ks,w,net)+questSection(k)+rewardSection(k)+badgeSection(k.id)+activitySection(w);
+  h+=battleSection(k)+bountySection(k)+warningCards(k,ks)+challengeCards(k.id)+prSection(k,ks,today)+choreSection(k,today)+moneySection(k,ks,w,net)+questSection(k)+rewardSection(k)+badgeSection(k.id)+activitySection(w);
   return h+(embedded?"":`</div>`);
 }
 function pushControl(){
@@ -290,6 +290,12 @@ function goalCard(k,ks,w,net,cr){
     <p class="goal-msg">${won?"Goal reached! Your bonus is locked in.":`${money(w.goal-net)} to go`}</p>
     <label class="inline">Bonus goes to <select data-change="bonusTo" aria-label="Where your bonus goes">${["split","spend","save","invest","give"].map(o=>`<option value="${o}" ${o===bt?"selected":""}>${destName(ks,o)}</option>`).join("")}</select></label></section>`;
 }
+// Warnings cost nothing. An unseen one is loud until the kid taps Got it; seen ones stay as a quiet list for the week.
+function warningCards(k,ks){const all=[];for(const w of openWeeks(k.id))for(const x of w.warnings||[])all.push(x);if(!all.length)return "";
+  const seen=new Set(ks.seenWarnings),fresh=all.filter(x=>!seen.has(x.id)),old=all.filter(x=>seen.has(x.id));let h="";
+  for(const x of fresh)h+=`<section class="card warning"><h3>⚠️ A warning from ${esc(x.by||"a parent")}</h3><p><b>${esc(x.reason)}</b></p><p class="hint">This one doesn't cost anything. Turn it around so it doesn't become a deduction.</p><button class="btn small" style="margin-top:10px" data-act="warn-seen" data-id="${x.id}">Got it</button></section>`;
+  if(old.length)h+=`<section class="card warning seen"><p class="sub">⚠️ Warnings this week: ${old.map(x=>`<b>${esc(x.reason)}</b>`).join(", ")}</p></section>`;
+  return h;}
 function challengeCards(kidId){let h="";for(const w of openWeeks(kidId))for(const d of w.deductions)if(d.status==="active")
   h+=`<section class="card challenge"><h3>Earn back ${money(d.amount)}</h3><p><b>${esc(d.reason)}</b></p>${d.how?`<p>How: ${esc(d.how)}</p>`:""}<p class="hint">When you've done it, ask a parent to mark it earned back. You have until Sunday's cash-out.</p></section>`;return h;}
 function prSection(k,ks,today){const prs=prChores();if(!prs.length)return "";const done=ks.prLog[today]||[],notes=ks.prNotes[today]||{},pn=S.ui.prNote;const s=streak(k.id),boost=G.streakBoost(cfg(),s),fr=xpState(k.id).freezes;
@@ -601,7 +607,7 @@ function pActivity(){
   const y=addDays(ymd(),-1);let flags="";
   for(const k of kidsSorted().filter(k=>!k.adult)){const ksy=kidState(k.id),done=ksy.prLog[y]||[];
     const miss=[...(ksy.prDone[y]?[]:prChores().filter(c=>!done.includes(c.id)).map(c=>c.name)),...famChoresFor(k.id).filter(c=>c.assign===k.id&&countOnDate(k.id,c.id,y)===0).map(c=>c.name)];
-    for(const m of miss)flags+=`<div class="flag-row"><span><b>${esc(k.name)}</b> didn't check off ${esc(m)}</span><button class="btn ghost small" data-act="prefill-ded" data-kid="${k.id}" data-reason="${esc("Missed: "+m)}">Deduct</button></div>`;}
+    for(const m of miss)flags+=`<div class="flag-row"><span><b>${esc(k.name)}</b> didn't check off ${esc(m)}</span><span class="row" style="flex:0 0 auto;gap:6px"><button class="btn ghost small" data-act="prefill-warn" data-kid="${k.id}" data-reason="${esc("Missed: "+m)}">Warn</button><button class="btn ghost small" data-act="prefill-ded" data-kid="${k.id}" data-reason="${esc("Missed: "+m)}">Deduct</button></span></div>`;}
   const L=S.ui.log;if(!L.kid)L.kid=kidsSorted()[0].id;const lk=kidCfg(L.kid)||kidsSorted()[0];const lchores=famChoresFor(lk.id);if(!lchores.some(c=>c.id===L.chore))L.chore=lchores[0]?lchores[0].id:"";
   const all=[];for(const w0 of Object.values(S.weeks)){if(w0.closed)continue;const w=getWeek(w0.kidId,w0.week);for(const e of w.entries)all.push({e,w});}
   all.sort((a,b)=>b.e.t-a.e.t);
@@ -615,18 +621,22 @@ function pActivity(){
     return `<li><span style="flex:1"><b>${esc(k?k.name:"?")}</b>: ${l[0]}</span>${l[1]}${btn}</li>`;}).join("")}</ul>`:`<p class="empty">No chores logged yet this week.</p>`}</section>`;
 }
 function pDeductions(){
-  const d=S.ui.ded;if(!d.kid)d.kid=kidsSorted().find(k=>!k.adult)?.id||kidsSorted()[0].id;
-  let list="";for(const k of kidsSorted())for(const w of openWeeks(k.id))for(const e of w.deductions)
+  const d=S.ui.ded;if(!d.kid)d.kid=kidsSorted().find(k=>!k.adult)?.id||kidsSorted()[0].id;const warn=d.type==="warn";
+  let list="";for(const k of kidsSorted())for(const w of openWeeks(k.id)){const seen=new Set(kidState(k.id).seenWarnings);
+    for(const x of w.warnings||[])list+=`<li class="wrap"><span><b>${esc(k.name)}</b>: ${esc(x.reason)}<br><small>⚠️ Warning${x.by?" by "+esc(x.by):""}. ${seen.has(x.id)?"Seen ✓":"Not seen yet"}</small></span>
+      <button class="btn ghost small" data-act="warn-to-ded" data-kid="${k.id}" data-reason="${esc(x.reason)}">Deduct instead</button><button class="btn ghost small" data-act="remove-warn" data-kid="${k.id}" data-wk="${w.week}" data-id="${x.id}">Remove</button></li>`;
+    for(const e of w.deductions)
     list+=`<li><span style="flex:1"><b>${esc(k.name)}</b>: ${esc(e.reason)}<br><small>${e.how?"Earn back by: "+esc(e.how)+". ":""}${e.status==="active"?"Open":"Earned back"}${e.by?", by "+esc(e.by):""}</small></span><span class="amt ${e.status==="active"?"neg":"struck"}">−${money(e.amount)}</span>
-    ${e.status==="active"?`<button class="btn small" data-act="redeem" data-kid="${k.id}" data-wk="${w.week}" data-id="${e.id}">Earned back</button>`:""}<button class="btn ghost small" data-act="remove-ded" data-kid="${k.id}" data-wk="${w.week}" data-id="${e.id}">Remove</button></li>`;
-  return `<section class="card"><div class="sec-head"><h2>Add a deduction</h2></div>
+    ${e.status==="active"?`<button class="btn small" data-act="redeem" data-kid="${k.id}" data-wk="${w.week}" data-id="${e.id}">Earned back</button>`:""}<button class="btn ghost small" data-act="remove-ded" data-kid="${k.id}" data-wk="${w.week}" data-id="${e.id}">Remove</button></li>`;}
+  return `<section class="card"><div class="sec-head"><h2>Add a deduction or warning</h2></div>
+    <div class="seg" style="margin-bottom:10px"><button class="${warn?"":"on"}" data-act="ded-type" data-type="ded" aria-pressed="${!warn}">💸 Deduction</button><button class="${warn?"on":""}" data-act="ded-type" data-type="warn" aria-pressed="${warn}">⚠️ Warning (no money)</button></div>
     <div class="row"><label>Who<select data-bind="ded.kid">${kidsSorted().map(k=>`<option value="${k.id}" ${k.id===d.kid?"selected":""}>${esc(k.name)}</option>`).join("")}</select></label>
-    <label>Amount<input type="number" step="0.25" min="0.25" inputmode="decimal" data-bind="ded.amount" data-type="num" value="${esc(d.amount)}"></label></div>
+    ${warn?"":`<label>Amount<input type="number" step="0.25" min="0.25" inputmode="decimal" data-bind="ded.amount" data-type="num" value="${esc(d.amount)}"></label>`}</div>
     <div class="row" style="margin-top:10px"><label>Reason<input data-bind="ded.reason" value="${esc(d.reason)}" placeholder="Bad attitude at dinner"></label></div>
-    <div class="row" style="margin-top:10px"><label>How to earn it back<input data-bind="ded.how" value="${esc(d.how)}" placeholder="Apologize and keep a good attitude the rest of the day"></label></div>
-    <button class="btn block" style="margin-top:12px" data-act="add-ded">Add deduction</button>
-    <p class="hint">They can earn it back any time before Sunday's cash-out. After that it's final. Deductions never show on the leaderboard.</p></section>
-    <section class="card"><div class="sec-head"><h2>This week</h2></div>${list?`<ul class="feed">${list}</ul>`:`<p class="empty">No deductions this week.</p>`}</section>`;
+    ${warn?"":`<div class="row" style="margin-top:10px"><label>How to earn it back<input data-bind="ded.how" value="${esc(d.how)}" placeholder="Apologize and keep a good attitude the rest of the day"></label></div>`}
+    <button class="btn block" style="margin-top:12px" data-act="add-ded">${warn?"Give warning":"Add deduction"}</button>
+    <p class="hint">${warn?"A warning costs nothing. It shows on their screen until they tap Got it, and stays in this week's list. If it keeps happening, turn it into a deduction.":"They can earn it back any time before Sunday's cash-out. After that it's final. Deductions never show on the leaderboard."}</p></section>
+    <section class="card"><div class="sec-head"><h2>This week</h2></div>${list?`<ul class="feed">${list}</ul>`:`<p class="empty">No warnings or deductions this week.</p>`}</section>`;
 }
 // Every week that still needs cashing out: last week if it was missed, plus this week. They settle as one lump.
 function cashWeeks(kidId){const thisMon=mondayOf(new Date()),prev=addDays(thisMon,-7),out=[];
@@ -875,10 +885,18 @@ async function handleAct(act,ds){
   case "ptab": if(S.ptab==="settings"&&ds.tab!=="settings")S.ui.draft=null;S.ptab=ds.tab;S.ui.pickCreature=false;break;
   case "log-chore":{const L=S.ui.log;if(!L.chore)return;S.busy.log=true;render();try{const r=await call("completeChore")({kidId:L.kid,choreId:L.chore,note:String(L.note||"").trim()});L.note="";toast(`Logged +${money(r.data.amount)} for ${kidCfg(L.kid).name}.`);}catch(e){toast(errMsg(e));}finally{delete S.busy.log;render();}return;}
   case "reverse": case "restore": guard(txWeek(ds.kid,ds.wk,w=>{const e=w.entries.find(x=>x.id===ds.id);if(e)e.status=act==="reverse"?"reversed":"ok";}),act==="reverse"?"Reversed. Its XP comes off too.":"Restored, XP included.");return;
-  case "prefill-ded": S.ui.ded={kid:ds.kid,amount:0.25,reason:ds.reason,how:"Do it today plus one extra chore"};S.ptab="actions";break;
-  case "add-ded":{const d=S.ui.ded;const amt=q(d.amount);if(!(amt>0)||!String(d.reason).trim()){toast("Add an amount and a reason.");return;}const wk=activeWeek(d.kid);
+  case "prefill-ded": S.ui.ded={kid:ds.kid,amount:0.25,reason:ds.reason,how:"Do it today plus one extra chore",type:"ded"};S.ptab="actions";break;
+  case "ded-type": S.ui.ded.type=ds.type;break;
+  case "prefill-warn": S.ui.ded={kid:ds.kid,amount:0.25,reason:ds.reason,how:"",type:"warn"};S.ptab="actions";break;
+  case "warn-to-ded": S.ui.ded={kid:ds.kid,amount:0.25,reason:ds.reason,how:"Do it today plus one extra chore",type:"ded"};window.scrollTo(0,0);break;
+  case "remove-warn": guard(txWeek(ds.kid,ds.wk,w=>{w.warnings=(w.warnings||[]).filter(x=>x.id!==ds.id);}),"Warning removed.");return;
+  case "warn-seen": guard(setDoc(doc(db,"prefs",kid),{seenWarnings:arrayUnion(ds.id)},{merge:true}));return;
+  case "add-ded":{const d=S.ui.ded;if(d.type==="warn"){const reason=String(d.reason||"").trim();if(!reason){toast("Add a reason.");return;}const wk=activeWeek(d.kid);
+      guard(setDoc(weekRef(d.kid,wk),{kidId:d.kid,week:wk,warnings:arrayUnion({id:uid(),t:Date.now(),reason,by:parentName()})},{merge:true}),"Warning given.");
+      S.ui.ded={kid:d.kid,amount:0.25,reason:"",how:"",type:"warn"};break;}
+    const amt=q(d.amount);if(!(amt>0)||!String(d.reason).trim()){toast("Add an amount and a reason.");return;}const wk=activeWeek(d.kid);
     guard(setDoc(weekRef(d.kid,wk),{kidId:d.kid,week:wk,deductions:arrayUnion({id:uid(),t:Date.now(),amount:amt,reason:String(d.reason).trim(),how:String(d.how||"").trim(),status:"active",by:parentName()})},{merge:true}),"Deduction added.");
-    S.ui.ded={kid:d.kid,amount:0.25,reason:"",how:""};break;}
+    S.ui.ded={kid:d.kid,amount:0.25,reason:"",how:"",type:"ded"};break;}
   case "redeem": guard(txWeek(ds.kid,ds.wk,w=>{const e=w.deductions.find(x=>x.id===ds.id);if(e){e.status="redeemed";e.redeemedBy=parentName();}}).then(()=>setDoc(doc(db,"bank",ds.kid),{stats:{redemptions:increment(1)}},{merge:true})),"Earned back. Nice comeback.");return;
   case "remove-ded": if(!confirm("Remove this deduction entirely? Use this for mistakes. To reward a comeback, use Earned back instead."))return;guard(txWeek(ds.kid,ds.wk,w=>{w.deductions=w.deductions.filter(x=>x.id!==ds.id);}));return;
   case "cashout": doCashout(ds.kid);return;
