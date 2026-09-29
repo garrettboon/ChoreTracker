@@ -130,7 +130,7 @@ function stopData(){unsubs.forEach(u=>u());unsubs=[];prBackfilled.clear();if(wee
 function onErr(e){console.warn(e);if(e&&e.code==="permission-denied"&&S.role!=="parent"){/* device was unpaired */}}
 function startData(){
   if(unsubs.length)return;
-  unsubs.push(onSnapshot(doc(db,"app/config"),s=>{S.config=s.exists()?s.data():null;backfillPrDone();softRender();},onErr));
+  unsubs.push(onSnapshot(doc(db,"app/config"),s=>{S.config=s.exists()?s.data():null;backfillPrDone();refreshCleanDraft();softRender();},onErr));
   unsubs.push(onSnapshot(collection(db,"bank"),s=>{const m={};s.forEach(d=>m[d.id]=d.data());S.bank=m;softRender();},onErr));
   unsubs.push(onSnapshot(collection(db,"prefs"),s=>{const m={};s.forEach(d=>m[d.id]=d.data());S.prefs=m;backfillPrDone();softRender();},onErr));
   unsubs.push(onSnapshot(collection(db,"xp"),s=>{const m={};s.forEach(d=>m[d.id]=d.data());S.xp=m;S.xpLoaded=true;softRender();},onErr));
@@ -706,7 +706,10 @@ function pDevices(){
   <section class="card"><div class="sec-head"><h2>Paired devices</h2></div>${S.devices.length?S.devices.map(d=>`<div class="flag-row"><span><b>${esc(d.name)}</b><br><small>${esc(roleLabel(d))}</small> ${d.role==="kid"?`<span class="pill ${d.fcmToken?"on":""}">${d.fcmToken?"Reminders on":"Reminders off"}</span>`:""}</span><button class="btn ghost small" data-act="unpair" data-id="${d.id}">Unpair</button></div>`).join(""):`<p class="empty">No devices paired yet.</p>`}
   <p class="hint">Unpairing locks a device out right away. Use it for a lost tablet or to switch a tablet to someone else.</p></section>`;
 }
-function startDraft(){const c=clone(cfg());c.kids.forEach(k=>k.remindStr=(k.remind||[]).join(", "));c.chores.forEach(ch=>ch.ask=needsNote(ch));c.game=clone(G.gameCfg(c));S.ui.draft=c;}
+function startDraft(from){const c=clone(from||cfg());c.kids.forEach(k=>k.remindStr=(k.remind||[]).join(", "));c.chores.forEach(ch=>ch.ask=needsNote(ch));c.game=clone(G.gameCfg(c));S.ui.draft=c;S.ui.draftClean=JSON.stringify(c);}
+const draftDirty=()=>!!S.ui.draft&&JSON.stringify(S.ui.draft)!==S.ui.draftClean;
+// When the config changes underneath an untouched settings form, show the new values instead of stale ones.
+function refreshCleanDraft(){if(S.role==="parent"&&S.ptab==="settings"&&S.ui.draft&&S.config&&!draftDirty()){startDraft();render();}}
 function gameSettings(d){const g=d.game,b=g.battles;const chk=(path,on,label)=>`<label class="check-label"><input type="checkbox" data-bind="draft.game.${path}" ${on?"checked":""}> ${label}</label>`;
   return `<section class="card"><div class="sec-head"><h2>Game</h2></div>
     <div class="grid-2">${chk("quests.enabled",g.quests.enabled,"Weekly quests")}${chk("choreOfDay.enabled",g.choreOfDay.enabled,"Chore of the Day (double XP)")}${chk("streakMultiplier.enabled",g.streakMultiplier.enabled,`Streak bonus (×${g.streakMultiplier.mult} XP at ${g.streakMultiplier.minStreak}+ days)`)}${chk("battles.enabled",b.enabled,"Battles")}</div>
@@ -882,7 +885,7 @@ async function handleAct(act,ds){
   case "save-pr-note":{const pn=S.ui.prNote;if(!pn)return;const text=String(pn.text||"").trim();if(!text){toast("Say what it was first.");return;}S.ui.prNote=null;setPr(kid,pn.id,true,text);return;}
   case "add-goal":{const g=S.ui.newGoal;const name=String(g.name||"").trim();const t=r2(g.target);if(!name||!(t>0)){toast("Give the goal a name and an amount.");return;}
     S.ui.newGoal={name:"",target:""};guard(setDoc(doc(db,"prefs",kid),{goals:{[uid()]:{name,target:t,created:Date.now()}}},{merge:true}));break;}
-  case "ptab": if(S.ptab==="settings"&&ds.tab!=="settings")S.ui.draft=null;S.ptab=ds.tab;S.ui.pickCreature=false;break;
+  case "ptab": if(S.ptab==="settings"&&ds.tab!=="settings"){if(draftDirty()&&!confirm("Leave Settings without saving your changes?"))return;S.ui.draft=null;}S.ptab=ds.tab;S.ui.pickCreature=false;break;
   case "log-chore":{const L=S.ui.log;if(!L.chore)return;S.busy.log=true;render();try{const r=await call("completeChore")({kidId:L.kid,choreId:L.chore,note:String(L.note||"").trim()});L.note="";toast(`Logged +${money(r.data.amount)} for ${kidCfg(L.kid).name}.`);}catch(e){toast(errMsg(e));}finally{delete S.busy.log;render();}return;}
   case "reverse": case "restore": guard(txWeek(ds.kid,ds.wk,w=>{const e=w.entries.find(x=>x.id===ds.id);if(e)e.status=act==="reverse"?"reversed":"ok";}),act==="reverse"?"Reversed. Its XP comes off too.":"Restored, XP included.");return;
   case "prefill-ded": S.ui.ded={kid:ds.kid,amount:0.25,reason:ds.reason,how:"Do it today plus one extra chore",type:"ded"};S.ptab="actions";break;
@@ -943,7 +946,7 @@ async function handleAct(act,ds){
     d.game.rewards=d.game.rewards.map(r=>({id:r.id||uid(),level:Math.min(30,Math.max(1,Math.round(Number(r.level)||1))),name:String(r.name||"").trim(),repeat:Math.max(0,Math.round(Number(r.repeat)||0))})).filter(r=>r.name);
     const mp=d.game.moneyPerks;mp.enabled=!!mp.enabled;mp.everyLevels=Math.max(1,Math.round(Number(mp.everyLevels)||5));mp.amount=Math.max(0,r2(mp.amount));
     d.chores.forEach(c=>{c.ask=!!c.ask;if(c.kind==="family"){c.mult=Number(c.mult)||1;c.limit=Math.max(1,Math.round(Number(c.limit)||1));if(c.assign!=="pool"&&!d.kids.some(k=>k.id===c.assign))c.assign="pool";}});
-    S.ui.draft=null;guard(setDoc(doc(db,"app/config"),d),"Settings saved.");break;}
+    startDraft(d);guard(setDoc(doc(db,"app/config"),d),"Settings saved.");break;}
   }
   render();
 }
