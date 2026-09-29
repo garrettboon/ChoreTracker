@@ -26,7 +26,7 @@ export function levelProgress(total) {
 /* ---------- XP values ---------- */
 export const XP = {
   chore: 10, checklist: 5, goal: 50, redeem: 20, savingsGoal: 50, badge: 25,
-  win: 40, tie: 25, loss: 15, ghostRecord: 25, raidWin: 50,
+  win: 40, tie: 25, loss: 15, ghostRecord: 25, raidWin: 50, babyRaidWin: 25,
 };
 export const STREAK_MILESTONES = { 3: 25, 7: 50, 14: 75, 30: 150, 60: 250, 100: 400 };
 export const FREEZE_CAP = 2;
@@ -102,11 +102,13 @@ export const MODES = [
   { id: "streakduel", emoji: "🔥", name: "Streak Duel", level: 10, desc: "Whoever misses their daily list first loses." },
   { id: "showdown", emoji: "🎯", name: "Goal Showdown", level: 12, desc: "Best share of your weekly goal wins." },
   { id: "raid", emoji: "🐉", name: "Boss Raid", level: 15, team: true, desc: "Team up and beat a boss with chores." },
+  { id: "babyraid", emoji: "🐣", name: "Baby Boss Raid", level: 1, team: true, baby: true, desc: "A tiny boss for today. Go solo or team up. Easy to beat." },
   { id: "grownups", emoji: "👨‍👧", name: "Kids vs. Grown-ups", level: 15, team: true, desc: "Kids team against the adults." },
   { id: "wildcard", emoji: "🃏", name: "Wildcard", level: 20, desc: "A random mode with a twist." },
 ];
 export const modeById = (id) => MODES.find((m) => m.id === id);
 export const TIMED = ["timetrial", "ghost"];
+export const isRaid = (mode) => mode === "raid" || mode === "babyraid";
 export const MAX_TRIAL_MS = 2 * 3600 * 1000; // longer than this voids the attempt
 
 // Every unlock id a person has at a level, prefixed by kind:
@@ -288,7 +290,7 @@ const weight = (b, e) => (b.twist && b.twist.choreId === e.choreId ? 2 : 1);
 // Raw points for one player's entries in this battle.
 function rawPoints(b, list, chores) {
   if (b.mode === "race") return list.reduce((s, e) => s + weight(b, e), 0);
-  if (b.mode === "blitz" || b.mode === "grownups" || b.mode === "raid") {
+  if (b.mode === "blitz" || b.mode === "grownups" || isRaid(b.mode)) {
     return list.reduce((s, e) => s + baseChoreXp(choreOf(chores, e.choreId)) * weight(b, e), 0);
   }
   if (b.mode === "territory") {
@@ -385,6 +387,13 @@ export const bossFor = (beaten) => {
   return { id: b[0], emoji: b[1], name: i >= BOSSES.length ? `${b[2]} ${i - BOSSES.length + 2}` : b[2], tier: i };
 };
 export const raidHp = (members, days, tier) => Math.round(60 * members * days * (1 + 0.25 * (tier || 0)));
+// Baby Boss Raid: a tiny one-day boss for younger kids or a quick team-up. No tiers, so it never gets harder.
+export const BABY_BOSSES = [["dustbunny", "🐰", "Dust Bunny"], ["crumb", "🍪", "Crumb Critter"], ["sockling", "🧦", "Sockling"], ["puddle", "💧", "Puddle Blob"], ["fuzz", "🧸", "Fuzzball"]];
+export const babyBossFor = (beaten) => {
+  const i = Math.max(0, beaten || 0), b = BABY_BOSSES[i % BABY_BOSSES.length], round = Math.floor(i / BABY_BOSSES.length);
+  return { id: b[0], emoji: b[1], name: round ? `${b[2]} ${round + 1}` : b[2], tier: 0 };
+};
+export const babyRaidHp = (members) => 15 * Math.max(1, members || 1); // about a chore and a half per person
 
 /* ---------- Wildcard ---------- */
 export const WILDCARD_MODES = ["race", "blitz", "territory", "bingo"];
@@ -454,7 +463,7 @@ export function decide(b, entriesBy, chores, final) {
     if (!did(a) || !did(c)) return { winner: did(a) ? a : c, tie: false, reason: "Only one did the chore" };
     return null;
   }
-  if (b.mode === "raid") {
+  if (isRaid(b.mode)) {
     const s = teamScores(b, entriesBy, chores);
     if (s.a.raw >= b.params.hp) return { winnerSide: "a", reason: `${b.params.bossName} is beaten!` };
     if (!final) return null;
@@ -500,7 +509,7 @@ export function battleXp(b, result) {
   };
   const k = ["streakduel", "showdown"].includes(b.mode) ? 2 : 1; // multi-day modes pay double
   for (const p of b.players) {
-    if (b.mode === "raid") out[p] = tried(p) ? (result.winnerSide ? XP.raidWin : XP.loss) : 0;
+    if (isRaid(b.mode)) out[p] = tried(p) ? (result.winnerSide ? (b.mode === "babyraid" ? XP.babyRaidWin : XP.raidWin) : XP.loss) : 0;
     else if (result.tie) out[p] = tried(p) ? XP.tie * k : 0;
     else if (isWinner(b, result, p)) out[p] = !b.teams || tried(p) ? XP.win * k : 0; // teammates who did nothing get nothing
     else out[p] = tried(p) ? XP.loss * k : 0;

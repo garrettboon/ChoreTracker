@@ -371,11 +371,11 @@ function freezeNotice(id){const n=xpState(id).notice;if(!n||n.type!=="freeze"||D
   return `<div class="banner freeze" role="status"><span>🧊 A streak freeze covered ${esc(parseYmd(n.date).toLocaleDateString(undefined,{weekday:"long"}))}. Your streak is safe!</span><button class="btn ghost small" data-act="freeze-ok" data-at="${n.at}">OK</button></div>`;}
 
 const bName=(b,id)=>esc((kidCfg(id)||{}).name||(b.names||{})[id]||"Someone");
-const TEAM=["raid","grownups"];
+const TEAM=["raid","babyraid","grownups"];
 function modeParams(b){const p=b.params||{};const tw=b.twist?`. ${esc(b.twist.text)}`:"";
   const t={race:`First to ${p.n} chores`,blitz:p.windowMin?`${p.windowMin}-minute blitz`:"Until midnight",grownups:p.windowMin?`${p.windowMin} minutes`:"Until midnight",
     territory:"Most Anyone chores by midnight",bingo:"First to a line",streakduel:"Don't miss a day",showdown:"Best share of weekly goal",
-    raid:`${p.bossEmoji||"🐉"} ${esc(p.bossName||"Boss")}, ${p.days||1} day${(p.days||1)>1?"s":""}`}[b.mode];
+    raid:`${p.bossEmoji||"🐉"} ${esc(p.bossName||"Boss")}, ${p.days||1} day${(p.days||1)>1?"s":""}`,babyraid:`${p.bossEmoji||"🐣"} ${esc(p.bossName||"Baby boss")}, today`}[b.mode];
   return (t||(p.choreName?esc(p.choreName):""))+tw;}
 function fmtEnd(t){const d=new Date(t);return d.getHours()===0&&d.getMinutes()===0?(d-Date.now()>26*3600e3?"at midnight "+d.toLocaleDateString(undefined,{weekday:"short"}):"at midnight"):"at "+d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});}
 function scoreHtml(b,id){
@@ -391,7 +391,7 @@ function teamLine(b,side){const ids=b.teams[side],ts=(b.teamScores||{})[side],h=
 function resultText(b,me){const r=b.result||{};const who=id=>id===me?"You":bName(b,id);
   if(r.noContest)return `No contest. ${esc(r.reason||"")}`;
   if(b.mode==="ghost")return r.record?"First record set! ⏱️":r.winner?"New personal best! 🎉":"Not this time. Try again!";
-  if(b.mode==="raid")return r.winnerSide?`${esc(b.params.bossEmoji)} Boss beaten! 🎉`:`${esc(r.reason||"The boss got away.")}`;
+  if(G.isRaid(b.mode))return r.winnerSide?`${esc(b.params.bossEmoji)} Boss beaten! 🎉`:`${esc(r.reason||"The boss got away.")}`;
   if(r.tie)return `It's a tie! ${esc(r.reason||"")}`;
   if(r.winnerSide){const mine=G.sideOf(b,me)===r.winnerSide;return mine?`Your team won! 🏆 ${esc(r.reason||"")}`:`${b.teams[r.winnerSide].map(p=>bName(b,p)).join(" and ")} won. ${esc(r.reason||"")}`;}
   return r.winner===me?`You won! 🏆 ${esc(r.reason||"")}`:`${who(r.winner)} won. ${esc(r.reason||"")}`;}
@@ -401,14 +401,14 @@ function bingoGrid(b,me){const p=b.params;const list=G.battleEntries(entriesFor(
 function entriesFor(id){return Object.values(S.weeks).filter(w=>w.kidId===id).flatMap(w=>w.entries||[]);}
 function battleCard(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Battle"};const other=b.players.find(p=>p!==me);const dis=S.busy.b?"disabled":"";
   let vs;
-  if(b.mode==="raid"){const ts=(b.teamScores||{}).a,dmg=ts?ts.raw:0,hp=b.params.hp||1;
+  if(G.isRaid(b.mode)){const ts=(b.teamScores||{}).a,dmg=ts?ts.raw:0,hp=b.params.hp||1;
     vs=`<div class="raid"><div class="boss">${esc(b.params.bossEmoji)}<b>${esc(b.params.bossName)}</b></div><div class="hp" role="img" aria-label="${Math.max(0,hp-dmg)} of ${hp} health left"><i style="width:${Math.max(0,100-dmg/hp*100)}%"></i></div><p class="sub">${Math.min(dmg,hp)} / ${hp} damage. Team: ${b.teams.a.map(p=>bName(b,p)).join(", ")}</p></div>`;}
   else if(b.teams)vs=`<div class="vs">${teamLine(b,"a")}<span class="vs-x">VS</span>${teamLine(b,"b")}</div>`;
   else if(b.players.length>1)vs=`<div class="vs">${b.players.map(p=>`<div>${crHtml(p)}<b>${p===me?"You":bName(b,p)}</b><span class="b-score">${scoreHtml(b,p)}</span></div>`).join(`<span class="vs-x">VS</span>`)}</div>`;
   else vs=`<div class="vs"><div>${crHtml(me)}<b>You</b><span class="b-score">${scoreHtml(b,me)}</span></div><span class="vs-x">VS</span><div><span class="cr">👻</span><b>Your best</b><span class="b-score">${b.pb!=null?fmtMs(b.pb):"None yet"}</span></div></div>`;
   let body="";
   if(b.status==="pending"){const acc=b.accepted||{},waiting=b.players.filter(p=>!acc[p]);
-    body=b.challenger!==me&&!acc[me]?`<p><b>${bName(b,b.challenger)}</b> ${b.mode==="raid"?"wants you on their team!":"challenged you!"}</p><div class="row"><button class="btn" data-act="b-accept" data-id="${b.id}" ${dis}>Accept</button><button class="btn ghost" data-act="b-decline" data-id="${b.id}" ${dis}>Not now</button></div>`
+    body=b.challenger!==me&&!acc[me]?`<p><b>${bName(b,b.challenger)}</b> ${G.isRaid(b.mode)?"wants you on their team!":"challenged you!"}</p><div class="row"><button class="btn" data-act="b-accept" data-id="${b.id}" ${dis}>Accept</button><button class="btn ghost" data-act="b-decline" data-id="${b.id}" ${dis}>Not now</button></div>`
       :`<p class="sub">Waiting for ${waiting.map(p=>bName(b,p)).join(", ")} to accept…</p>${b.challenger===me?`<button class="btn ghost small" data-act="b-cancel" data-id="${b.id}" ${dis}>Cancel challenge</button>`:""}`;}
   else if(b.status==="active"){
     if(G.TIMED.includes(b.mode)){const a=(b.attempts||{})[me];
@@ -421,7 +421,7 @@ function battleCard(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Batt
     else if(b.mode==="bingo")body=`${bingoGrid(b,me)}<p class="sub">Do the chores on your card. First to finish a row, column, or diagonal wins. Ends ${fmtEnd(b.endAt)}.</p>`;
     else if(b.mode==="streakduel")body=`<p class="sub">${ymd()<b.params.startDate?"Starts tomorrow.":"Checked each night."} Finish your daily list every day. Whoever misses first loses. Up to 14 days.</p>`;
     else if(b.mode==="showdown")body=`<p class="sub">Earn the biggest share of your weekly goal. Decided at Sunday's cash-out.</p>`;
-    else if(b.mode==="raid")body=`<p class="sub">Every chore your team does hits the boss. Beat it ${fmtEnd(b.endAt)}!</p>`;
+    else if(G.isRaid(b.mode))body=`<p class="sub">Every chore ${b.players.length>1?"your team does":"you do"} hits the boss. Beat it ${fmtEnd(b.endAt)}!</p>`;
     else body=`<p class="sub">${{race:`First to ${b.params.n} chores wins. Do chores below to score!`,territory:"Every Anyone chore you do is yours. Most claims wins.",grownups:"Every chore adds XP to your team's score."}[b.mode]||"Most chore XP wins. Bigger chores count more."} Ends ${fmtEnd(b.endAt)}.</p>`;}
   else if(b.status==="judging")body=`<p class="b-result">🧑‍⚖️ Both done! A parent is judging.</p>`;
   else if(b.status==="confirming"&&G.TIMED.includes(b.mode)){const r=b.result||{};const q=b.quality||{};
@@ -435,7 +435,7 @@ function battleCard(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Batt
     body=`<p class="b-result">${resultText(b,me)}</p>${act}`;}
   return `<div class="bcard ${b.status}"><div class="b-head"><b>${b.wildcard?"🃏 Wildcard: ":""}${m.emoji} ${esc(m.name)}</b><span class="sub">${modeParams(b)}</span></div>${vs}${body}</div>`;}
 function recentLine(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Battle"};const others=b.players.filter(p=>p!==me);const xp=(b.xp||{})[me]||0;
-  return `<li><span>${m.emoji} ${esc(m.name)}${others.length?` ${b.mode==="raid"?"with":"vs"} ${others.map(p=>bName(b,p)).join(", ")}`:""}<br><small>${resultText(b,me)}</small></span><span class="amt pos">${xp?"+"+xp+" XP":""}</span></li>`;}
+  return `<li><span>${m.emoji} ${esc(m.name)}${others.length?` ${G.isRaid(b.mode)?"with":"vs"} ${others.map(p=>bName(b,p)).join(", ")}`:""}<br><small>${resultText(b,me)}</small></span><span class="amt pos">${xp?"+"+xp+" XP":""}</span></li>`;}
 const bbChores=(kidId,mode)=>cfg().chores.filter(c=>c.kind==="family"&&!needsNote(c)&&(c.assign==="pool"||(mode==="ghost"&&c.assign===kidId)));
 function battleBuilder(k,bb){const bc=game().battles,lv=xpState(k.id).level,mode=G.modeById(bb.mode);
   const modeBtn=m=>{const why=(bc.modesOff||[]).includes(m.id)?"Turned off":lv<m.level?`🔒 Level ${m.level}`:m.kidsOnly&&k.adult?"Kids only":"";
@@ -443,7 +443,7 @@ function battleBuilder(k,bb){const bc=game().battles,lv=xpState(k.id).level,mode
   const pick=(list,key,multi,label)=>`<h3>${label}</h3><div class="seg" style="justify-content:flex-start">${list.map(p=>{const on=multi?(bb[key]||[]).includes(p.id):bb[key]===p.id;
     return `<button class="${on?"on":""}" data-act="bb-pick" data-key="${key}" data-multi="${multi?1:""}" data-id="${p.id}" aria-pressed="${on}">${creatureFor(p.id)[1]} ${esc(p.name)}</button>`;}).join("")}</div>`;
   const others=kidsSorted().filter(p=>p.id!==k.id);let who="";
-  if(mode&&mode.id==="raid")who=pick(others,"team",true,"Who's on your team? (up to 3)");
+  if(mode&&G.isRaid(mode.id))who=pick(others,"team",true,mode.id==="babyraid"?"Who's on your team? (optional, up to 3)":"Who's on your team? (up to 3)");
   else if(mode&&mode.id==="grownups"){const mine=others.filter(p=>!!p.adult===!!k.adult),theirs=others.filter(p=>!!p.adult!==!!k.adult);
     who=(mine.length?pick(mine,"team",true,"Your team (optional)"):"")+pick(theirs,"opponents",true,k.adult?"Kids to battle":"Grown-ups to battle");}
   else if(mode&&!mode.solo)who=pick(mode.kidsOnly?others.filter(p=>!p.adult):others,"opponent",false,"Who do you challenge?");
@@ -455,7 +455,7 @@ function battleBuilder(k,bb){const bc=game().battles,lv=xpState(k.id).level,mode
     params=`<label>Chore<select data-bind="bb.choreId">${bbChores(k.id,mode.id).map(c=>`<option value="${c.id}" ${bb.choreId===c.id?"selected":""}>${esc(c.name)}${mode.id==="ghost"&&pb[c.id]!=null?` (your best ${fmtMs(pb[c.id])})`:""}</option>`).join("")}</select></label>`;}
   const opp=mode&&!mode.solo&&!mode.team?kidCfg(bb.opponent):null;let hc="";
   if(opp&&mode.id!=="wildcard"){const h=G.handicaps(k,opp,cfg());const y=h[k.id]>1?k:h[opp.id]>1?opp:null;if(y)hc=`<p class="hint">${y.id===k.id?"You're":esc(y.name)+" is"} younger, so ${y.id===k.id?"your":"their"} score counts ×${h[y.id]}${mode.id==="bingo"?" (in Bingo: free squares instead)":""}.</p>`;}
-  const ready=mode&&(mode.solo||(mode.id==="raid"?(bb.team||[]).length>0&&(bb.team||[]).length<=3:mode.id==="grownups"?(bb.opponents||[]).length>0:!!opp));
+  const ready=mode&&(mode.solo||(mode.id==="raid"?(bb.team||[]).length>0&&(bb.team||[]).length<=3:mode.id==="babyraid"?(bb.team||[]).length<=3:mode.id==="grownups"?(bb.opponents||[]).length>0:!!opp));
   return `<div class="builder"><h3>Pick a mode</h3><div class="modes">${G.MODES.map(modeBtn).join("")}</div>${who}
     ${params?`<div class="row" style="margin-top:10px">${params}</div>`:""}${hc}
     <div class="row" style="margin-top:12px"><button class="btn" data-act="bb-send" ${!ready||S.busy.b?"disabled":""}>${S.busy.b?"Sending…":mode&&mode.solo?"Start":"Send challenge"}</button><button class="btn ghost" data-act="bb-close">Cancel</button></div></div>`;}
@@ -516,7 +516,7 @@ function viewDisplay(){
 function battleStrip(){const bl=battleList().filter(b=>b.live&&b.status!=="pending");if(!bl.length)return "";
   return `<div class="battle-strip" aria-label="Battles going on">${bl.map(b=>{const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Battle"};const r=b.result||{};
     let who;
-    if(b.mode==="raid"){const ts=(b.teamScores||{}).a;who=`<span class="bs-p">${b.teams.a.map(p=>crHtml(p)).join("")} vs ${esc(b.params.bossEmoji)} <span class="bs-score">${Math.max(0,(b.params.hp||0)-(ts?ts.raw:0))} HP left</span></span>`;}
+    if(G.isRaid(b.mode)){const ts=(b.teamScores||{}).a;who=`<span class="bs-p">${b.teams.a.map(p=>crHtml(p)).join("")} vs ${esc(b.params.bossEmoji)} <span class="bs-score">${Math.max(0,(b.params.hp||0)-(ts?ts.raw:0))} HP left</span></span>`;}
     else if(b.teams)who=["a","b"].map(sd=>`<span class="bs-p">${b.teams[sd].map(p=>crHtml(p)).join("")} <span class="bs-score">${((b.teamScores||{})[sd]||{}).adj||0}</span></span>`).join(`<span class="vs-x">vs</span>`);
     else who=b.players.map(p=>`<span class="bs-p">${crHtml(p)} <b>${bName(b,p)}</b> <span class="bs-score">${scoreHtml(b,p)}</span></span>`).join(`<span class="vs-x">vs</span>`);
     const tail=b.status==="judging"?`<em>Judging…</em>`:b.status==="confirming"&&G.TIMED.includes(b.mode)?`<em>⏳ Checking the work…</em>`:b.status==="confirming"?`<em>${r.noContest?"No contest":r.tie?"Tie!":b.mode==="ghost"?(r.winner?"New best!":"So close!"):r.winnerSide?b.teams[r.winnerSide].map(p=>bName(b,p)).join(" & ")+" win!":bName(b,r.winner)+" wins!"}</em>`:b.mode==="ghost"?`<span class="vs-x">vs</span><span class="bs-p">👻 best ${b.pb!=null?fmtMs(b.pb):"—"}</span>`:"";
@@ -821,7 +821,7 @@ async function handleAct(act,ds){
   case "bb-mode":{const bb=S.ui.bb;bb.mode=ds.id;if((G.TIMED.includes(ds.id)||ds.id==="judge")&&!bbChores(kid,ds.id).some(c=>c.id===bb.choreId)){const c=bbChores(kid,ds.id)[0];bb.choreId=c?c.id:"";}break;}
 
   case "bb-send":{const bb=S.ui.bb,m=G.modeById(bb.mode);const r=await bcall("createBattle",{mode:bb.mode,opponent:bb.opponent,team:bb.team,opponents:bb.opponents,n:Number(bb.n),windowMin:Number(bb.windowMin),days:Number(bb.days),choreId:bb.choreId});
-    if(r){S.ui.bb=null;const got=G.modeById(r.mode)||m;toast(m.solo?"Ghost race is on. Start when you're ready!":m.id==="wildcard"?`🃏 It's ${got.name}!${r.twist?" "+r.twist.text+".":""} Challenge sent.`:m.id==="raid"?"Team invite sent!":"Challenge sent!");}break;}
+    if(r){S.ui.bb=null;const got=G.modeById(r.mode)||m;toast(m.solo?"Ghost race is on. Start when you're ready!":m.id==="wildcard"?`🃏 It's ${got.name}!${r.twist?" "+r.twist.text+".":""} Challenge sent.`:G.isRaid(m.id)?((bb.team||[]).length?"Team invite sent!":"Baby boss raid is on. Go do chores!"):"Challenge sent!");}break;}
   case "b-accept":{const r=await bcall("respondBattle",{id:ds.id,accept:true});if(r){confetti(60);chime(false);toast(r.started?"Battle on! Go go go!":"You're in! Waiting for the others.");}break;}
   case "b-decline": await bcall("respondBattle",{id:ds.id,accept:false});break;
   case "b-cancel": await bcall("cancelBattle",{id:ds.id},"Called off.");break;

@@ -169,6 +169,29 @@ test("boss raid: teammates accept, chores do damage, a beaten boss moves the fam
   assert.equal(nb.params.hp, G.raidHp(2, 2, 1));
 });
 
+test("baby boss raid: level 1, solo allowed and starts at once, tiny boss, small XP, own roster", async () => {
+  await reset();
+  const k3 = await kidClient("k3");
+  const { id } = await k3.call("createBattle", { mode: "babyraid", team: [] });
+  let b = await battle(id);
+  assert.equal(b.status, "active", "a solo baby raid needs nobody's acceptance");
+  assert.equal(b.params.hp, 15);
+  assert.equal(b.params.bossName, "Dust Bunny");
+  await k3.call("completeChore", { kidId: "k3", choreId: "big" });
+  b = await waitFor(async () => { const b = await battle(id); return !b.live && b; }, { msg: "baby boss beaten" });
+  assert.equal(b.result.winnerSide, "a");
+  assert.deepEqual(b.xp, { k3: 25 });
+  const fam = (await db.doc("xp/_family").get()).data();
+  assert.equal(fam.babyBossesBeaten, 1);
+  assert.equal(fam.bossesBeaten || 0, 0, "baby bosses don't count toward the real roster");
+  const k1 = await kidClient("k1");
+  const team = await k1.call("createBattle", { mode: "babyraid", team: ["k2"] });
+  const tb = await battle(team.id);
+  assert.equal(tb.status, "pending", "with a teammate it waits for them to accept");
+  assert.equal(tb.params.hp, 30);
+  assert.equal(tb.params.bossName, "Crumb Critter");
+});
+
 test("kids vs grown-ups: every invitee accepts, kids get a team handicap", async () => {
   await reset();
   await level("k1", 15);

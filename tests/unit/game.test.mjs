@@ -224,6 +224,23 @@ test("goal showdown score uses the larger of goal and recent average", () => {
   assert.equal(G.showdownScore(-2, 4, 0), 0);
 });
 
+test("baby boss raid: level 1, tiny, one day, never harder, smaller payout", () => {
+  const chores = [{ id: "x", mult: 1 }, { id: "big", mult: 2 }];
+  assert.equal(G.modeById("babyraid").level, 1);
+  assert.equal(G.isRaid("babyraid"), true);
+  assert.equal(G.isRaid("race"), false);
+  assert.equal(G.babyRaidHp(1), 15);
+  assert.equal(G.babyRaidHp(3), 45);
+  assert.equal(G.babyBossFor(0).name, "Dust Bunny");
+  assert.equal(G.babyBossFor(5).name, "Dust Bunny 2");
+  assert.equal(G.babyBossFor(7).tier, 0, "baby bosses never scale up");
+  const baby = { mode: "babyraid", players: ["a"], teams: { a: ["a"] }, params: { hp: 15, bossName: "Dust Bunny" }, startAt: T0, endAt: T0 + 100 };
+  assert.equal(G.decide(baby, { a: [e(T0 + 1)] }, chores, false), null, "one small chore isn't enough");
+  assert.equal(G.decide(baby, { a: [e(T0 + 1, "big")] }, chores, false).winnerSide, "a");
+  assert.deepEqual(G.battleXp({ ...baby, scores: { a: { raw: 20 } } }, { winnerSide: "a" }), { a: 25 });
+  assert.ok(G.unlockedIds(1, {}).includes("m:babyraid"), "unlocked from level 1");
+});
+
 test("team battles: raid and kids vs grown-ups", () => {
   const chores = [{ id: "x", mult: 1 }, { id: "big", mult: 2 }];
   const raid = { mode: "raid", players: ["a", "c"], teams: { a: ["a", "c"] }, params: { hp: 40, bossName: "Sock Goblin" }, startAt: T0, endAt: T0 + 100 };

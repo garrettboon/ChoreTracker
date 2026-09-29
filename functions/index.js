@@ -525,7 +525,7 @@ const MS_AUTOCONFIRM = 12 * 3600 * 1000;  // unconfirmed results confirm themsel
 const MS_PARENT_WAIT = 48 * 3600 * 1000;  // flagged results nobody checked become no contest
 const MS_COOLDOWN = 3600 * 1000;          // after a decline
 const SPEED = ["race", "blitz", "timetrial", "ghost", "territory", "bingo", "grownups"]; // results someone confirms
-const LIVE_SCORED = ["race", "blitz", "territory", "bingo", "raid", "grownups"];         // scored from chores as they happen
+const LIVE_SCORED = ["race", "blitz", "territory", "bingo", "raid", "babyraid", "grownups"];         // scored from chores as they happen
 
 const dowOf = (date) => { const [y, m, d] = date.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d)).getUTCDay(); };
 const mondayOfDate = (date) => mondayOf(date, dowOf(date));
@@ -604,9 +604,10 @@ exports.createBattle = onCall(async (req) => {
   // Who's in it.
   let players, teams = null, opp = null;
   if (picked.solo) players = [me.id];
-  else if (picked.id === "raid") {
+  else if (G.isRaid(picked.id)) {
     const mates = ids(data.team).filter((id) => kidOf(cfg, id));
-    if (!mates.length || mates.length > 3) throw new HttpsError("invalid-argument", "Pick 1 to 3 teammates.");
+    if (picked.id === "raid" && !mates.length) throw new HttpsError("invalid-argument", "Pick 1 to 3 teammates.");
+    if (mates.length > 3) throw new HttpsError("invalid-argument", "Pick up to 3 teammates.");
     players = [me.id, ...mates];
     teams = { a: players };
   } else if (picked.id === "grownups") {
@@ -638,6 +639,7 @@ exports.createBattle = onCall(async (req) => {
   if (mode.id === "race") params.n = Math.min(6, Math.max(2, Math.round(Number(data.n) || 3)));
   if (mode.id === "blitz" || mode.id === "grownups") params.windowMin = [30, 60, 0].includes(Number(data.windowMin)) ? Number(data.windowMin) : 60;
   if (mode.id === "raid") params.days = Math.min(3, Math.max(1, Math.round(Number(data.days) || 1)));
+  if (mode.id === "babyraid") params.days = 1;
   if (G.TIMED.includes(mode.id) || mode.id === "judge") {
     const ch = cfg.chores.find((c) => c.id === String(data.choreId || "") && c.kind === "family");
     if (!ch) throw new HttpsError("invalid-argument", "Pick a chore.");
@@ -696,10 +698,17 @@ exports.createBattle = onCall(async (req) => {
     if (teams.b) b.teamHandicap = G.teamHandicaps(teams.a.map((id) => kidOf(cfg, id)), teams.b.map((id) => kidOf(cfg, id)), cfg);
     b.handicap = {};
   } else b.handicap = opp ? G.handicaps(meP, opp, cfg) : { [me.id]: 1 };
-  if (mode.id === "raid") {
-    const fam = await db.doc("xp/_family").get();
-    const boss = G.bossFor((fam.exists && fam.data().bossesBeaten) || 0);
-    Object.assign(params, { bossId: boss.id, bossName: boss.name, bossEmoji: boss.emoji, tier: boss.tier, hp: G.raidHp(players.length, params.days, boss.tier) });
+  if (G.isRaid(mode.id)) {
+    const fam = await db.doc("xp/_family").get(), fd = (fam.exists && fam.data()) || {};
+    if (mode.id === "babyraid") {
+      const boss = G.babyBossFor(fd.babyBossesBeaten || 0);
+      Object.assign(params, { bossId: boss.id, bossName: boss.name, bossEmoji: boss.emoji, tier: 0, hp: G.babyRaidHp(players.length) });
+    } else {
+      const boss = G.bossFor(fd.bossesBeaten || 0);
+      Object.assign(params, { bossId: boss.id, bossName: boss.name, bossEmoji: boss.emoji, tier: boss.tier, hp: G.raidHp(players.length, params.days, boss.tier) });
+    }
+    // A raid with nobody to invite (a solo Baby Boss Raid) starts right away.
+    if (players.length === 1) Object.assign(b, { status: "active", acceptedAt: now }, startWindow(cfg, b, now));
   }
   if (mode.solo) {
     b.acceptedAt = b.startAt = now;
@@ -709,7 +718,7 @@ exports.createBattle = onCall(async (req) => {
   const ref = await db.collection("battles").add(b);
   const others = players.filter((p) => p !== me.id);
   if (others.length) {
-    const what = mode.id === "raid" ? `Team up against ${params.bossEmoji} ${params.bossName}!` : `${picked.emoji} ${picked.name}.`;
+    const what = G.isRaid(mode.id) ? `Team up against ${params.bossEmoji} ${params.bossName}!` : `${picked.emoji} ${picked.name}.`;
     await pushTo(others, `⚔️ ${meP.name} challenged you!`, `${what} Open Boon Chores to accept or pass.`);
   }
   return { id: ref.id, mode: mode.id, twist };
@@ -719,7 +728,7 @@ exports.createBattle = onCall(async (req) => {
 function startWindow(cfg, b, now) {
   const eod = endOfLocalDay(cfg, now);
   if ((b.mode === "blitz" || b.mode === "grownups") && b.params.windowMin) return { startAt: now, endAt: Math.min(eod, now + b.params.windowMin * 60000) };
-  if (b.mode === "raid") return { startAt: now, endAt: eod + ((b.params.days || 1) - 1) * 86400000 };
+  if (G.isRaid(b.mode)) return { startAt: now, endAt: eod + ((b.params.days || 1) - 1) * 86400000 };
   if (b.mode === "streakduel") return { startAt: eod, endAt: eod + 14 * 86400000 };
   if (b.mode === "showdown") return { startAt: now, endAt: now + 8 * 86400000 };
   return { startAt: now, endAt: eod };
@@ -942,23 +951,23 @@ async function afterSettle(cfg, id) {
       const other = b.players.find((o) => o !== p);
       if (ages[p] < ages[other]) count.push("giant");
     }
-    const label = r.record ? "record set" : r.tie ? "tie" : won ? (b.mode === "ghost" ? "new best" : b.mode === "raid" ? "boss beaten" : "won") : "played";
+    const label = r.record ? "record set" : r.tie ? "tie" : won ? (b.mode === "ghost" ? "new best" : G.isRaid(b.mode) ? "boss beaten" : "won") : "played";
     const pbMs = b.mode === "ghost" && won && b.attempts[p] ? b.attempts[p].ms : null;
     await applyXp(p, xp[p] ? [{ key: "battle:" + id, amount: xp[p], reason: `${mode ? mode.name : "Battle"}: ${label}`, count }] : [],
       [], pbMs != null ? (x) => { x.pb = { ...(x.pb || {}), [b.params.choreId]: pbMs }; return true; } : null);
     await syncBadges(cfg, p);
     await evalQuests(cfg, p);
   }
-  if (b.mode === "raid" && r.winnerSide) {
+  if (G.isRaid(b.mode) && r.winnerSide) {
     await db.runTransaction(async (t) => {
       const cur = await t.get(ref);
       if (cur.data().bossCounted) return;
-      t.set(db.doc("xp/_family"), { bossesBeaten: FieldValue.increment(1) }, { merge: true });
+      t.set(db.doc("xp/_family"), { [b.mode === "babyraid" ? "babyBossesBeaten" : "bossesBeaten"]: FieldValue.increment(1) }, { merge: true });
       t.update(ref, { bossCounted: true });
     });
   }
   await ref.update({ live: false, xp });
-  if (b.mode === "raid" || b.mode === "streakduel" || b.mode === "showdown") {
+  if (G.isRaid(b.mode) || b.mode === "streakduel" || b.mode === "showdown") {
     await pushTo(b.players, `${mode.emoji} ${mode.name} is over`, r.reason || "Open Boon Chores to see how it went.");
   }
 }

@@ -112,7 +112,7 @@ How XP works:
 | Finishing the daily checklist | 5 |
 | Streak milestones (3, 7, 14, 30, 60, 100 days) | 25 to 400 |
 | Weekly goal reached / deduction earned back / savings goal bought / new badge | 50 / 20 / 50 / 25 |
-| Battles | 40 for a win, 25 for a tie, 15 for trying |
+| Battles | 40 for a win, 25 for a tie, 15 for trying (a Baby Boss Raid win pays 25) |
 
 What levels unlock: new creatures (the first 12 stay free), accessories, screen themes, goal-trail styles, confetti styles, titles, battle modes, and **streak freezes**. Freezes come every 5 levels, and you can hold 2. Just after midnight, a freeze covers anyone who missed yesterday's checklist. Creatures also grow as you level: they get a ring at level 5, a glow at 10, and an aura at 20.
 
@@ -130,6 +130,7 @@ What levels unlock: new creatures (the first 12 stay free), accessories, screen 
 | Streak Duel | level 10 | Whoever misses their daily list first loses (up to 14 days) |
 | Goal Showdown | level 12 | Best share of the weekly goal, decided at cash-out |
 | Boss Raid | level 15 | Team up (2 to 4 people) and beat a boss with chores |
+| Baby Boss Raid | level 1 | A tiny one-day boss for younger kids or a quick team-up. Go solo or bring up to 3 teammates. Easy to beat, and it never gets harder |
 | Kids vs. Grown-ups | level 15 | Team battle; the kids' team gets a handicap |
 | Wildcard | level 20 | A random mode, often with a twist like "Clean bathroom counts double" |
 
