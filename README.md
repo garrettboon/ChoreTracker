@@ -100,7 +100,7 @@ Everyone (adults too) earns XP and levels up, like a video game. XP never costs 
 
 **After the first deploy with levels:** open the Parent screen > **Game** tab > **Count past chores**. This gives everyone XP for the chores, goals, streaks, and badges they already earned. It's safe to run more than once.
 
-**Each adult's Google email:** in **Settings** > People, tick **Adult** and fill in the adult's Google email. That ties each parent's sign-in to their own profile for battles. A parent can't confirm a battle they're in, so another parent (or the other player) has to.
+**Each adult's Google email:** in **Settings** > People, tick **Adult** and fill in the adult's Google email. That ties each parent's sign-in to their own profile for battles. A parent can confirm, check, or judge a battle they're in, too.
 
 How XP works:
 

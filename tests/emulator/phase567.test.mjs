@@ -85,7 +85,7 @@ test("chore bingo: first to finish a line wins", async () => {
   assert.equal(b.result.reason, "Bingo!");
 });
 
-test("judge's pick: both turn in the chore, a parent picks, own battles need another parent", async () => {
+test("judge's pick: both turn in the chore, a parent picks, even in their own battle", async () => {
   await reset();
   await level("k1", 8);
   const k1 = await kidClient("k1"), k2 = await kidClient("k2"), parent = await parentClient(), dad = await parentClient("dad@test.com");
@@ -101,14 +101,16 @@ test("judge's pick: both turn in the chore, a parent picks, own battles need ano
   const b = await waitFor(async () => { const b = await battle(id); return !b.live && b; }, { msg: "judged" });
   assert.equal(b.result.winner, "k2");
   assert.deepEqual(b.xp, { k1: 15, k2: 40 });
-  // Dad can't judge a battle he's in.
+  // Dad can judge a battle he's in.
   await level("dad", 8);
   const j = await dad.call("createBattle", { mode: "judge", opponent: "k3", choreId: "c2", as: "dad" });
   const k3 = await kidClient("k3");
   await k3.call("respondBattle", { id: j.id, accept: true });
   await dad.call("finishAttempt", { id: j.id, as: "dad" });
   await k3.call("finishAttempt", { id: j.id });
-  await rejects(dad.call("judgeBattle", { id: j.id, winner: "dad" }), /Another parent/);
+  await dad.call("judgeBattle", { id: j.id, winner: "dad" });
+  const jb = await waitFor(async () => { const b = await battle(j.id); return !b.live && b; }, { msg: "judged own" });
+  assert.equal(jb.result.winner, "dad");
 });
 
 test("streak duel: the first to miss a day loses; results need no confirmation", async () => {

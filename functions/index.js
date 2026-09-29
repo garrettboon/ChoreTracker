@@ -855,7 +855,6 @@ exports.checkRun = onCall(async (req) => {
     if (!s.exists) throw new HttpsError("not-found", "That battle is gone.");
     const b = s.data();
     if (!G.TIMED.includes(b.mode) || !["active", "confirming"].includes(b.status)) throw new HttpsError("failed-precondition", "There's nothing to check here.");
-    if (ownBattle(cfg, b, req.auth)) throw new HttpsError("permission-denied", "Another parent has to check a battle you're in.");
     const a = (b.attempts || {})[player];
     if (!a || a.ms == null || a.void) throw new HttpsError("failed-precondition", "That run isn't finished.");
     const by = req.auth.token.name || req.auth.token.email;
@@ -885,7 +884,6 @@ exports.judgeBattle = onCall(async (req) => {
     if (!s.exists) throw new HttpsError("not-found", "That battle is gone.");
     const b = s.data();
     if (b.status !== "judging") throw new HttpsError("failed-precondition", "That battle isn't waiting for a judge.");
-    if (ownBattle(cfg, b, req.auth)) throw new HttpsError("permission-denied", "Another parent has to judge a battle you're in.");
     if (pick !== "tie" && !b.players.includes(pick)) throw new HttpsError("invalid-argument", "Pick one of the players.");
     const by = req.auth.token.name || req.auth.token.email;
     t.update(ref, { status: "done", result: { ...(b.result || {}), needsParent: false, winner: pick === "tie" ? null : pick, tie: pick === "tie", reason: pick === "tie" ? "The judge called it a tie" : "The judge's pick", confirmedBy: by, confirmedAt: Date.now() } });
@@ -920,12 +918,6 @@ function qualityResult(b) {
   if (r && !r.noContest && finished.some((p) => !q[p])) return { ...r, reason: b.mode === "ghost" ? r.reason : "Fastest run done well" };
   return r;
 }
-// True when a signed-in parent is one of this battle's players.
-function ownBattle(cfg, b, auth) {
-  const email = String(auth.token.email || "").toLowerCase();
-  return b.players.some((p) => { const k = kidOf(cfg, p); return k && k.email && k.email.toLowerCase() === email; });
-}
-
 // Pays XP for a finished battle (idempotent), then takes it off the live list.
 async function afterSettle(cfg, id) {
   const ref = db.doc(`battles/${id}`);
@@ -1096,8 +1088,7 @@ exports.confirmResult = onCall(async (req) => {
     const now = Date.now();
     if (parentMode) {
       if (!["confirming", "judging"].includes(b.status)) throw new HttpsError("failed-precondition", "That result is already settled.");
-      if (ownBattle(cfg, b, req.auth)) throw new HttpsError("permission-denied", "Another parent has to check a battle you're in.");
-      const by = req.auth.token.name || req.auth.token.email;
+        const by = req.auth.token.name || req.auth.token.email;
       if (action === "void") t.update(ref, { status: "done", result: { ...r, winner: null, winnerSide: null, tie: false, noContest: true, reason: "Called off by a parent", confirmedBy: by, confirmedAt: now } });
       else if (action === "confirm" && G.TIMED.includes(b.mode)) throw new HttpsError("failed-precondition", "Check each run as done well or not instead.");
       else if (action === "confirm" && b.status === "confirming") t.update(ref, { status: "done", result: { ...r, confirmedBy: by, confirmedAt: now } });

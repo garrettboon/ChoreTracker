@@ -130,8 +130,7 @@ test("ghost race and adults: a parent acts as their own adult profile only", asy
   let b = await battle(id);
   assert.equal(b.status, "confirming");
   assert.equal(b.result.record, true);
-  await rejects(dad.call("checkRun", { id, player: "dad", ok: true }), /Another parent/);
-  await mom.call("checkRun", { id, player: "dad", ok: true });
+  await dad.call("checkRun", { id, player: "dad", ok: true }); // a parent may check a battle they're in
   b = await waitFor(async () => { const b = await battle(id); return b.live === false && b; }, { msg: "closed" });
   assert.deepEqual(b.xp, { dad: 25 });
   const x = await quiet("xp/dad");
