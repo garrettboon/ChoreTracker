@@ -36,7 +36,7 @@ test("freezes come every 5 levels", () => {
 test("unlocks: starters free, new creatures and modes by level", () => {
   const l1 = G.unlockedIds(1, {});
   for (const s of G.STARTERS) assert.ok(l1.includes("c:" + s));
-  assert.equal(G.STARTERS.length, 12);
+  assert.equal(G.STARTERS.length, 13);
   assert.ok(!l1.includes("c:hedgehog"));
   assert.ok(G.unlockedIds(2, {}).includes("c:hedgehog"));
   assert.ok(l1.includes("m:race") && l1.includes("m:timetrial") && l1.includes("m:ghost"));
