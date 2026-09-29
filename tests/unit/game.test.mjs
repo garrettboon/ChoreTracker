@@ -318,6 +318,12 @@ test("security rules list every creature at the same level as game.js", () => {
   assert.deepEqual(map, Object.fromEntries(G.CREATURES.map((c) => [c[0], c[3]])));
 });
 
+test("the dog is a free starter", () => {
+  assert.ok(G.STARTERS.includes("dog"));
+  assert.equal(G.STARTERS.length, 13);
+  assert.deepEqual(G.describeUnlocks(["c:dog"])[0].slice(0, 2), ["🐶", "Dog"]);
+});
+
 test("the cat unlocks at level 5", () => {
   assert.ok(!G.unlockedIds(4, {}).includes("c:cat"));
   assert.ok(G.unlockedIds(5, {}).includes("c:cat"));

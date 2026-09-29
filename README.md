@@ -114,7 +114,7 @@ How XP works:
 | Weekly goal reached / deduction earned back / savings goal bought / new badge | 50 / 20 / 50 / 25 |
 | Battles | 40 for a win, 25 for a tie, 15 for trying (a Baby Boss Raid win pays 25) |
 
-What levels unlock: new creatures (the first 12 stay free), accessories, screen themes, goal-trail styles, confetti styles, titles, battle modes, and **streak freezes**. Freezes come every 5 levels, and you can hold 2. Just after midnight, a freeze covers anyone who missed yesterday's checklist. Creatures also grow as you level: they get a ring at level 5, a glow at 10, and an aura at 20.
+What levels unlock: new creatures (the first 13 stay free), accessories, screen themes, goal-trail styles, confetti styles, titles, battle modes, and **streak freezes**. Freezes come every 5 levels, and you can hold 2. Just after midnight, a freeze covers anyone who missed yesterday's checklist. Creatures also grow as you level: they get a ring at level 5, a glow at 10, and an aura at 20.
 
 **Battles** are opt-in challenges. You earn XP from them, never money:
 

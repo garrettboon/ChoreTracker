@@ -43,7 +43,7 @@ service cloud.firestore {
     // Level each creature unlocks at. Must match CREATURES in public/game.js (a unit test checks).
     function creatureLevels() {
       return {'dragon': 1, 'fox': 1, 'frog': 1, 'dino': 1, 'unicorn': 1, 'octopus': 1, 'shark': 1, 'turtle': 1,
-        'owl': 1, 'bee': 1, 'tiger': 1, 'penguin': 1, 'hedgehog': 2, 'sloth': 3, 'wolf': 4, 'cat': 5, 'lion': 6,
+        'owl': 1, 'bee': 1, 'tiger': 1, 'penguin': 1, 'dog': 1, 'hedgehog': 2, 'sloth': 3, 'wolf': 4, 'cat': 5, 'lion': 6,
         'panda': 7, 'flamingo': 9, 'whale': 11, 'eagle': 13, 'robot': 14, 'invader': 16, 'wizard': 18,
         'elder': 20, 'hero': 25, 'peacock': 30};
     }
