@@ -599,11 +599,30 @@ function pViews(){
     ${kids.length?`<div class="kid-list">${kids.map(k=>`<button class="choice" data-act="kid-view" data-kid="${k.id}"><span class="e">${creatureFor(k.id)[1]}</span><span><b>${esc(k.name)}</b><small>🔥 ${streak(k.id)} day streak</small></span></button>`).join("")}</div>`:`<p class="empty">No kids set up yet.</p>`}</section>`;
 }
 function pActions(){return `<h2 class="tab-h">Deductions</h2>${pDeductions()}<h2 class="tab-h">Cash-out</h2>${pCashout()}`;}
+// Parents can fill in a daily checklist that was done but not checked off, up to two weeks back.
+function fixDayCard(){const prs=prChores();if(!prs.length)return "";
+  const f=S.ui.fix||(S.ui.fix={kid:kidsSorted()[0].id,date:addDays(ymd(),-1)});if(!kidCfg(f.kid))f.kid=kidsSorted()[0].id;
+  const ks=kidState(f.kid),done=ks.prLog[f.date]||[],full=prComplete(ks,f.date),s=streak(f.kid);
+  const dates=Array.from({length:14},(_,i)=>addDays(ymd(),-(i+1)));
+  const label=d=>parseYmd(d).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"})+(d===addDays(ymd(),-1)?" (yesterday)":"");
+  return `<section class="card"><div class="sec-head"><h2>Fix a missed day</h2><span class="sub">🔥 ${esc(kidCfg(f.kid).name)}: ${s} day${s===1?"":"s"} in a row</span></div>
+    <div class="row"><label>Who<select data-bind="fix.kid">${kidsSorted().map(k=>`<option value="${k.id}" ${k.id===f.kid?"selected":""}>${esc(k.name)}</option>`).join("")}</select></label>
+    <label>Day<select data-bind="fix.date">${dates.map(d=>`<option value="${d}" ${d===f.date?"selected":""}>${label(d)}</option>`).join("")}</select></label></div>
+    <div class="checks" style="margin-top:10px">${prs.map(c=>{const on=done.includes(c.id);return `<button class="check ${on?"on":""}" data-act="fix-pr-toggle" data-id="${c.id}" aria-pressed="${on}"><span class="box">${on?"✓":""}</span><span><b>${esc(c.name)}</b></span></button>`;}).join("")}</div>
+    <p class="hint">${full?"✅ That day counts toward the streak.":"Check off what was done that day. When every item is checked, the day counts toward the streak again."} Streak freezes used on a day you fix come back.</p></section>`;}
+// Check a daily item on or off for a past day, the same way the kid screen does for today.
+function setPrDay(kid,id,on,date){const ks=kidState(kid),done=ks.prLog[date]||[];
+  const complete=on&&prChores().every(c=>c.id===id||done.includes(c.id));const upd={prLog:{[date]:on?arrayUnion(id):arrayRemove(id)}};
+  if(complete)upd.prDone={[date]:true};else if(!on)upd.prDone={[date]:false};
+  const day=parseYmd(date).toLocaleDateString(undefined,{weekday:"long"});
+  guard(setDoc(doc(db,"prefs",kid),upd,{merge:true}),complete?`Fixed. ${kidCfg(kid).name}'s ${day} counts toward the streak.`:null);}
 function pActivity(){
   const y=addDays(ymd(),-1);let flags="";
-  for(const k of kidsSorted().filter(k=>!k.adult)){const ksy=kidState(k.id),done=ksy.prLog[y]||[];
-    const miss=[...(ksy.prDone[y]?[]:prChores().filter(c=>!done.includes(c.id)).map(c=>c.name)),...famChoresFor(k.id).filter(c=>c.assign===k.id&&countOnDate(k.id,c.id,y)===0).map(c=>c.name)];
-    for(const m of miss)flags+=`<div class="flag-row"><span><b>${esc(k.name)}</b> didn't check off ${esc(m)}</span><button class="btn ghost small" data-act="prefill-ded" data-kid="${k.id}" data-reason="${esc("Missed: "+m)}">Deduct</button></div>`;}
+  for(const k of kidsSorted()){const ksy=kidState(k.id),done=ksy.prLog[y]||[];
+    const missPr=ksy.prDone[y]?[]:prChores().filter(c=>!done.includes(c.id));
+    const missChores=k.adult?[]:famChoresFor(k.id).filter(c=>c.assign===k.id&&countOnDate(k.id,c.id,y)===0);
+    for(const c of missPr)flags+=`<div class="flag-row"><span><b>${esc(k.name)}</b> didn't check off ${esc(c.name)}</span><span class="btn-pair"><button class="btn ghost small" data-act="fix-pr" data-kid="${k.id}" data-date="${y}" data-id="${c.id}">It was done</button>${k.adult?"":`<button class="btn ghost small" data-act="prefill-ded" data-kid="${k.id}" data-reason="${esc("Missed: "+c.name)}">Deduct</button>`}</span></div>`;
+    for(const c of missChores)flags+=`<div class="flag-row"><span><b>${esc(k.name)}</b> didn't check off ${esc(c.name)}</span><button class="btn ghost small" data-act="prefill-ded" data-kid="${k.id}" data-reason="${esc("Missed: "+c.name)}">Deduct</button></div>`;}
   const L=S.ui.log;if(!L.kid)L.kid=kidsSorted()[0].id;const lk=kidCfg(L.kid)||kidsSorted()[0];const lchores=famChoresFor(lk.id);if(!lchores.some(c=>c.id===L.chore))L.chore=lchores[0]?lchores[0].id:"";
   const all=[];for(const w0 of Object.values(S.weeks)){if(w0.closed)continue;const w=getWeek(w0.kidId,w0.week);for(const e of w.entries)all.push({e,w});}
   all.sort((a,b)=>b.e.t-a.e.t);
@@ -611,7 +630,8 @@ function pActivity(){
     <div class="row"><label>Who<select data-bind="log.kid">${kidsSorted().map(k=>`<option value="${k.id}" ${k.id===lk.id?"selected":""}>${esc(k.name)}</option>`).join("")}</select></label>
     <label>Chore<select data-bind="log.chore">${lchores.map(c=>`<option value="${c.id}" ${c.id===L.chore?"selected":""}>${esc(c.name)} (+${money(choreValue(lk,c))})</option>`).join("")}</select></label>${needsNote(choreById(L.chore))?`<label>What was it<input data-bind="log.note" maxlength="120" placeholder="What the chore was" value="${esc(L.note||"")}"></label>`:""}
     <button class="btn" style="flex:0 0 auto" data-act="log-chore" ${S.busy.log?"disabled":""}>${S.busy.log?"Saving…":"Log it"}</button></div></section>
-  <section class="card"><div class="sec-head"><h2>Missed yesterday</h2></div>${flags||`<p class="empty">Nothing missed yesterday.</p>`}<p class="hint">Nothing is deducted automatically. You decide.</p></section>
+  <section class="card"><div class="sec-head"><h2>Missed yesterday</h2></div>${flags||`<p class="empty">Nothing missed yesterday.</p>`}<p class="hint">Nothing is deducted automatically. You decide. If a daily item was really done but not checked off, tap It was done to fix the streak.</p></section>
+  ${fixDayCard()}
   <section class="card"><div class="sec-head"><h2>This week's chores</h2></div>${all.length?`<ul class="feed">${all.slice(0,50).map(({e,w})=>{const k=kidCfg(w.kidId);const l=choreLine(e);
     const btn=`<button class="btn ghost small" data-act="${e.status==="reversed"?"restore":"reverse"}" data-kid="${w.kidId}" data-wk="${w.week}" data-id="${e.id}">${e.status==="reversed"?"Restore":"Reverse"}</button>`;
     return `<li><span style="flex:1"><b>${esc(k?k.name:"?")}</b>: ${l[0]}</span>${l[1]}${btn}</li>`;}).join("")}</ul>`:`<p class="empty">No chores logged yet this week.</p>`}</section>`;
@@ -829,6 +849,8 @@ async function handleAct(act,ds){
   case "b-cancel": await bcall("cancelBattle",{id:ds.id},"Called off.");break;
   case "b-start": await bcall("startAttempt",{id:ds.id},"Timer started. Go!");break;
   case "b-finish":{const r=await bcall("finishAttempt",{id:ds.id});if(r){confetti(80);chime(true);toast(r.ms!=null?`Done in ${fmtMs(r.ms)}! Chore logged.`:"Turned in! Chore logged.");}break;}
+  case "fix-pr": setPrDay(ds.kid,ds.id,true,ds.date);return;
+  case "fix-pr-toggle":{const f=S.ui.fix;const on=(kidState(f.kid).prLog[f.date]||[]).includes(ds.id);setPrDay(f.kid,ds.id,!on,f.date);return;}
   case "p-check": await bcall("checkRun",{id:ds.id,player:ds.player,ok:!!ds.ok,as:null},ds.ok?"Marked done well.":"Marked not good enough.");break;
   case "p-judge": if(!confirm(ds.winner==="tie"?"Call it a tie?":`${kidCfg(ds.winner).name} did the better job?`))return;await bcall("judgeBattle",{id:ds.id,winner:ds.winner,as:null},"Judged. Thanks!");break;
   case "claim-reward":{const r=await bcall("claimReward",{rewardId:ds.id});if(r){confetti(80);chime(true);toast("Claimed! A parent will approve it.");}break;}
