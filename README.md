@@ -148,6 +148,7 @@ To limit battles, go to **Settings** > Game. You can set quiet hours (no battles
 **More ways to play:**
 
 - **Morning badges:** Early bird for 3 chores before 9 AM in one day, Rise and shine for 5 in one day, and Morning person for 25 chores before 9 AM in all. Like every badge, each pays 10 XP once.
+- **Full-screen chore mode:** tap **▶ Start** on a chore (or a daily item with steps) to open it full screen with a big timer, a bar toward its goal time, and large check boxes for its steps. Set each chore's steps (one per line) and goal time in Settings. **Done** only unlocks once every step is checked, and Activity shows how long it took (⏱). A chore with steps always opens its checklist when a kid taps I did it. Time Trial, Ghost Race, and Judge's Pick runs use the same screen, so battle runs must check every step too. Leaving the app keeps the run going.
 - **Chore icons:** every chore shows an icon picked from its name (🧹 sweep, 🍽️ dishes, 🧺 laundry…). To change one, open the chore in Settings and tap an icon or type any emoji.
 - **Weekly quests:** everyone gets 3 quests each Monday, like "Do 3 different chores in one day" or "Do a chore before 9 AM". They pay 15 to 25 XP and are checked automatically. You can turn them off in Settings > Game.
 - **Rewards:** in Settings > Game, list real-world rewards by level (for example level 5: pick Friday dinner, again every 5 levels). Kids claim them from their screen, and you approve them and mark them given in the Game tab.

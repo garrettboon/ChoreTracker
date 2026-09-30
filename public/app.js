@@ -200,6 +200,7 @@ function render(){
   else if(S.role==="kid")h=kidCfg(S.viewKid)?viewKid(S.viewKid):`<div class="center"><p class="sub">This tablet's person was removed. Ask a parent to pair it again.</p></div>`;
   else if(S.role==="display")h=viewDisplay();
   else h=viewParent();
+  if(S.ui.focus&&S.phase==="ready"&&S.config)h+=focusOverlay();
   if(S.ui.levelUp)h+=levelUpOverlay();
   $("#app").innerHTML=h;document.body.dataset.mode=mode();
   const th=S.phase==="ready"&&S.config&&S.viewKid&&kidCfg(S.viewKid)&&onKidScreen()?equipped(S.viewKid).theme:"";
@@ -214,7 +215,7 @@ function afterRender(){
     if(!S.xpLoaded)continue;const lv=xpState(k.id).level,pl=S.ui.prevLvl[k.id];if(pl!=null&&lv>pl){confetti(260,equipped(k.id).confetti);chime(true);const el=document.querySelector(`.lane[data-kid="${k.id}"] .lane-cr`);if(el)el.classList.add("cheer");}S.ui.prevLvl[k.id]=lv;}}
   if(S.role==="display"&&S.config&&S.xpLoaded){const fp=G.familyProgress(famTotal(),S.game.familyGoal);const done=!!(fp&&fp.done);
     if(S.ui.prevFam===false&&done){confetti(400);chime(true);}S.ui.prevFam=fp?done:null;}
-  checkLevelUp();tickClocks();
+  restoreFocus();checkLevelUp();tickClocks();
 }
 // True when the screen shows one person's own view: their tablet, a parent's own tab, or a parent's "see a kid's screen".
 function onKidScreen(){return S.role==="kid"||(S.role==="parent"&&(S.ptab.startsWith("me:")||(S.ptab==="views"&&!!S.ui.kidView)));}
@@ -234,7 +235,7 @@ function levelUpOverlay(){const lu=S.ui.levelUp;const items=G.describeUnlocks(lu
 // Keeps Time Trial stopwatches ticking between renders.
 let clockTimer=null;
 function tickClocks(){const els=document.querySelectorAll(".tt-clock[data-start]");if(!els.length){clearInterval(clockTimer);clockTimer=null;return;}
-  const upd=()=>document.querySelectorAll(".tt-clock[data-start]").forEach(el=>{el.textContent=fmtMs(Date.now()-Number(el.dataset.start));});upd();if(!clockTimer)clockTimer=setInterval(upd,1000);}
+  const upd=()=>{document.querySelectorAll(".tt-clock[data-start]").forEach(el=>{el.textContent=fmtMs(Date.now()-Number(el.dataset.start));});tickGoal();};upd();if(!clockTimer)clockTimer=setInterval(upd,1000);}
 function fmtMs(ms){const t=Math.max(0,Math.round(ms/1000));const h=Math.floor(t/3600),m=Math.floor(t%3600/60),sec=t%60;return (h?h+":"+String(m).padStart(2,"0"):m)+":"+String(sec).padStart(2,"0");}
 
 function viewWelcome(){
@@ -308,11 +309,11 @@ function challengeCards(kidId){let h="";for(const w of openWeeks(kidId))for(cons
   h+=`<section class="card challenge"><h3>Earn back ${money(d.amount)}</h3><p><b>${esc(d.reason)}</b></p>${d.how?`<p>How: ${esc(d.how)}</p>`:""}<p class="hint">When you've done it, ask a parent to mark it earned back. You have until Sunday's cash-out.</p></section>`;return h;}
 function prSection(k,ks,today){const prs=prChores();if(!prs.length)return "";const done=ks.prLog[today]||[],notes=ks.prNotes[today]||{},pn=S.ui.prNote;const s=streak(k.id),boost=G.streakBoost(cfg(),s),fr=xpState(k.id).freezes;
   return `<section class="card"><div class="sec-head"><h2>Every day</h2><span><span class="streak">🔥 ${s} day${s===1?"":"s"} in a row</span>${boost>1?` <span class="pill boost" title="Streak bonus on all XP">×${boost} XP</span>`:""}${fr?` <span class="pill" title="Streak freezes save your streak on a missed day">🧊 ${fr}</span>`:""}</span></div><div class="checks">${prs.map(c=>{const on=done.includes(c.id),asking=pn&&pn.id===c.id,sub=on&&notes[c.id]?notes[c.id]:c.note;
-    return `<button class="check ${on?"on":""}" data-act="toggle-pr" data-id="${c.id}" aria-pressed="${on}" ${asking?"disabled":""}><span class="box">${on?"✓":""}</span><span><b>${icon(c)}${esc(c.name)}</b>${sub?`<small>${esc(sub)}</small>`:""}</span></button>${asking?`<div class="confirm"><label>What was it?<input data-bind="prNote.text" maxlength="120" placeholder="Say what you did" value="${esc(pn.text)}"></label><div class="row"><button class="btn small" data-act="save-pr-note" ${String(pn.text||"").trim()?"":"disabled"}>Check it off</button><button class="btn ghost small" data-act="cancel-pr-note">Cancel</button></div></div>`:""}`;}).join("")}</div>
+    return `<button class="check ${on?"on":""}" data-act="toggle-pr" data-id="${c.id}" aria-pressed="${on}" ${asking?"disabled":""}><span class="box">${on?"✓":""}</span><span><b>${icon(c)}${esc(c.name)}</b>${sub?`<small>${esc(sub)}</small>`:""}</span></button>${!on&&stepsOf(c).length?`<button class="fx-open pr" data-act="focus" data-id="${c.id}">▶ Start · ${stepsOf(c).length} steps</button>`:""}${asking?`<div class="confirm"><label>What was it?<input data-bind="prNote.text" maxlength="120" placeholder="Say what you did" value="${esc(pn.text)}"></label><div class="row"><button class="btn small" data-act="save-pr-note" ${String(pn.text||"").trim()?"":"disabled"}>Check it off</button><button class="btn ghost small" data-act="cancel-pr-note">Cancel</button></div></div>`:""}`;}).join("")}</div>
     <p class="hint">These don't pay money. They're part of taking care of yourself. Finish all of them for +${G.XP.checklist} XP and to keep your streak going.${game().streakMultiplier.enabled?` A ${game().streakMultiplier.minStreak}-day streak makes all your XP count ×${game().streakMultiplier.mult}.`:""}</p></section>`;}
 function choreSection(k,today){const list=famChoresFor(k.id).sort((a,b)=>(a.assign==="pool")-(b.assign==="pool")),cc=S.ui.confirmChore,cot=cotdId();
   return `<section class="card"><div class="sec-head"><h2>Family chores</h2></div>${list.length?list.map(c=>{const L=limitState(k.id,c,today),full=!!L.reason,mine=c.assign===k.id,busy=S.busy["c:"+c.id],asking=cc&&cc.choreId===c.id,ask=needsNote(c);
-    return `<div class="chore ${c.id===cot?"cotd":""}"><div><b>${icon(c)}${esc(c.name)}</b><small><span class="tag ${c.assign===k.id?"mine":""}">${c.assign===k.id?"Yours":"Anyone"}</span>${c.id===cot?`<span class="tag star">⭐ Double XP today</span>`:""}</small></div><div class="c-val">+${money(choreValue(k,c))}<small>+${choreXpFor(k.id,c)} XP</small></div><button class="btn small" data-act="do-chore" data-id="${c.id}" ${full||busy||asking?"disabled":""}>${busy?"Saving…":L.reason==="week"?"Done this week":L.reason==="family"?"All done today":L.reason==="person"?(mine?"All done":"Your max today"):"I did it"}</button><small class="c-count">${mine?"":"you "}${L.me} of ${L.lim} today${L.flim?`, family ${L.fam} of ${L.flim} today`:""}${L.wlim?`, family ${L.wk} of ${L.wlim} this week`:""}</small>
+    return `<div class="chore ${c.id===cot?"cotd":""}"><div><b>${icon(c)}${esc(c.name)}</b>${full?"":`<button class="fx-open" data-act="focus" data-id="${c.id}" ${busy?"disabled":""}>▶ Start${stepsOf(c).length?` · ${stepsOf(c).length} steps`:""}${c.targetMin>0?` · ${c.targetMin} min`:""}</button>`}<small><span class="tag ${c.assign===k.id?"mine":""}">${c.assign===k.id?"Yours":"Anyone"}</span>${c.id===cot?`<span class="tag star">⭐ Double XP today</span>`:""}</small></div><div class="c-val">+${money(choreValue(k,c))}<small>+${choreXpFor(k.id,c)} XP</small></div><button class="btn small" data-act="do-chore" data-id="${c.id}" ${full||busy||asking?"disabled":""}>${busy?"Saving…":L.reason==="week"?"Done this week":L.reason==="family"?"All done today":L.reason==="person"?(mine?"All done":"Your max today"):"I did it"}</button><small class="c-count">${mine?"":"you "}${L.me} of ${L.lim} today${L.flim?`, family ${L.fam} of ${L.flim} today`:""}${L.wlim?`, family ${L.wk} of ${L.wlim} this week`:""}</small>
       ${asking?`<div class="confirm"><b>Did you do "${esc(c.name)}"?</b>${ask?`<label>What was it?<input data-bind="confirmChore.note" maxlength="120" placeholder="Say what you did" value="${esc(cc.note)}"></label>`:""}<div class="row"><button class="btn small" data-act="confirm-chore" ${ask&&!String(cc.note||"").trim()?"disabled":""}>Yes, I did it</button><button class="btn ghost small" data-act="cancel-chore">Not yet</button></div></div>`:""}</div>`;}).join(""):`<p class="empty">No chores set up yet.</p>`}</section>`;}
 function splitEditor(k,ks,w,goals,weekSave){
   if(goals.length<2)return "";
@@ -358,7 +359,7 @@ function badgeSection(kidId){const b=badgeList(kidId),got=b.filter(x=>x[3]),open
   return `<section class="card"><div class="sec-head"><h2>Badges</h2><span class="sub">${got.length} of ${b.length}. +${G.XP.badge} XP each</span></div>
     <div class="badges">${shown.map(tile).join("")}</div>
     <button class="btn ghost small" style="margin-top:10px" data-act="all-badges" aria-expanded="${!!open}">${open?"Show fewer":`Show all ${b.length}`}</button></section>`;}
-function choreLine(e){const rev=e.status==="reversed";return [`<span class="${rev?"struck":""}">${icon(choreById(e.choreId)||{name:e.name,kind:"family"})}${esc(e.name)}${e.detail?`: ${esc(e.detail)}`:""}<br><small>${timeOf(e.t)}${rev?", reversed":""}</small></span>`,`<span class="amt ${rev?"struck":"pos"}">+${money(e.amount)}</span>`];}
+function choreLine(e){const rev=e.status==="reversed";return [`<span class="${rev?"struck":""}">${icon(choreById(e.choreId)||{name:e.name,kind:"family"})}${esc(e.name)}${e.ms?` <small class="took">⏱ ${fmtMs(e.ms)}</small>`:""}${e.detail?`: ${esc(e.detail)}`:""}<br><small>${timeOf(e.t)}${rev?", reversed":""}</small></span>`,`<span class="amt ${rev?"struck":"pos"}">+${money(e.amount)}</span>`];}
 function dedLine(d){const st={active:"can still earn back",redeemed:"earned back",final:"final"}[d.status]||d.status;return [`<span class="${d.status==="redeemed"?"struck":""}">${esc(d.reason)}<br><small>${timeOf(d.t)}, ${st}</small></span>`,`<span class="amt ${d.status==="redeemed"?"struck":"neg"}">−${money(d.amount)}</span>`];}
 function activitySection(w){const list=[...w.entries.map(e=>({t:e.t,l:choreLine(e)})),...w.deductions.map(d=>({t:d.t,l:dedLine(d)}))].sort((a,b)=>b.t-a.t).slice(0,10);
   return `<section class="card"><div class="sec-head"><h2>This week</h2></div>${list.length?`<ul class="feed">${list.map(x=>`<li>${x.l.join("")}</li>`).join("")}</ul>`:`<p class="empty">Nothing yet. Pick a chore and get your creature moving.</p>`}</section>`;}
@@ -431,11 +432,11 @@ function battleCard(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Batt
   else if(b.status==="active"){
     if(G.TIMED.includes(b.mode)){const a=(b.attempts||{})[me];
       body=!a?`<p class="sub">Tap Start, do "${esc(b.params.choreName)}", then tap Done. The chore is logged when you finish.</p><button class="btn block" data-act="b-start" data-id="${b.id}" ${dis}>▶ Start timer</button>${b.mode==="ghost"?`<button class="btn ghost small" style="margin-top:8px" data-act="b-cancel" data-id="${b.id}" ${dis}>Cancel</button>`:""}`
-        :a.ms==null&&!a.void?`<div class="tt-big"><span class="tt-clock" data-start="${a.startAt}"></span></div><button class="btn block" data-act="b-finish" data-id="${b.id}" ${dis}>✓ Done!</button>`
+        :a.ms==null&&!a.void?`<div class="tt-big"><span class="tt-clock" data-start="${a.startAt}"></span></div>${stepsOf(choreById(b.params.choreId)).length?`<button class="btn block" data-act="fx-battle" data-id="${b.id}">⤢ Open the checklist</button>`:`<button class="btn block" data-act="b-finish" data-id="${b.id}" ${dis}>✓ Done!</button><button class="btn ghost small" style="margin-top:8px" data-act="fx-battle" data-id="${b.id}">⤢ Full screen</button>`}`
         :`<p class="sub">${a.void?"Your run didn't count: "+esc(a.void):"Your time: <b>"+fmtMs(a.ms)+"</b>. A parent will check that it was done well"}.${other?` Waiting for ${bName(b,other)}.`:""}</p>`;}
     else if(b.mode==="judge"){const a=(b.attempts||{})[me];
       body=a&&a.entryId?`<p class="sub">Turned in! ${other&&!((b.attempts||{})[other]||{}).entryId?`Waiting for ${bName(b,other)}.`:""} Then a parent picks the better job.</p>`
-        :`<p class="sub">Do your best job on "${esc(b.params.choreName)}", then tap Done. A parent picks the better job.</p><button class="btn block" data-act="b-finish" data-id="${b.id}" ${dis}>✓ Done!</button>`;}
+        :`<p class="sub">Do your best job on "${esc(b.params.choreName)}", then tap Done. A parent picks the better job.</p>${stepsOf(choreById(b.params.choreId)).length?`<button class="btn block" data-act="fx-battle" data-id="${b.id}">⤢ Open the checklist</button>`:`<button class="btn block" data-act="b-finish" data-id="${b.id}" ${dis}>✓ Done!</button>`}`;}
     else if(b.mode==="bingo")body=`${bingoGrid(b,me)}<p class="sub">Do the chores on your card. First to finish a row, column, or diagonal wins. Ends ${fmtEnd(b.endAt)}.</p>`;
     else if(b.mode==="streakduel")body=`<p class="sub">${ymd()<b.params.startDate?"Starts tomorrow.":"Checked each night."} Finish your daily list every day. Whoever misses first loses. Up to 14 days.</p>`;
     else if(b.mode==="showdown")body=`<p class="sub">Earn the biggest share of your weekly goal. Decided at Sunday's cash-out.</p>`;
@@ -523,6 +524,35 @@ function bountySection(k){const list=Object.entries(S.bounties).map(([id,b])=>({
 const famTotal=()=>cfg().kids.reduce((s,k)=>s+((S.xp[k.id]||{}).total||0),0);
 function familyBar(compact){const g=S.game.familyGoal;const fp=G.familyProgress(famTotal(),g);if(!fp)return "";
   return `<div class="fambar ${fp.done?"done":""} ${compact?"compact":""}" role="img" aria-label="Family goal ${esc(g.name)}: ${fp.into} of ${fp.target} XP"><span class="fb-name">👨‍👩‍👧‍👦 ${esc(g.name)}</span><div class="fb-track"><i style="width:${fp.frac*100}%"></i></div><span class="fb-num">${fp.done?"Reached! 🎉":`${fp.into.toLocaleString()} / ${fp.target.toLocaleString()} XP`}</span></div>`;}
+
+/* ---------- full-screen chore mode: timer and steps ---------- */
+const stepsOf=ch=>Array.isArray(ch&&ch.steps)?ch.steps.filter(Boolean):[];
+const FOCUS_KEY="boon.focus";
+function saveFocus(){try{if(S.ui.focus)localStorage.setItem(FOCUS_KEY,JSON.stringify(S.ui.focus));else localStorage.removeItem(FOCUS_KEY);}catch(e){}}
+// Picks up a run left open on this device (the timer keeps going while the app is closed).
+function restoreFocus(){if(S.ui.focus||!S.config||!S.viewKid||!onKidScreen())return;let f=null;try{f=JSON.parse(localStorage.getItem(FOCUS_KEY)||"null");}catch(e){}
+  if(!f||f.kid!==S.viewKid||Date.now()-f.startAt>6*3600e3||!(choreById(f.id)))return;
+  if(f.battleId){const b=S.battles[f.battleId];if(!b)return;const a=(b.attempts||{})[f.kid];if(b.status!=="active"||(a&&(a.ms!=null||a.void||a.entryId)))return;}
+  S.ui.focus=f;render();}
+function openFocus(f){S.ui.focus={checked:[],note:"",startAt:Date.now(),...f};saveFocus();try{if(document.documentElement.requestFullscreen&&!document.fullscreenElement)document.documentElement.requestFullscreen().catch(()=>{});}catch(e){}wake();}
+function closeFocus(){S.ui.focus=null;saveFocus();try{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});}catch(e){}}
+function focusOverlay(){const f=S.ui.focus,ch=choreById(f.id)||{name:"Chore"},steps=stepsOf(ch),left=steps.filter((_,i)=>!f.checked.includes(i)).length;
+  const tgt=ch.targetMin>0?ch.targetMin*60000:0,ask=!f.battleId&&needsNote(ch),busy=S.busy.b||S.busy["c:"+f.id];
+  const ready=!left&&(!ask||String(f.note||"").trim());
+  return `<div class="focus" role="dialog" aria-modal="true" aria-labelledby="fx-title">
+    <div class="fx-top"><button class="btn ghost small" data-act="fx-close">${f.battleId?"Minimize":"✕ Stop"}</button>${f.battleId?`<span class="pill">⚔️ Battle run</span>`:""}</div>
+    <div class="fx-ic" aria-hidden="true">${esc(G.choreIcon(ch))}</div><h2 id="fx-title">${esc(ch.name)}</h2>
+    <div class="fx-clock"><span class="tt-clock" data-start="${f.startAt}"></span></div>
+    ${tgt?`<div class="fx-goal"><div class="fx-bar"><i class="fx-fill" data-start="${f.startAt}" data-target="${tgt}"></i></div><small>Goal: ${fmtMs(tgt)}</small></div>`:""}
+    ${steps.length?`<div class="checks fx-steps">${steps.map((s,i)=>{const on=f.checked.includes(i);return `<button class="check ${on?"on":""}" data-act="fx-step" data-i="${i}" aria-pressed="${on}"><span class="box">${on?"✓":""}</span><span><b>${esc(s)}</b></span></button>`;}).join("")}</div>`:""}
+    ${ask?`<label class="fx-note">What was it?<input data-bind="focus.note" maxlength="120" placeholder="Say what you did" value="${esc(f.note||"")}"></label>`:""}
+    <button class="btn block fx-done" data-act="fx-done" ${!ready||busy?"disabled":""}>${busy?"Saving…":left?`Check off every step first (${left} left)`:"✓ Done!"}</button></div>`;}
+// Fills the goal bar as the timer runs; it turns orange past the goal.
+function tickGoal(){document.querySelectorAll(".fx-fill[data-start]").forEach(el=>{const p=(Date.now()-Number(el.dataset.start))/Number(el.dataset.target);el.style.width=Math.min(100,p*100)+"%";el.classList.toggle("over",p>1);});}
+async function finishFocus(){const f=S.ui.focus,ch=choreById(f.id);if(!f||!ch)return;const ms=Date.now()-f.startAt;
+  if(f.battleId){const r=await bcall("finishAttempt",{id:f.battleId});if(r){closeFocus();confetti(80);chime(true);toast(r.ms!=null?`Done in ${fmtMs(r.ms)}! A parent will check it.`:"Turned in! Chore logged.");}render();return;}
+  if(ch.kind==="pr"){closeFocus();setPr(f.kid,f.id,true,String(f.note||"").trim());render();return;}
+  const note=String(f.note||"").trim();closeFocus();await doChore(f.kid,f.id,note,ms);}
 
 function viewDisplay(){
   const d=(7-new Date().getDay())%7;const cash=d===0?"Cash-out tonight":`Cash-out in ${d} day${d===1?"":"s"}`;
@@ -752,7 +782,7 @@ function pDevices(){
   <section class="card"><div class="sec-head"><h2>Paired devices</h2></div>${S.devices.length?S.devices.map(d=>`<div class="flag-row"><span><b>${esc(d.name)}</b><br><small>${esc(roleLabel(d))}</small> ${d.role==="kid"?`<span class="pill ${d.fcmToken?"on":""}">${d.fcmToken?"Reminders on":"Reminders off"}</span>`:""}</span><button class="btn ghost small" data-act="unpair" data-id="${d.id}">Unpair</button></div>`).join(""):`<p class="empty">No devices paired yet.</p>`}
   <p class="hint">Unpairing locks a device out right away. Use it for a lost tablet or to switch a tablet to someone else.</p></section>`;
 }
-function startDraft(from){const c=clone(from||cfg());c.kids.forEach(k=>k.remindStr=(k.remind||[]).join(", "));c.chores.forEach(ch=>{ch.ask=needsNote(ch);if(ch.kind==="family"){ch.familyLimit=ch.familyLimit>0?ch.familyLimit:0;ch.weekLimit=ch.weekLimit>0?ch.weekLimit:0;}});c.game=clone(G.gameCfg(c));S.ui.draft=c;S.ui.draftClean=JSON.stringify(c);}
+function startDraft(from){const c=clone(from||cfg());c.kids.forEach(k=>k.remindStr=(k.remind||[]).join(", "));c.chores.forEach(ch=>{ch.ask=needsNote(ch);ch.stepsText=(ch.steps||[]).join("\n");if(ch.kind==="family"){ch.familyLimit=ch.familyLimit>0?ch.familyLimit:0;ch.weekLimit=ch.weekLimit>0?ch.weekLimit:0;}});c.game=clone(G.gameCfg(c));S.ui.draft=c;S.ui.draftClean=JSON.stringify(c);}
 const draftDirty=()=>!!S.ui.draft&&JSON.stringify(S.ui.draft)!==S.ui.draftClean;
 // When the config changes underneath an untouched settings form, show the new values instead of stale ones.
 function refreshCleanDraft(){if(S.role==="parent"&&S.ptab==="settings"&&S.ui.draft&&S.config&&!draftDirty()){startDraft();render();}}
@@ -831,6 +861,8 @@ function pSettings(){
     <label>Max per family per day<input type="number" step="1" min="0" data-type="num" data-bind="draft.chores.${i}.familyLimit" value="${c.familyLimit>0?esc(c.familyLimit):""}" placeholder="No limit"></label>
     <label>Max per family per week<input type="number" step="1" min="0" data-type="num" data-bind="draft.chores.${i}.weekLimit" value="${c.weekLimit>0?esc(c.weekLimit):""}" placeholder="No limit"></label>
     <label>Who<select data-bind="draft.chores.${i}.assign"><option value="pool" ${c.assign==="pool"?"selected":""}>Anyone</option>${d.kids.map(k=>`<option value="${k.id}" ${c.assign===k.id?"selected":""}>${esc(k.name)}</option>`).join("")}</select></label>`}</div>
+    <div class="row" style="margin-top:10px"><label>Steps for full-screen mode (one per line)<textarea rows="4" data-bind="draft.chores.${i}.stepsText" placeholder="Mirror&#10;Sink&#10;Toilet&#10;Floor">${esc(c.stepsText||"")}</textarea></label>
+      <label style="flex:0 1 150px">Goal time (minutes)<input type="number" min="0" max="240" step="1" data-type="num" data-bind="draft.chores.${i}.targetMin" value="${c.targetMin>0?esc(c.targetMin):""}" placeholder="None"></label></div>
     <div class="icon-pick"><span class="sub">Icon</span>${["",...G.CHORE_ICON_CHOICES].map(e=>{const on=(c.icon||"")===e;return `<button type="button" class="${on?"on":""}" data-act="chore-icon" data-i="${i}" data-icon="${e}" aria-pressed="${on}" title="${e?"":"Pick from the name"}">${e||`Auto ${esc(G.choreIcon({...c,icon:""}))}`}</button>`;}).join("")}
       <label style="flex:0 1 120px">Or type one<input maxlength="8" data-bind="draft.chores.${i}.icon" value="${esc(c.icon||"")}" placeholder="🙂"></label></div>
     <div class="row set-foot"><button class="btn small" data-act="edit-chore" data-id="${c.id}">Done</button><button class="btn ghost small" data-act="rm-chore" data-i="${i}">Remove</button></div></div>`:""}</div>`;};
@@ -864,12 +896,12 @@ function setPr(kid,id,on,note){const today=ymd(),ks=kidState(kid),done=ks.prLog[
   if(complete)upd.prDone={[today]:true};else if(!on)upd.prDone={[today]:false};if(note)upd.prNotes={[today]:{[id]:note}};
   guard(setDoc(doc(db,"prefs",kid),upd,{merge:true}));
   if(complete){confetti(90);chime(true);toast(ks.prDone[today]?"All done for today.":`All done for today! Streak +1 and +${G.XP.checklist} XP.`);}}
-async function doChore(kidId,choreId,note){
+async function doChore(kidId,choreId,note,ms){
   const k=kidCfg(kidId),ch=choreById(choreId),today=ymd();if(!k||!ch)return;
   {const r=limitState(k.id,ch,today).reason;if(r){toast(LIMIT_MSG[r]);return;}}
   const wk=activeWeek(k.id),w=getWeek(k.id,wk),before=weekNet(w),amt=choreValue(k,ch);
   S.busy["c:"+choreId]=true;render();
-  try{await call("completeChore")({kidId,choreId,note:note||""});
+  try{await call("completeChore")({kidId,choreId,note:note||"",ms:ms||0});
     if(w.goal&&before<w.goal&&before+amt>=w.goal){confetti(260);chime(true);toast("Goal reached! Bonus locked in.");}else{confetti(50);chime(false);toast(`+${money(amt)} and +${choreXpFor(k.id,ch)} XP for ${ch.name.toLowerCase()}`);}}
   catch(e){toast(errMsg(e));}
   finally{delete S.busy["c:"+choreId];render();}
@@ -933,7 +965,12 @@ async function handleAct(act,ds){
   case "b-accept":{const r=await bcall("respondBattle",{id:ds.id,accept:true});if(r){confetti(60);chime(false);toast(r.started?"Battle on! Go go go!":"You're in! Waiting for the others.");}break;}
   case "b-decline": await bcall("respondBattle",{id:ds.id,accept:false});break;
   case "b-cancel": await bcall("cancelBattle",{id:ds.id},"Called off.");break;
-  case "b-start": await bcall("startAttempt",{id:ds.id},"Timer started. Go!");break;
+  case "b-start":{const b=S.battles[ds.id];if(await bcall("startAttempt",{id:ds.id},"Timer started. Go!")&&b)openFocus({kid,id:b.params.choreId,battleId:ds.id});break;}
+  case "fx-battle":{const b=S.battles[ds.id];if(!b)return;const a=(b.attempts||{})[kid];openFocus({kid,id:b.params.choreId,battleId:ds.id,startAt:a&&a.startAt?a.startAt:Date.now()});break;}
+  case "focus":{const ch=choreById(ds.id);if(!ch)return;S.ui.confirmChore=null;openFocus({kid,id:ch.id});break;}
+  case "fx-step":{const f=S.ui.focus,n=Number(ds.i);f.checked=f.checked.includes(n)?f.checked.filter(x=>x!==n):[...f.checked,n];saveFocus();if(stepsOf(choreById(f.id)).every((_,i)=>f.checked.includes(i)))chime(false);break;}
+  case "fx-close": if(!S.ui.focus.battleId&&!confirm("Stop without finishing? Nothing is logged."))return;closeFocus();break;
+  case "fx-done": await finishFocus();return;
   case "b-finish":{const r=await bcall("finishAttempt",{id:ds.id});if(r){confetti(80);chime(true);toast(r.ms!=null?`Done in ${fmtMs(r.ms)}! Chore logged.`:"Turned in! Chore logged.");}break;}
   case "chore-icon": S.ui.draft.chores[Number(ds.i)].icon=ds.icon;break;
   case "fix-pr": setPrDay(ds.kid,ds.id,true,ds.date);return;
@@ -976,7 +1013,9 @@ async function handleAct(act,ds){
   case "goal-chip": S.ui.goalInput=String(ds.v);break;
   case "set-goal":{const v=q(S.ui.goalInput);if(!(v>0)){toast("Pick a goal of at least $0.25.");return;}const wk=activeWeek(kid);S.ui.goalInput="";
     guard(setDoc(weekRef(kid,wk),{kidId:kid,week:wk,goal:v},{merge:true}));confetti(60);chime(false);break;}
-  case "do-chore": if(!choreById(ds.id))return;if((kidCfg(kid)||{}).adult){doChore(kid,ds.id,"");return;}S.ui.confirmChore={choreId:ds.id,note:""};break;
+  case "do-chore": if(!choreById(ds.id))return;if((kidCfg(kid)||{}).adult){doChore(kid,ds.id,"");return;}
+    if(stepsOf(choreById(ds.id)).length){S.ui.confirmChore=null;openFocus({kid,id:ds.id});break;} // chores with steps are done from the checklist
+    S.ui.confirmChore={choreId:ds.id,note:""};break;
   case "cancel-chore": S.ui.confirmChore=null;break;
   case "confirm-chore":{const cc=S.ui.confirmChore;if(!cc)return;const note=String(cc.note||"").trim();if(needsNote(choreById(cc.choreId))&&!note){toast("Say what it was first.");return;}S.ui.confirmChore=null;doChore(kid,cc.choreId,note);return;}
   case "toggle-pr":{const id=ds.id,on=(kidState(kid).prLog[today]||[]).includes(id);
@@ -1049,7 +1088,9 @@ async function handleAct(act,ds){
     for(const t of ["quietStart","quietEnd"])if(!/^\d{2}:\d{2}$/.test(b[t]||""))b[t]=G.GAME_DEFAULTS.battles[t];
     d.game.rewards=d.game.rewards.map(r=>({id:r.id||uid(),level:Math.min(30,Math.max(1,Math.round(Number(r.level)||1))),name:String(r.name||"").trim(),repeat:Math.max(0,Math.round(Number(r.repeat)||0))})).filter(r=>r.name);
     const mp=d.game.moneyPerks;mp.enabled=!!mp.enabled;mp.everyLevels=Math.max(1,Math.round(Number(mp.everyLevels)||5));mp.amount=Math.max(0,r2(mp.amount));
-    d.chores.forEach(c=>{c.ask=!!c.ask;c.icon=String(c.icon||"").trim().slice(0,8);if(!c.icon)delete c.icon;if(c.kind==="family"){c.mult=Number(c.mult)||1;c.limit=Math.max(1,Math.round(Number(c.limit)||1));c.familyLimit=Math.max(0,Math.round(Number(c.familyLimit)||0));c.weekLimit=Math.max(0,Math.round(Number(c.weekLimit)||0));if(c.assign!=="pool"&&!d.kids.some(k=>k.id===c.assign))c.assign="pool";}});
+    d.chores.forEach(c=>{c.ask=!!c.ask;c.icon=String(c.icon||"").trim().slice(0,8);if(!c.icon)delete c.icon;
+      const steps=String(c.stepsText||"").split("\n").map(x=>x.trim()).filter(Boolean).slice(0,12).map(x=>x.slice(0,80));delete c.stepsText;if(steps.length)c.steps=steps;else delete c.steps;
+      const tm=Math.round(Number(c.targetMin)||0);if(tm>0&&tm<=240)c.targetMin=tm;else delete c.targetMin;if(c.kind==="family"){c.mult=Number(c.mult)||1;c.limit=Math.max(1,Math.round(Number(c.limit)||1));c.familyLimit=Math.max(0,Math.round(Number(c.familyLimit)||0));c.weekLimit=Math.max(0,Math.round(Number(c.weekLimit)||0));if(c.assign!=="pool"&&!d.kids.some(k=>k.id===c.assign))c.assign="pool";}});
     startDraft(d);guard(setDoc(doc(db,"app/config"),d),"Settings saved.");break;}
   }
   render();
@@ -1063,6 +1104,7 @@ function handleChange(act,el){const v=el.value,kid=S.viewKid;
 document.addEventListener("click",e=>{const el=e.target.closest("[data-act]");if(!el||el.disabled)return;handleAct(el.dataset.act,el.dataset);});
 document.addEventListener("input",e=>{const el=e.target;if(!el.dataset.bind)return;let v=el.value;if(el.type==="checkbox")v=el.checked;else if(el.dataset.type==="num")v=v===""?"":Number(v);setPath(S.ui,el.dataset.bind,v);
   if(el.type==="checkbox"&&/^draft\.(kids\.\d+\.adult|game\.)/.test(el.dataset.bind)){render();return;}
+  if(el.dataset.bind==="focus.note"&&S.ui.focus){saveFocus();const f=S.ui.focus,left=stepsOf(choreById(f.id)).filter((_,i)=>!f.checked.includes(i)).length,b=document.querySelector('[data-act="fx-done"]');if(b)b.disabled=!!left||!String(v).trim();}
   if(el.dataset.bind==="confirmChore.note"||el.dataset.bind==="prNote.text"){const b=document.querySelector(el.dataset.bind==="confirmChore.note"?'[data-act="confirm-chore"]':'[data-act="save-pr-note"]');if(b)b.disabled=!String(v).trim();}
   {const m=/^draft\.chores\.(\d+)\.name$/.exec(el.dataset.bind);if(m){const b=document.querySelector(`[data-drag][data-i="${m[1]}"] .set-open b`);if(b)b.textContent=String(v).trim()||"(no name)";}}
   if(el.dataset.bind.startsWith("split.shares.")){S.ui.split.dirty=true;updateSplitUI();}
@@ -1081,6 +1123,6 @@ function endDrag(e){if(!drag||e.pointerId!==drag.id)return;const d=drag;drag=nul
   if(!d.over||!S.ui.draft)return;const arr=S.ui.draft.chores,item=arr[d.from];if(!item)return;let to=Number(d.over.dataset.i)+(d.after?1:0);arr.splice(d.from,1);if(to>d.from)to--;arr.splice(to,0,item);render();}
 document.addEventListener("pointerup",endDrag);document.addEventListener("pointercancel",endDrag);
 
-let wakeLock=null;async function wake(){try{if("wakeLock" in navigator&&S.role==="display")wakeLock=await navigator.wakeLock.request("screen");}catch(e){}}
+let wakeLock=null;async function wake(){try{if("wakeLock" in navigator&&(S.role==="display"||S.ui.focus))wakeLock=await navigator.wakeLock.request("screen");}catch(e){}}
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")wake();});
 setInterval(()=>{if(S.phase!=="ready")return;subscribeWeeks();const a=document.activeElement;if(!(a&&(a.tagName==="INPUT"||a.tagName==="SELECT"))&&!(S.role==="parent"&&S.ptab==="settings"))render();},60000);

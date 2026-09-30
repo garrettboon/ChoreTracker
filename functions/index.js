@@ -117,7 +117,7 @@ const hourIn = (tz, t) => (Number.isFinite(t) ? Number(new Intl.DateTimeFormat("
 const isEarly = (tz, e) => hourIn(tz, e.t) < G.EARLY_HOUR;
 
 // Logs one chore inside a transaction. Shared by completeChore and Time Trial finishes.
-function logChore(kidId, choreId, by, note = "") {
+function logChore(kidId, choreId, by, note = "", ms = 0) {
   return db.runTransaction(async (t) => {
     const cfg = (await t.get(db.doc("app/config"))).data();
     const kid = cfg && cfg.kids.find((k) => k.id === kidId);
@@ -156,6 +156,7 @@ function logChore(kidId, choreId, by, note = "") {
     };
     if (by) entry.by = by;
     if (note) entry.detail = note;
+    if (ms > 0 && ms <= 6 * 3600 * 1000) entry.ms = Math.round(ms); // how long it took, from the full-screen timer
     t.set(db.doc(`weeks/${wk}_${kidId}`), { kidId, week: wk, entries: FieldValue.arrayUnion(entry) }, { merge: true });
     return { amount, week: wk, entryId: entry.id };
   });
@@ -177,7 +178,7 @@ exports.completeChore = onCall(async (req) => {
       throw new HttpsError("permission-denied", "This device can't log chores for that person.");
     }
   }
-  const r = await logChore(kidId, choreId, by, note);
+  const r = await logChore(kidId, choreId, by, note, Number((req.data && req.data.ms) || 0));
   return { amount: r.amount, week: r.week };
 });
 
@@ -868,7 +869,7 @@ exports.finishAttempt = onCall(async (req) => {
   if (!judge && ms > G.MAX_TRIAL_MS) upd = { ...at, void: "Took longer than 2 hours" };
   else {
     try {
-      const r = await logChore(me.id, b.params.choreId, me.by);
+      const r = await logChore(me.id, b.params.choreId, me.by, "", judge ? 0 : ms);
       upd = judge ? { doneAt: stopAt, entryId: r.entryId } : { ...at, stopAt, ms, entryId: r.entryId };
     } catch (e) {
       upd = { ...at, void: e.message || "Couldn't log the chore" };

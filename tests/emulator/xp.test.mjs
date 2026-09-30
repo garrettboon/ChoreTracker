@@ -209,3 +209,16 @@ test("a creature added later works right away for anyone already past its level"
   await rejects(setDoc(doc(k1.db, "prefs", "k1"), { creature: "peacock" }, { merge: true }), /permission|PERMISSION/i);
   await rejects(setDoc(doc(k1.db, "prefs", "k1"), { creature: "made-up" }, { merge: true }), /permission|PERMISSION/i);
 });
+
+test("a chore finished in full-screen mode keeps how long it took", async () => {
+  await reset();
+  const k1 = await kidClient("k1");
+  await k1.call("completeChore", { kidId: "k1", choreId: "c1", ms: 754000 });
+  await k1.call("completeChore", { kidId: "k1", choreId: "c2", ms: 99 * 3600 * 1000 }); // nonsense times are dropped
+  const s = await db.collection("weeks").where("kidId", "==", "k1").get();
+  const entries = s.docs.flatMap((d) => d.data().entries);
+  assert.equal(entries.find((e) => e.choreId === "c1").ms, 754000);
+  assert.equal(entries.find((e) => e.choreId === "c2").ms, undefined);
+  await waitFor(async () => (await xpOf("k1"))?.counts?.chore === 2, { msg: "chore XP" });
+  await quiet("xp/k1");
+});
