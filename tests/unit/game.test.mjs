@@ -134,6 +134,13 @@ test("badges", () => {
   const some = G.badgeList({ chores: 50, goalHits: 1, bestStreak: 7, wins: 1, level: 5, quests: 1 });
   assert.deepEqual(some.filter((b) => b[3]).map((b) => b[0]),
     ["first", "chores10", "fifty", "streak3", "streak7", "goal1", "level5", "quest1", "win1"]);
+  // Morning badges: the most chores before 9 AM in one day, and chores before 9 AM in all.
+  assert.deepEqual(G.badgeList({ earlyBest: 3, early: 24 }).filter((b) => b[3]).map((b) => b[0]), ["early3"]);
+  assert.deepEqual(G.badgeList({ earlyBest: 5, early: 25 }).filter((b) => b[3]).map((b) => b[0]), ["early3", "early5", "early25"]);
+  const m = (date, hour, status = "ok") => ({ date, hour, status });
+  assert.equal(G.bestMorning([m("2026-09-28", 7), m("2026-09-28", 8), m("2026-09-28", G.EARLY_HOUR), m("2026-09-29", 6), m("2026-09-28", 8, "reversed")]), 2,
+    "counts one day's chores before 9 AM, not 9 AM itself or reversed ones");
+  assert.equal(G.bestMorning([]), 0);
 });
 
 const T0 = 1_000_000;

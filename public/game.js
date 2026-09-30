@@ -203,8 +203,16 @@ export function choreXp(ch, { cotd = false, boost = 1 } = {}) {
 }
 
 /* ---------- badges ---------- */
+// Chores done before this hour (family time) count as morning chores.
+export const EARLY_HOUR = 9;
+// The most chores done before 9 AM on one day. Entries carry .date, .status, and .hour in family time.
+export function bestMorning(entries) {
+  const by = {};
+  for (const e of entries) if (e.status !== "reversed" && e.hour < EARLY_HOUR) by[e.date] = (by[e.date] || 0) + 1;
+  return Math.max(0, ...Object.values(by));
+}
 // s: { chores, goalHits, bestStreak, redemptions, saved, invest, give, bought, wins, giant,
-//      level, quests, bounties, checklistDays }
+//      level, quests, bounties, checklistDays, early (chores before 9 AM), earlyBest (most in one day) }
 // Each badge: [id, emoji, name, earned, how to earn it]. Ids never change: XP is paid once per id.
 export function badgeList(s) {
   const n = (v) => Number(v) || 0;
@@ -217,6 +225,10 @@ export function badgeList(s) {
     b("chores100", "🏅", "100 chores", n(s.chores) >= 100, "Do 100 chores"),
     b("chores250", "🦾", "250 chores", n(s.chores) >= 250, "Do 250 chores"),
     b("chores500", "🏰", "Chore legend", n(s.chores) >= 500, "Do 500 chores"),
+    // Mornings
+    b("early3", "🌅", "Early bird", n(s.earlyBest) >= 3, "Do 3 chores before 9 AM in one day"),
+    b("early5", "🐓", "Rise and shine", n(s.earlyBest) >= 5, "Do 5 chores before 9 AM in one day"),
+    b("early25", "☀️", "Morning person", n(s.early) >= 25, "Do 25 chores before 9 AM"),
     // Daily checklist
     b("streak3", "✨", "3-day streak", n(s.bestStreak) >= 3, "Finish your daily list 3 days in a row"),
     b("streak7", "🔥", "7-day streak", n(s.bestStreak) >= 7, "Finish your daily list 7 days in a row"),
@@ -543,7 +555,7 @@ export const raisesDue = (level, perkLevel, every) =>
 export const QUESTS = [
   { id: "variety", emoji: "🌈", text: "Do 3 different chores in one day", target: 3, xp: 20,
     progress: (c) => { const by = {}; for (const e of c.entries) (by[e.date] = by[e.date] || new Set()).add(e.choreId); return Math.max(0, ...Object.values(by).map((s) => s.size)); } },
-  { id: "early", emoji: "🌅", text: "Do a chore before 9 AM", target: 1, xp: 15, progress: (c) => c.entries.filter((e) => e.hour < 9).length },
+  { id: "early", emoji: "🌅", text: "Do a chore before 9 AM", target: 1, xp: 15, progress: (c) => c.entries.filter((e) => e.hour < EARLY_HOUR).length },
   { id: "ten", emoji: "🔟", text: "Do 10 chores this week", target: 10, xp: 20, progress: (c) => c.entries.length },
   { id: "cotd", emoji: "⭐", text: "Do a Chore of the Day", target: 1, xp: 15, progress: (c) => c.entries.filter((e) => c.cotdOf(e.date) === e.choreId).length },
   { id: "checklist5", emoji: "✅", text: "Finish your daily checklist 5 days this week", target: 5, xp: 25, progress: (c) => c.checklistDays },

@@ -6,7 +6,9 @@ Every push to `main` or a `claude/` branch deploys the family's live app once th
 
 - `npm test` must pass. Run `npm run hooks` once per clone so git refuses a push when the fast checks fail.
 - `functions/game.mjs` must be an exact copy of `public/game.js`. After editing the rules, run `npm run sync`.
-- The emulator tests (`npm run test:emulators`) need Java 21 and the Firebase emulators, so they usually cannot run in a cloud session. They do run in the deploy job. When you change server behavior or any XP value, open `tests/emulator/*.test.mjs`, find the flow you touched, and update it by hand before pushing.
+- The emulator tests (`npm run test:emulators`) need Java 21 and the Firebase emulators. They run in the deploy job. When you change server behavior or any XP value, open `tests/emulator/*.test.mjs`, find the flow you touched, and update it by hand before pushing.
+- To run them in a cloud session: `npm i -g firebase-tools && firebase setup:emulators:firestore && (cd functions && npm ci)`, then run the command with the proxy variables removed so the CLI can reach the local emulators: `env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy npm run test:emulators`.
+- An emulator test that logs chores must end by waiting for the XP it expects (`waitFor` or `quiet`). Otherwise its XP triggers are still running when the next test clears the database, and they leave stale XP behind that makes the next test fail.
 - Write test expectations in terms of the constants (`G.XP.*`, `G.levelFor`, `G.raidHp`, quest `xp`), never as literal numbers, so retuning a value cannot break a test that still describes correct behavior.
 
 ## When a deploy fails
