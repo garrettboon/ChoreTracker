@@ -157,6 +157,7 @@ The game rules live in `public/game.js`. The functions use an identical copy at 
 
 ```
 npm ci && npm ci --prefix functions
+npm run hooks             # once per clone: git refuses a push when the fast checks fail
 npm test                  # game rules (fast, no emulators)
 npm run test:emulators    # functions + security rules against the Firebase emulators (needs Java 21)
 ```

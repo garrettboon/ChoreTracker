@@ -5,6 +5,7 @@
   "description": "Dev tooling only: tests and the game-rules sync. The app itself is in public/ and functions/.",
   "scripts": {
     "sync": "node scripts/sync-game.mjs",
+    "hooks": "git config core.hooksPath .githooks",
     "test": "node --test \"tests/unit/*.test.mjs\"",
     "test:emulators": "firebase emulators:exec --only auth,firestore,functions --project demo-boon \"node --test --test-concurrency=1 tests/emulator/*.test.mjs\"",
     "test:all": "npm test && npm run test:emulators"
