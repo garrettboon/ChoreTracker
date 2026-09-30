@@ -16,7 +16,7 @@ test("a chore earns effort-based XP plus the first-chore badge; reversing takes 
   await reset();
   const k1 = await kidClient("k1");
   await k1.call("completeChore", { kidId: "k1", choreId: "big" });
-  const x = await waitFor(async () => { const x = await xpOf("k1"); return x && x.total === 45 && x; }, { msg: "20 chore XP + 25 badge XP" });
+  const x = await waitFor(async () => { const x = await xpOf("k1"); return x && x.total === 30 && x; }, { msg: "20 chore XP + 10 badge XP" });
   assert.equal(x.counts.chore, 1);
   assert.equal(x.maxLevel, 1);
   const keys = await eventKeys("k1");
@@ -50,7 +50,7 @@ test("chore of the day pays double", async () => {
   await reset({ ...CONFIG, game: { ...CONFIG.game, choreOfDay: { enabled: true, pin: { date: today(), choreId: "c2" } } } });
   const k2 = await kidClient("k2");
   await k2.call("completeChore", { kidId: "k2", choreId: "c2" });
-  await waitFor(async () => (await xpOf("k2"))?.total === 45, { msg: "20 double XP + 25 badge" });
+  await waitFor(async () => (await xpOf("k2"))?.total === 30, { msg: "20 double XP + 10 badge" });
 });
 
 test("daily checklist pays once per day, ignores backdating, and streak milestones pay", async () => {
@@ -77,7 +77,7 @@ test("daily checklist pays once per day, ignores backdating, and streak mileston
   await quiet("xp/k2");
   const before = (await xpOf("k2")).total;
   await k2.call("completeChore", { kidId: "k2", choreId: "c1" });
-  await waitFor(async () => (await xpOf("k2")).total === before + 13 + 25, { msg: "boosted chore XP (13) + first badge" });
+  await waitFor(async () => (await xpOf("k2")).total === before + 13 + 10, { msg: "boosted chore XP (13) + first badge" });
 });
 
 test("security rules: locked creatures and cosmetics can't be picked; xp can't be written", async () => {
@@ -109,14 +109,14 @@ test("backfill scores history once, levels up, and is safe to repeat", async () 
   const parent = await parentClient();
   await parent.call("backfillXp", {});
   const x = await quiet("xp/k2", 2500);
-  // 30 × 10 + 50 goal + 20 earn-back + badges (first chore, 10 chores, goal getter, comeback) 100 = 470 → level 4
-  assert.equal(x.total, 470);
-  assert.equal(x.maxLevel, 4);
-  assert.equal(x.levelUp.level, 4);
+  // 30 × 10 + 50 goal + 20 earn-back + badges (first chore, 10 chores, goal getter, comeback) 40 = 410 → level 3
+  assert.equal(x.total, 410);
+  assert.equal(x.maxLevel, 3);
+  assert.equal(x.levelUp.level, 3);
   assert.ok(x.unlocked.includes("c:sloth") && x.unlocked.includes("m:blitz"));
   assert.ok(x.unlocked.includes("ti:comeback"));
   await parent.call("backfillXp", {});
-  assert.equal((await quiet("xp/k2")).total, 470);
+  assert.equal((await quiet("xp/k2")).total, 410);
   // Kids can't run it.
   const k2 = await kidClient("k2");
   await rejects(k2.call("backfillXp", {}), /Parents only/);

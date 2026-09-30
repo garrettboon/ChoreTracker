@@ -111,8 +111,8 @@ How XP works:
 | A 7+ day checklist streak | ×1.25 on all XP |
 | Finishing the daily checklist | 5 |
 | Streak milestones (3, 7, 14, 30, 60, 100 days) | 25 to 400 |
-| Weekly goal reached / deduction earned back / savings goal bought / new badge | 50 / 20 / 50 / 25 |
-| Battles | 40 for a win, 25 for a tie, 15 for trying (a Baby Boss Raid win pays 25) |
+| Weekly goal reached / deduction earned back / savings goal bought / new badge | 50 / 20 / 50 / 10 |
+| Battles | 15 for a win, 10 for a tie, 5 for trying; Streak Duel and Goal Showdown pay double; a Boss Raid win pays 25 and a Baby Boss Raid win 10 |
 
 What levels unlock: new creatures (the first 13 stay free), accessories, screen themes, goal-trail styles, confetti styles, titles, battle modes, and **streak freezes**. Freezes come every 5 levels, and you can hold 2. Just after midnight, a freeze covers anyone who missed yesterday's checklist. Creatures also grow as you level: they get a ring at level 5, a glow at 10, and an aura at 20.
 
@@ -144,7 +144,7 @@ To limit battles, go to **Settings** > Game. You can set quiet hours (no battles
 
 **More ways to play:**
 
-- **Weekly quests:** everyone gets 3 quests each Monday, like "Do 3 different chores in one day" or "Do a chore before 9 AM". They pay 30 to 50 XP and are checked automatically. You can turn them off in Settings > Game.
+- **Weekly quests:** everyone gets 3 quests each Monday, like "Do 3 different chores in one day" or "Do a chore before 9 AM". They pay 15 to 25 XP and are checked automatically. You can turn them off in Settings > Game.
 - **Rewards:** in Settings > Game, list real-world rewards by level (for example level 5: pick Friday dinner, again every 5 levels). Kids claim them from their screen, and you approve them and mark them given in the Game tab.
 - **Bounties:** in the Game tab, post a one-off job worth extra XP ("Clean out the garage together, 200 XP"), for anyone or one person. A kid taps "I did it" and you award the XP.
 - **Family goal:** in the Game tab, set a shared reward ("Pizza night") and how much XP the whole family needs to earn together. The bar shows on every screen and the family display, and celebrates when it fills.

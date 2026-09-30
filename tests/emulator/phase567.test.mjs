@@ -100,7 +100,7 @@ test("judge's pick: both turn in the chore, a parent picks, even in their own ba
   await parent.call("judgeBattle", { id, winner: "k2" });
   const b = await waitFor(async () => { const b = await battle(id); return !b.live && b; }, { msg: "judged" });
   assert.equal(b.result.winner, "k2");
-  assert.deepEqual(b.xp, { k1: 15, k2: 40 });
+  assert.deepEqual(b.xp, { k1: 5, k2: 15 });
   // Dad can judge a battle he's in.
   await level("dad", 8);
   const j = await dad.call("createBattle", { mode: "judge", opponent: "k3", choreId: "c2", as: "dad" });
@@ -127,7 +127,7 @@ test("streak duel: the first to miss a day loses; results need no confirmation",
   const b = await waitFor(async () => { const b = await battle(id); return !b.live && b; }, { msg: "duel over" });
   assert.equal(b.status, "done");
   assert.equal(b.result.winner, "k1");
-  assert.deepEqual(b.xp, { k1: 80, k2: 30 });
+  assert.deepEqual(b.xp, { k1: 30, k2: 10 });
 });
 
 test("goal showdown: best share of the weekly goal once both weeks are cashed out", async () => {
@@ -161,7 +161,7 @@ test("boss raid: teammates accept, chores do damage, a beaten boss moves the fam
   for (let i = 0; i < 6; i++) await k1.call("completeChore", { kidId: "k1", choreId: "big" });
   b = await waitFor(async () => { const b = await battle(id); return !b.live && b; }, { msg: "boss beaten" });
   assert.equal(b.result.winnerSide, "a");
-  assert.deepEqual(b.xp, { k1: 50, k2: 0 });
+  assert.deepEqual(b.xp, { k1: 25, k2: 0 });
   assert.equal((await db.doc("xp/_family").get()).data().bossesBeaten, 1);
   const next = await k1.call("createBattle", { mode: "raid", team: ["k2"], days: 2 });
   const nb = await battle(next.id);
@@ -180,7 +180,7 @@ test("baby boss raid: level 1, solo allowed and starts at once, tiny boss, small
   await k3.call("completeChore", { kidId: "k3", choreId: "big" });
   b = await waitFor(async () => { const b = await battle(id); return !b.live && b; }, { msg: "baby boss beaten" });
   assert.equal(b.result.winnerSide, "a");
-  assert.deepEqual(b.xp, { k3: 25 });
+  assert.deepEqual(b.xp, { k3: 10 });
   const fam = (await db.doc("xp/_family").get()).data();
   assert.equal(fam.babyBossesBeaten, 1);
   assert.equal(fam.bossesBeaten || 0, 0, "baby bosses don't count toward the real roster");
@@ -214,7 +214,7 @@ test("kids vs grown-ups: every invitee accepts, kids get a team handicap", async
   await rejects(k3.call("confirmResult", { id }), /other player or a parent/);
   await dad.call("confirmResult", { id, as: "dad" });
   b = await waitFor(async () => { const b = await battle(id); return !b.live && b; }, { msg: "closed" });
-  assert.deepEqual(b.xp, { k1: 0, k3: 40, dad: 0 });
+  assert.deepEqual(b.xp, { k1: 0, k3: 15, dad: 0 });
 });
 
 test("wildcard picks a random mode with a twist", async () => {

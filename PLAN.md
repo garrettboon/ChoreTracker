@@ -251,10 +251,10 @@ The challenge flow, the battle engine, and three modes: **Race**, **Time Trial**
 | Weekly goal reached | 50 |
 | Deduction earned back | 20 |
 | Savings goal bought | 50 |
-| New badge | 25 |
-| Battle win / tie / loss | 40 / 25 / 15 (×2 for multi-day modes) |
-| Co-op battle success | 50 each |
-| Weekly quest | 30 to 60 |
+| New badge | 10 |
+| Battle win / tie / loss | 15 / 10 / 5 (×2 for multi-day modes) |
+| Co-op battle success | 25 each (Baby Boss Raid 10) |
+| Weekly quest | 15 to 25 |
 
 ---
 
