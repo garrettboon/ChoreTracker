@@ -1,5 +1,6 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
+import * as G from "../../public/game.js";
 import { doc, setDoc } from "firebase/firestore";
 import {
   CONFIG, db, reset, kidClient, parentClient, closeAll, waitFor, quiet, xpOf, eventKeys, today, rejects,
@@ -16,7 +17,7 @@ test("a chore earns effort-based XP plus the first-chore badge; reversing takes 
   await reset();
   const k1 = await kidClient("k1");
   await k1.call("completeChore", { kidId: "k1", choreId: "big" });
-  const x = await waitFor(async () => { const x = await xpOf("k1"); return x && x.total === 45 && x; }, { msg: "20 chore XP + 25 badge XP" });
+  const x = await waitFor(async () => { const x = await xpOf("k1"); return x && x.total === G.XP.chore * 2 + G.XP.badge && x; }, { msg: "double-size chore XP + first badge" });
   assert.equal(x.counts.chore, 1);
   assert.equal(x.maxLevel, 1);
   const keys = await eventKeys("k1");
@@ -28,14 +29,14 @@ test("a chore earns effort-based XP plus the first-chore badge; reversing takes 
   const data = w.data();
   data.entries[0].status = "reversed";
   await w.ref.set(data);
-  const x2 = await waitFor(async () => { const x = await xpOf("k1"); return x.total === 25 && x; }, { msg: "chore XP removed" });
+  const x2 = await waitFor(async () => { const x = await xpOf("k1"); return x.total === G.XP.badge && x; }, { msg: "chore XP removed" });
   assert.equal(x2.counts.chore, 0);
   assert.equal(x2.maxLevel, 1);
 
   // Restoring gives it back.
   data.entries[0].status = "ok";
   await w.ref.set(data);
-  await waitFor(async () => (await xpOf("k1")).total === 45, { msg: "chore XP restored" });
+  await waitFor(async () => (await xpOf("k1")).total === G.XP.chore * 2 + G.XP.badge, { msg: "chore XP restored" });
 });
 
 test("the same chore pays the same XP no matter the pay rate", async () => {
@@ -43,27 +44,45 @@ test("the same chore pays the same XP no matter the pay rate", async () => {
   const k1 = await kidClient("k1"), k3 = await kidClient("k3");
   await k1.call("completeChore", { kidId: "k1", choreId: "c1" });
   await k3.call("completeChore", { kidId: "k3", choreId: "c1" });
-  await waitFor(async () => (await xpOf("k1"))?.total === 35 && (await xpOf("k3"))?.total === 35, { msg: "35 XP each" });
+  await waitFor(async () => (await xpOf("k1"))?.total === G.XP.chore + G.XP.badge && (await xpOf("k3"))?.total === G.XP.chore + G.XP.badge, { msg: "same XP each" });
+});
+
+test("daily and weekly limits are shared by the kids on an Anyone chore, and a grown-up counts alone", async () => {
+  const chores = [...CONFIG.chores,
+    { id: "once", kind: "family", name: "Vacuum", mult: 1, limit: 1, assign: "pool" },
+    { id: "twice", kind: "family", name: "Mow", mult: 1, limit: 5, weekLimit: 2, assign: "pool" }];
+  await reset({ ...CONFIG, chores });
+  const k1 = await kidClient("k1"), k2 = await kidClient("k2"), dad = await parentClient("dad@test.com");
+  await k1.call("completeChore", { kidId: "k1", choreId: "once" });
+  await rejects(k2.call("completeChore", { kidId: "k2", choreId: "once" }), /done for today/);
+  await k1.call("completeChore", { kidId: "k1", choreId: "twice" });
+  await k2.call("completeChore", { kidId: "k2", choreId: "twice" });
+  await rejects(k1.call("completeChore", { kidId: "k1", choreId: "twice" }), /done for this week/);
+  // A parent logging it for a kid hits the same weekly limit; the grown-up's own lane has its own count.
+  await rejects(dad.call("completeChore", { kidId: "k3", choreId: "twice" }), /done for this week/);
+  await dad.call("completeChore", { kidId: "dad", choreId: "twice" });
+  const w = await db.collection("weeks").where("kidId", "==", "dad").get();
+  assert.equal(w.docs[0].data().entries.filter((e) => e.choreId === "twice").length, 1);
 });
 
 test("chore of the day pays double", async () => {
   await reset({ ...CONFIG, game: { ...CONFIG.game, choreOfDay: { enabled: true, pin: { date: today(), choreId: "c2" } } } });
   const k2 = await kidClient("k2");
   await k2.call("completeChore", { kidId: "k2", choreId: "c2" });
-  await waitFor(async () => (await xpOf("k2"))?.total === 45, { msg: "20 double XP + 25 badge" });
+  await waitFor(async () => (await xpOf("k2"))?.total === G.XP.chore * 2 + G.XP.badge, { msg: "double XP + first badge" });
 });
 
 test("daily checklist pays once per day, ignores backdating, and streak milestones pay", async () => {
   await reset();
   const k2 = await kidClient("k2");
   await setDoc(doc(k2.db, "prefs", "k2"), { prLog: { [today()]: ["p1", "p2"] } }, { merge: true });
-  await waitFor(async () => (await xpOf("k2"))?.total === 5, { msg: "checklist XP" });
+  await waitFor(async () => (await xpOf("k2"))?.total === G.XP.checklist, { msg: "checklist XP" });
   // Unchecking and re-checking doesn't pay twice.
   await setDoc(doc(k2.db, "prefs", "k2"), { prLog: { [today()]: ["p1"] } }, { merge: true });
   await setDoc(doc(k2.db, "prefs", "k2"), { prLog: { [today()]: ["p1", "p2"] } }, { merge: true });
   // A day long ago doesn't pay.
   await setDoc(doc(k2.db, "prefs", "k2"), { prLog: { [today(-20)]: ["p1", "p2"] } }, { merge: true });
-  assert.equal((await quiet("xp/k2")).total, 5);
+  assert.equal((await quiet("xp/k2")).total, G.XP.checklist);
 
   // A 7-day streak ending today pays the 7-day milestone and turns on the ×1.25 boost.
   const log = {};
@@ -77,7 +96,7 @@ test("daily checklist pays once per day, ignores backdating, and streak mileston
   await quiet("xp/k2");
   const before = (await xpOf("k2")).total;
   await k2.call("completeChore", { kidId: "k2", choreId: "c1" });
-  await waitFor(async () => (await xpOf("k2")).total === before + 13 + 25, { msg: "boosted chore XP (13) + first badge" });
+  await waitFor(async () => (await xpOf("k2")).total === before + Math.round(G.XP.chore * G.GAME_DEFAULTS.streakMultiplier.mult) + G.XP.badge, { msg: "boosted chore XP + first badge" });
 });
 
 test("security rules: locked creatures and cosmetics can't be picked; xp can't be written", async () => {
@@ -109,14 +128,15 @@ test("backfill scores history once, levels up, and is safe to repeat", async () 
   const parent = await parentClient();
   await parent.call("backfillXp", {});
   const x = await quiet("xp/k2", 2500);
-  // 30 × 10 + 50 goal + 20 earn-back + badges (first chore, 10 chores, goal getter, comeback) 100 = 470 → level 4
-  assert.equal(x.total, 470);
-  assert.equal(x.maxLevel, 4);
-  assert.equal(x.levelUp.level, 4);
-  assert.ok(x.unlocked.includes("c:sloth") && x.unlocked.includes("m:blitz"));
+  // 30 chores + goal + earn-back + 4 badges (first chore, 10 chores, goal getter, comeback)
+  const expected = 30 * G.XP.chore + G.XP.goal + G.XP.redeem + 4 * G.XP.badge;
+  assert.equal(x.total, expected);
+  assert.equal(x.maxLevel, G.levelFor(expected));
+  assert.equal(x.levelUp.level, G.levelFor(expected));
+  for (const id of G.unlockedIds(G.levelFor(expected), {})) assert.ok(x.unlocked.includes(id), `${id} unlocked`);
   assert.ok(x.unlocked.includes("ti:comeback"));
   await parent.call("backfillXp", {});
-  assert.equal((await quiet("xp/k2")).total, 470);
+  assert.equal((await quiet("xp/k2")).total, expected);
   // Kids can't run it.
   const k2 = await kidClient("k2");
   await rejects(k2.call("backfillXp", {}), /Parents only/);

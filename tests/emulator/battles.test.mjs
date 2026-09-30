@@ -1,5 +1,6 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
+import * as G from "../../public/game.js";
 import {
   CONFIG, db, reset, kidClient, parentClient, closeAll, waitFor, quiet, xpOf, eventKeys, battle, rejects,
 } from "./helpers.mjs";
@@ -28,7 +29,7 @@ test("race: challenge, accept, first to finish wins, loser confirms, XP and badg
   await k2.call("confirmResult", { id });
   b = await waitFor(async () => { const b = await battle(id); return b.live === false && b; }, { msg: "battle closed" });
   assert.equal(b.status, "done");
-  assert.deepEqual(b.xp, { k1: 40, k2: 0 });
+  assert.deepEqual(b.xp, { k1: G.XP.win, k2: 0 });
   await quiet("xp/k1");
   const keys = await eventKeys("k1");
   assert.ok(keys.includes("battle:" + id));
@@ -101,7 +102,7 @@ test("time trial: the result stays pending until a parent checks each run was do
   b = await waitFor(async () => { const b = await battle(id); return b.live === false && b; }, { msg: "closed" });
   assert.equal(b.status, "done");
   assert.equal(b.result.winner, "k3", "the fastest run done well wins, even though k1 was faster");
-  assert.deepEqual(b.xp, { k1: 0, k3: 40 });
+  assert.deepEqual(b.xp, { k1: 0, k3: G.XP.win });
 });
 
 test("time trial: nobody passing the check is no contest", async () => {
@@ -130,10 +131,9 @@ test("ghost race and adults: a parent acts as their own adult profile only", asy
   let b = await battle(id);
   assert.equal(b.status, "confirming");
   assert.equal(b.result.record, true);
-  await rejects(dad.call("checkRun", { id, player: "dad", ok: true }), /Another parent/);
-  await mom.call("checkRun", { id, player: "dad", ok: true });
+  await dad.call("checkRun", { id, player: "dad", ok: true }); // a parent may check a battle they're in
   b = await waitFor(async () => { const b = await battle(id); return b.live === false && b; }, { msg: "closed" });
-  assert.deepEqual(b.xp, { dad: 25 });
+  assert.deepEqual(b.xp, { dad: G.XP.ghostRecord });
   const x = await quiet("xp/dad");
   assert.ok(x.pb.c1 >= 0, "personal best saved");
 });
@@ -160,7 +160,7 @@ test("scheduled tick: challenges expire, timed-out battles finish, results auto-
   assert.equal(b.status, "done");
   assert.equal(b.result.confirmedBy, "auto");
   assert.equal(b.live, false);
-  assert.deepEqual(b.xp, { k3: 0, k2: 40 });
+  assert.deepEqual(b.xp, { k3: 0, k2: G.XP.win });
 
   // A parent can call off a live battle.
   const c = await k1.call("createBattle", { mode: "race", opponent: "k3" });

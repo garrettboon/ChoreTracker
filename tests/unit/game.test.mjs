@@ -36,7 +36,7 @@ test("freezes come every 5 levels", () => {
 test("unlocks: starters free, new creatures and modes by level", () => {
   const l1 = G.unlockedIds(1, {});
   for (const s of G.STARTERS) assert.ok(l1.includes("c:" + s));
-  assert.equal(G.STARTERS.length, 12);
+  assert.equal(G.STARTERS.length, 13);
   assert.ok(!l1.includes("c:hedgehog"));
   assert.ok(G.unlockedIds(2, {}).includes("c:hedgehog"));
   assert.ok(l1.includes("m:race") && l1.includes("m:timetrial") && l1.includes("m:ghost"));
@@ -177,12 +177,12 @@ test("time trial and ghost race", () => {
 
 test("battle XP: winner, tie, loss, and nothing for not trying", () => {
   const b = { mode: "race", players: ["a", "c"], scores: { a: { raw: 3 }, c: { raw: 1 } } };
-  assert.deepEqual(G.battleXp(b, { winner: "a" }), { a: 40, c: 15 });
-  assert.deepEqual(G.battleXp({ ...b, scores: { a: { raw: 3 }, c: { raw: 0 } } }, { winner: "a" }), { a: 40, c: 0 });
-  assert.deepEqual(G.battleXp(b, { tie: true }), { a: 25, c: 25 });
+  assert.deepEqual(G.battleXp(b, { winner: "a" }), { a: G.XP.win, c: G.XP.loss });
+  assert.deepEqual(G.battleXp({ ...b, scores: { a: { raw: 3 }, c: { raw: 0 } } }, { winner: "a" }), { a: G.XP.win, c: 0 });
+  assert.deepEqual(G.battleXp(b, { tie: true }), { a: G.XP.tie, c: G.XP.tie });
   assert.deepEqual(G.battleXp(b, { noContest: true }), {});
-  assert.deepEqual(G.battleXp({ mode: "ghost", players: ["a"] }, { winner: "a", record: true }), { a: 25 });
-  assert.deepEqual(G.battleXp({ mode: "ghost", players: ["a"] }, { lost: true, winner: null }), { a: 15 });
+  assert.deepEqual(G.battleXp({ mode: "ghost", players: ["a"] }, { winner: "a", record: true }), { a: G.XP.ghostRecord });
+  assert.deepEqual(G.battleXp({ mode: "ghost", players: ["a"] }, { lost: true, winner: null }), { a: G.XP.loss });
 });
 
 test("territory counts only Anyone chores, with the Wildcard twist doubling one chore", () => {
@@ -224,6 +224,23 @@ test("goal showdown score uses the larger of goal and recent average", () => {
   assert.equal(G.showdownScore(-2, 4, 0), 0);
 });
 
+test("baby boss raid: level 1, tiny, one day, never harder, smaller payout", () => {
+  const chores = [{ id: "x", mult: 1 }, { id: "big", mult: 2 }];
+  assert.equal(G.modeById("babyraid").level, 1);
+  assert.equal(G.isRaid("babyraid"), true);
+  assert.equal(G.isRaid("race"), false);
+  assert.equal(G.babyRaidHp(1), 15);
+  assert.equal(G.babyRaidHp(3), 45);
+  assert.equal(G.babyBossFor(0).name, "Dust Bunny");
+  assert.equal(G.babyBossFor(5).name, "Dust Bunny 2");
+  assert.equal(G.babyBossFor(7).tier, 0, "baby bosses never scale up");
+  const baby = { mode: "babyraid", players: ["a"], teams: { a: ["a"] }, params: { hp: 15, bossName: "Dust Bunny" }, startAt: T0, endAt: T0 + 100 };
+  assert.equal(G.decide(baby, { a: [e(T0 + 1)] }, chores, false), null, "one small chore isn't enough");
+  assert.equal(G.decide(baby, { a: [e(T0 + 1, "big")] }, chores, false).winnerSide, "a");
+  assert.deepEqual(G.battleXp({ ...baby, scores: { a: { raw: 20 } } }, { winnerSide: "a" }), { a: G.XP.babyRaidWin });
+  assert.ok(G.unlockedIds(1, {}).includes("m:babyraid"), "unlocked from level 1");
+});
+
 test("team battles: raid and kids vs grown-ups", () => {
   const chores = [{ id: "x", mult: 1 }, { id: "big", mult: 2 }];
   const raid = { mode: "raid", players: ["a", "c"], teams: { a: ["a", "c"] }, params: { hp: 40, bossName: "Sock Goblin" }, startAt: T0, endAt: T0 + 100 };
@@ -241,14 +258,14 @@ test("team battles: raid and kids vs grown-ups", () => {
   assert.equal(G.isWinner(gu, r, "d"), false);
   assert.deepEqual(G.teamHandicaps([{ age: 8 }, { age: 12 }], [{ adult: true }], {}), { a: 1.5, b: 1 });
   const xp = G.battleXp({ ...gu, scores: { k1: { raw: 10 }, k2: { raw: 0 }, d: { raw: 10 } } }, r);
-  assert.deepEqual(xp, { k1: 40, k2: 0, d: 15 }, "a teammate who did nothing gets nothing");
-  assert.deepEqual(G.battleXp({ ...raid, scores: { a: { raw: 10 }, c: { raw: 0 } } }, { winnerSide: "a" }), { a: 50, c: 0 });
+  assert.deepEqual(xp, { k1: G.XP.win, k2: 0, d: G.XP.loss }, "a teammate who did nothing gets nothing");
+  assert.deepEqual(G.battleXp({ ...raid, scores: { a: { raw: 10 }, c: { raw: 0 } } }, { winnerSide: "a" }), { a: G.XP.raidWin, c: 0 });
 });
 
 test("streak duel and showdown pay double; judge's pick needs a parent", () => {
   const b = { mode: "streakduel", players: ["a", "c"] };
   assert.equal(G.decide(b, {}, [], true), null);
-  assert.deepEqual(G.battleXp(b, { winner: "a" }), { a: 80, c: 30 });
+  assert.deepEqual(G.battleXp(b, { winner: "a" }), { a: G.XP.win * 2, c: G.XP.loss * 2 });
   const j = { mode: "judge", players: ["a", "c"], attempts: { a: { entryId: "1" }, c: { entryId: "2" } } };
   assert.equal(G.decide(j, {}, [], true), null, "both did it: waits for the judge");
   assert.equal(G.decide({ ...j, attempts: { a: { entryId: "1" } } }, {}, [], true).winner, "a");
@@ -301,6 +318,12 @@ test("security rules list every creature at the same level as game.js", () => {
   assert.deepEqual(map, Object.fromEntries(G.CREATURES.map((c) => [c[0], c[3]])));
 });
 
+test("the dog is a free starter", () => {
+  assert.ok(G.STARTERS.includes("dog"));
+  assert.equal(G.STARTERS.length, 13);
+  assert.deepEqual(G.describeUnlocks(["c:dog"])[0].slice(0, 2), ["🐶", "Dog"]);
+});
+
 test("the cat unlocks at level 5", () => {
   assert.ok(!G.unlockedIds(4, {}).includes("c:cat"));
   assert.ok(G.unlockedIds(5, {}).includes("c:cat"));
@@ -309,6 +332,6 @@ test("the cat unlocks at level 5", () => {
 
 test("a timed run that fails the parent's check earns no XP", () => {
   const b = { mode: "timetrial", players: ["a", "c"], attempts: { a: { ms: 30000 }, c: { ms: 60000 } }, quality: { a: false, c: true } };
-  assert.deepEqual(G.battleXp(b, { winner: "c" }), { a: 0, c: 40 });
-  assert.deepEqual(G.battleXp({ ...b, quality: { a: true, c: true } }, { winner: "a" }), { a: 40, c: 15 });
+  assert.deepEqual(G.battleXp(b, { winner: "c" }), { a: 0, c: G.XP.win });
+  assert.deepEqual(G.battleXp({ ...b, quality: { a: true, c: true } }, { winner: "a" }), { a: G.XP.win, c: G.XP.loss });
 });

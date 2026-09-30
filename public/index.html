@@ -112,6 +112,13 @@ label > input, label > select{margin-top:4px;font-weight:600}
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
 .chips button{border:2px solid var(--line);background:var(--surface-2);border-radius:99px;padding:8px 14px;font-weight:800}
 
+.feed li.wrap{flex-wrap:wrap}
+.feed li.wrap > span:first-child{flex:1 1 100%}
+.feed li.wrap .btn{flex:0 0 auto}
+.card.warning{border-color:var(--sun);background:color-mix(in srgb,var(--sun) 12%,var(--surface))}
+.card.warning h3{font-size:1.2rem}
+.card.warning p{margin:6px 0 0}
+.card.warning.seen{background:var(--surface)}
 .challenge{border-color:var(--coral);background:var(--surface)}
 .challenge h3{font-size:1.2rem;color:var(--coral)}
 .challenge p{margin:6px 0 0}
@@ -423,9 +430,21 @@ body[data-kidtheme="gold"]{--bg:#FAF2DA;--surface-2:#FDF8EA;--pine:#8A5F04;--tra
 /* Drag to reorder chores (settings) */
 .drag-handle{flex:0 0 auto;align-self:center;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;font-size:1.5rem;line-height:1;padding:10px 6px;color:var(--muted)}
 .drag-hint{margin:0 0 10px}
-.set-block.dragging{opacity:.45}
-.set-block.drop-before{box-shadow:inset 0 4px 0 0 var(--pine)}
-.set-block.drop-after{box-shadow:inset 0 -4px 0 0 var(--pine)}
+[data-drag].dragging{opacity:.45}
+[data-drag].drop-before{box-shadow:inset 0 4px 0 0 var(--pine)}
+[data-drag].drop-after{box-shadow:inset 0 -4px 0 0 var(--pine)}
+.set-row+.set-row{border-top:1px solid var(--line)}
+.set-head{display:flex;align-items:center;gap:2px}
+.set-head .drag-handle{padding:6px 4px}
+.set-open{flex:1 1 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;padding:6px 4px;background:none;border:0;border-radius:10px;text-align:left}
+.set-open b{display:block;font-size:1rem;line-height:1.2}
+.set-open small{display:block;color:var(--muted);font-size:.8rem;line-height:1.3}
+.set-open .chev{flex:0 0 auto;color:var(--muted);font-size:1.5rem;line-height:1;transition:transform .15s}
+.set-row.editing .set-open .chev{transform:rotate(90deg)}
+.set-row.editing{border-left:4px solid var(--pine);padding-left:6px;margin-left:-10px}
+.set-edit{padding:2px 0 12px}
+.set-edit .set-foot{margin-top:10px}
+.set-foot > *{flex:0 0 auto}
 </style>
 </head>
 <body>

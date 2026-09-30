@@ -87,8 +87,8 @@ For the leaderboard device, keep it plugged in. The app asks the screen to stay 
 
 ## Everyday use
 
-- **Kids** tap chores (and confirm, so a stray tap doesn't count), check off their daily list, set their goal after Sunday cash-out, split the week's savings between their goals, and choose where their bonus and interest go. Under **My money**, each card shows its total; tap Save or Invest to open the details.
-- **Parents** use **Game** to confirm battle results and see everyone's level; **Activity** to review and reverse chores, or log one for someone without their tablet; **Views** for the family leaderboard and to open any kid's screen exactly as they see it; **Actions** for deductions (add, mark earned back, or remove) and the Sunday cash-out (if a week was missed, it's combined with the next one into a single lump, with each week's goal judged on its own); **Savings goals** to add or edit goals, log purchases, or set a child's balances (for money from before the app, or to fix a mistake); and **Settings** for devices, people (tick **Adult** for a grown-up, who gets their own lane and tab instead of a place in the kid list), chores (drag the ⠿ handle to reorder them; tick **Ask what it was** on an open-ended chore like Parent choice so kids must describe what they did), rates, reminder times, and interest.
+- **Kids** tap chores (and confirm, so a stray tap doesn't count; grown-ups' own lanes skip the confirmation and the what-was-it prompt), check off their daily list, set their goal after Sunday cash-out, split the week's savings between their goals, and choose where their bonus and interest go. Under **My money**, each card shows its total; tap Save or Invest to open the details.
+- **Parents** use **Game** to confirm battle results and see everyone's level; **Activity** to review and reverse chores, or log one for someone without their tablet; **Views** for the family leaderboard and to open any kid's screen exactly as they see it; **Actions** for warnings (no money; the kid taps Got it on their screen, and you can turn one into a deduction later), deductions (add, mark earned back, or remove), and the Sunday cash-out (if a week was missed, it's combined with the next one into a single lump, with each week's goal judged on its own); **Savings goals** to add or edit goals, log purchases, or set a child's balances (for money from before the app, or to fix a mistake); and **Settings** for devices, people (tick **Adult** for a grown-up, who gets their own lane and tab instead of a place in the kid list), chores (each is one line; tap it to edit, and drag the ⠿ handle to reorder them; every chore has a max per day and can have a max per week, which the kids on an Anyone chore share; tick **Ask what it was** on an open-ended chore like Parent choice so kids must describe what they did), rates, reminder times, and interest.
 - **Goal bonus** is 25% of the weekly goal, paid at cash-out when the week's earnings reach the goal.
 - **Forgot to check something off?** In **Activity**, tap **It was done** next to it under Missed yesterday, or use **Fix a missed day** to fill in any day from the last two weeks, for anyone (adults too). The streak comes back right away, and a streak freeze spent on that day is returned.
 - **Streaks** count days when every daily item was checked off. Once a day is complete it stays complete, even if the list changes later that day.
@@ -101,7 +101,7 @@ Everyone (adults too) earns XP and levels up, like a video game. XP never costs 
 
 **After the first deploy with levels:** open the Parent screen > **Game** tab > **Count past chores**. This gives everyone XP for the chores, goals, streaks, and badges they already earned. It's safe to run more than once.
 
-**Each adult's Google email:** in **Settings** > People, tick **Adult** and fill in the adult's Google email. That ties each parent's sign-in to their own profile for battles. A parent can't confirm a battle they're in, so another parent (or the other player) has to.
+**Each adult's Google email:** in **Settings** > People, tick **Adult** and fill in the adult's Google email. That ties each parent's sign-in to their own profile for battles. A parent can confirm, check, or judge a battle they're in, too.
 
 How XP works:
 
@@ -112,10 +112,10 @@ How XP works:
 | A 7+ day checklist streak | ×1.25 on all XP |
 | Finishing the daily checklist | 5 |
 | Streak milestones (3, 7, 14, 30, 60, 100 days) | 25 to 400 |
-| Weekly goal reached / deduction earned back / savings goal bought / new badge | 50 / 20 / 50 / 25 |
-| Battles | 40 for a win, 25 for a tie, 15 for trying |
+| Weekly goal reached / deduction earned back / savings goal bought / new badge | 50 / 20 / 50 / 10 |
+| Battles | 15 for a win, 10 for a tie, 5 for trying; Streak Duel and Goal Showdown pay double; a Boss Raid win pays 25 and a Baby Boss Raid win 10 |
 
-What levels unlock: new creatures (the first 12 stay free), accessories, screen themes, goal-trail styles, confetti styles, titles, battle modes, and **streak freezes**. Freezes come every 5 levels, and you can hold 2. Just after midnight, a freeze covers anyone who missed yesterday's checklist. Creatures also grow as you level: they get a ring at level 5, a glow at 10, and an aura at 20.
+What levels unlock: new creatures (the first 13 stay free), accessories, screen themes, goal-trail styles, confetti styles, titles, battle modes, and **streak freezes**. Freezes come every 5 levels, and you can hold 2. Just after midnight, a freeze covers anyone who missed yesterday's checklist. Creatures also grow as you level: they get a ring at level 5, a glow at 10, and an aura at 20.
 
 **Battles** are opt-in challenges. You earn XP from them, never money:
 
@@ -131,6 +131,7 @@ What levels unlock: new creatures (the first 12 stay free), accessories, screen 
 | Streak Duel | level 10 | Whoever misses their daily list first loses (up to 14 days) |
 | Goal Showdown | level 12 | Best share of the weekly goal, decided at cash-out |
 | Boss Raid | level 15 | Team up (2 to 4 people) and beat a boss with chores |
+| Baby Boss Raid | level 1 | A tiny one-day boss for younger kids or a quick team-up. Go solo or bring up to 3 teammates. Easy to beat, and it never gets harder |
 | Kids vs. Grown-ups | level 15 | Team battle; the kids' team gets a handicap |
 | Wildcard | level 20 | A random mode, often with a twist like "Clean bathroom counts double" |
 
@@ -144,7 +145,7 @@ To limit battles, go to **Settings** > Game. You can set quiet hours (no battles
 
 **More ways to play:**
 
-- **Weekly quests:** everyone gets 3 quests each Monday, like "Do 3 different chores in one day" or "Do a chore before 9 AM". They pay 30 to 50 XP and are checked automatically. You can turn them off in Settings > Game.
+- **Weekly quests:** everyone gets 3 quests each Monday, like "Do 3 different chores in one day" or "Do a chore before 9 AM". They pay 15 to 25 XP and are checked automatically. You can turn them off in Settings > Game.
 - **Rewards:** in Settings > Game, list real-world rewards by level (for example level 5: pick Friday dinner, again every 5 levels). Kids claim them from their screen, and you approve them and mark them given in the Game tab.
 - **Bounties:** in the Game tab, post a one-off job worth extra XP ("Clean out the garage together, 200 XP"), for anyone or one person. A kid taps "I did it" and you award the XP.
 - **Family goal:** in the Game tab, set a shared reward ("Pizza night") and how much XP the whole family needs to earn together. The bar shows on every screen and the family display, and celebrates when it fills.
@@ -157,6 +158,7 @@ The game rules live in `public/game.js`. The functions use an identical copy at 
 
 ```
 npm ci && npm ci --prefix functions
+npm run hooks             # once per clone: git refuses a push when the fast checks fail
 npm test                  # game rules (fast, no emulators)
 npm run test:emulators    # functions + security rules against the Firebase emulators (needs Java 21)
 ```
@@ -176,5 +178,5 @@ To click around locally, run `npx firebase emulators:start --project demo-boon` 
 
 ## Notes
 
-- Chore payments are calculated on the server, so a tablet can't change amounts or go past daily limits. Kid tablets can't change balances, deductions, or cash-outs.
+- Chore payments are calculated on the server, so a tablet can't change amounts or go past daily or weekly limits. Kid tablets can't change balances, deductions, or cash-outs.
 - Data from the claude.ai prototype doesn't carry over; this starts fresh.

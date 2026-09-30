@@ -85,7 +85,7 @@ test("chore bingo: first to finish a line wins", async () => {
   assert.equal(b.result.reason, "Bingo!");
 });
 
-test("judge's pick: both turn in the chore, a parent picks, own battles need another parent", async () => {
+test("judge's pick: both turn in the chore, a parent picks, even in their own battle", async () => {
   await reset();
   await level("k1", 8);
   const k1 = await kidClient("k1"), k2 = await kidClient("k2"), parent = await parentClient(), dad = await parentClient("dad@test.com");
@@ -100,15 +100,17 @@ test("judge's pick: both turn in the chore, a parent picks, own battles need ano
   await parent.call("judgeBattle", { id, winner: "k2" });
   const b = await waitFor(async () => { const b = await battle(id); return !b.live && b; }, { msg: "judged" });
   assert.equal(b.result.winner, "k2");
-  assert.deepEqual(b.xp, { k1: 15, k2: 40 });
-  // Dad can't judge a battle he's in.
+  assert.deepEqual(b.xp, { k1: G.XP.loss, k2: G.XP.win });
+  // Dad can judge a battle he's in.
   await level("dad", 8);
   const j = await dad.call("createBattle", { mode: "judge", opponent: "k3", choreId: "c2", as: "dad" });
   const k3 = await kidClient("k3");
   await k3.call("respondBattle", { id: j.id, accept: true });
   await dad.call("finishAttempt", { id: j.id, as: "dad" });
   await k3.call("finishAttempt", { id: j.id });
-  await rejects(dad.call("judgeBattle", { id: j.id, winner: "dad" }), /Another parent/);
+  await dad.call("judgeBattle", { id: j.id, winner: "dad" });
+  const jb = await waitFor(async () => { const b = await battle(j.id); return !b.live && b; }, { msg: "judged own" });
+  assert.equal(jb.result.winner, "dad");
 });
 
 test("streak duel: the first to miss a day loses; results need no confirmation", async () => {
@@ -125,7 +127,7 @@ test("streak duel: the first to miss a day loses; results need no confirmation",
   const b = await waitFor(async () => { const b = await battle(id); return !b.live && b; }, { msg: "duel over" });
   assert.equal(b.status, "done");
   assert.equal(b.result.winner, "k1");
-  assert.deepEqual(b.xp, { k1: 80, k2: 30 });
+  assert.deepEqual(b.xp, { k1: G.XP.win * 2, k2: G.XP.loss * 2 });
 });
 
 test("goal showdown: best share of the weekly goal once both weeks are cashed out", async () => {
@@ -159,12 +161,35 @@ test("boss raid: teammates accept, chores do damage, a beaten boss moves the fam
   for (let i = 0; i < 6; i++) await k1.call("completeChore", { kidId: "k1", choreId: "big" });
   b = await waitFor(async () => { const b = await battle(id); return !b.live && b; }, { msg: "boss beaten" });
   assert.equal(b.result.winnerSide, "a");
-  assert.deepEqual(b.xp, { k1: 50, k2: 0 });
+  assert.deepEqual(b.xp, { k1: G.XP.raidWin, k2: 0 });
   assert.equal((await db.doc("xp/_family").get()).data().bossesBeaten, 1);
   const next = await k1.call("createBattle", { mode: "raid", team: ["k2"], days: 2 });
   const nb = await battle(next.id);
   assert.equal(nb.params.bossName, "Dish Hydra");
   assert.equal(nb.params.hp, G.raidHp(2, 2, 1));
+});
+
+test("baby boss raid: level 1, solo allowed and starts at once, tiny boss, small XP, own roster", async () => {
+  await reset();
+  const k3 = await kidClient("k3");
+  const { id } = await k3.call("createBattle", { mode: "babyraid", team: [] });
+  let b = await battle(id);
+  assert.equal(b.status, "active", "a solo baby raid needs nobody's acceptance");
+  assert.equal(b.params.hp, 15);
+  assert.equal(b.params.bossName, "Dust Bunny");
+  await k3.call("completeChore", { kidId: "k3", choreId: "big" });
+  b = await waitFor(async () => { const b = await battle(id); return !b.live && b; }, { msg: "baby boss beaten" });
+  assert.equal(b.result.winnerSide, "a");
+  assert.deepEqual(b.xp, { k3: G.XP.babyRaidWin });
+  const fam = (await db.doc("xp/_family").get()).data();
+  assert.equal(fam.babyBossesBeaten, 1);
+  assert.equal(fam.bossesBeaten || 0, 0, "baby bosses don't count toward the real roster");
+  const k1 = await kidClient("k1");
+  const team = await k1.call("createBattle", { mode: "babyraid", team: ["k2"] });
+  const tb = await battle(team.id);
+  assert.equal(tb.status, "pending", "with a teammate it waits for them to accept");
+  assert.equal(tb.params.hp, 30);
+  assert.equal(tb.params.bossName, "Crumb Critter");
 });
 
 test("kids vs grown-ups: every invitee accepts, kids get a team handicap", async () => {
@@ -189,7 +214,7 @@ test("kids vs grown-ups: every invitee accepts, kids get a team handicap", async
   await rejects(k3.call("confirmResult", { id }), /other player or a parent/);
   await dad.call("confirmResult", { id, as: "dad" });
   b = await waitFor(async () => { const b = await battle(id); return !b.live && b; }, { msg: "closed" });
-  assert.deepEqual(b.xp, { k1: 0, k3: 40, dad: 0 });
+  assert.deepEqual(b.xp, { k1: 0, k3: G.XP.win, dad: 0 });
 });
 
 test("wildcard picks a random mode with a twist", async () => {

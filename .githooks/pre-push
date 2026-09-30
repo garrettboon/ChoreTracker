@@ -1,0 +1,10 @@
+#!/bin/sh
+# Refuses a push when the fast checks fail. Every push deploys the live app, so this is the last stop.
+# Turn it on once per clone with: npm run hooks
+cd "$(git rev-parse --show-toplevel)" || exit 1
+if ! cmp -s public/game.js functions/game.mjs; then echo "pre-push: functions/game.mjs is out of date. Run: npm run sync"; exit 1; fi
+for f in functions/index.js public/game.js tests/unit/*.mjs tests/emulator/*.mjs; do
+  node --check "$f" 2>/dev/null || { echo "pre-push: $f has a syntax error"; exit 1; }
+done
+if ! npm test --silent >/dev/null 2>&1; then echo "pre-push: unit tests fail. Run: npm test"; exit 1; fi
+echo "pre-push: checks passed"

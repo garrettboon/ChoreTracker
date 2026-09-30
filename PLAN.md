@@ -152,7 +152,7 @@ game: {
 ### 3.6 Security rule changes (summary)
 
 - `xp/**` and `battles/**`: `allow read: if canRead(); allow write: if false;`
-- `prefs/{kidId}`: a kid may set `creature` and `equipped.*` only to a value that is one of the 12 starters (listed in the rules) or in `get(xp/{kidId}).data.unlocked`.
+- `prefs/{kidId}`: a kid may set `creature` and `equipped.*` only to a value that is one of the 13 starters (listed in the rules) or in `get(xp/{kidId}).data.unlocked`.
 - `claims/{id}`: a kid may create a claim for themself only if `xp.maxLevel >= reward level`. Only parents may change `status`.
 - All new rules get emulator tests (Phase 0 sets that up).
 
@@ -179,7 +179,7 @@ Sizes: **S** is about a day, **M** is 2 to 4 days, **L** is a week or more.
 - Display screen: level badge on each lane, and "⭐ Warren reached level 6!" in the ticker.
 - Parent screen: per-person XP history (the events list) and "reverse" also shows the XP removed.
 
-New creatures (the 12 starters stay free):
+New creatures (the 13 starters stay free):
 
 | Level | Creature | Level | Creature |
 |---|---|---|---|
@@ -251,10 +251,10 @@ The challenge flow, the battle engine, and three modes: **Race**, **Time Trial**
 | Weekly goal reached | 50 |
 | Deduction earned back | 20 |
 | Savings goal bought | 50 |
-| New badge | 25 |
-| Battle win / tie / loss | 40 / 25 / 15 (×2 for multi-day modes) |
-| Co-op battle success | 50 each |
-| Weekly quest | 30 to 60 |
+| New badge | 10 |
+| Battle win / tie / loss | 15 / 10 / 5 (×2 for multi-day modes) |
+| Co-op battle success | 25 each (Baby Boss Raid 10) |
+| Weekly quest | 15 to 25 |
 
 ---
 

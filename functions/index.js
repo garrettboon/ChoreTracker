@@ -118,7 +118,7 @@ function logChore(kidId, choreId, by, note = "") {
     const kid = cfg && cfg.kids.find((k) => k.id === kidId);
     const ch = cfg && cfg.chores.find((c) => c.id === choreId && c.kind === "family");
     if (!kid || !ch) throw new HttpsError("invalid-argument", "Unknown chore.");
-    if (!by && needsNote(ch) && !note) throw new HttpsError("invalid-argument", "Say what the chore was first.");
+    if (!by && !kid.adult && needsNote(ch) && !note) throw new HttpsError("invalid-argument", "Say what the chore was first.");
     if (ch.assign !== "pool" && ch.assign !== kidId) throw new HttpsError("permission-denied", "That chore belongs to someone else.");
 
     const L = localParts(cfg.timezone || FAMILY_TZ);
@@ -127,13 +127,18 @@ function logChore(kidId, choreId, by, note = "") {
     const refs = [];
     for (const id of counted) for (const wk of [mon, addDays(mon, 7)]) refs.push(db.doc(`weeks/${wk}_${id}`));
     const snaps = await t.getAll(...refs);
-    let n = 0;
+    // Today's count and this week's count (Monday through Sunday), shared by the kids on an Anyone chore.
+    const sun = addDays(mon, 6);
+    let n = 0, wn = 0;
     for (const s of snaps) {
       if (!s.exists) continue;
       for (const e of s.data().entries || []) {
-        if (e.choreId === choreId && e.date === L.date && e.status !== "reversed") n++;
+        if (e.choreId !== choreId || e.status === "reversed") continue;
+        if (e.date === L.date) n++;
+        if (e.date >= mon && e.date <= sun) wn++;
       }
     }
+    if (ch.weekLimit > 0 && wn >= ch.weekLimit) throw new HttpsError("failed-precondition", "That one's done for this week.");
     if (n >= (ch.limit || 1)) throw new HttpsError("failed-precondition", "That one's done for today.");
 
     const thisWeek = snaps.find((s) => s.id === `${mon}_${kidId}`);
@@ -525,7 +530,7 @@ const MS_AUTOCONFIRM = 12 * 3600 * 1000;  // unconfirmed results confirm themsel
 const MS_PARENT_WAIT = 48 * 3600 * 1000;  // flagged results nobody checked become no contest
 const MS_COOLDOWN = 3600 * 1000;          // after a decline
 const SPEED = ["race", "blitz", "timetrial", "ghost", "territory", "bingo", "grownups"]; // results someone confirms
-const LIVE_SCORED = ["race", "blitz", "territory", "bingo", "raid", "grownups"];         // scored from chores as they happen
+const LIVE_SCORED = ["race", "blitz", "territory", "bingo", "raid", "babyraid", "grownups"];         // scored from chores as they happen
 
 const dowOf = (date) => { const [y, m, d] = date.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d)).getUTCDay(); };
 const mondayOfDate = (date) => mondayOf(date, dowOf(date));
@@ -545,25 +550,28 @@ async function battleEntries(cfg, b) {
   return out;
 }
 
-// How many of today's limit is left on a chore, as seen by each player.
+// How many more times a chore can be done today (within its daily and weekly limits), as seen by each player.
 async function choreRoom(cfg, ch, playerIds) {
   const L = localParts(tzOf(cfg));
-  const mon = mondayOf(L.date, L.dow);
+  const mon = mondayOf(L.date, L.dow), sun = addDays(mon, 6);
   const kidsIds = cfg.kids.filter((k) => !k.adult).map((k) => k.id);
   const ids = [...new Set([...kidsIds, ...playerIds])];
   const snaps = await db.getAll(...ids.flatMap((id) => [mon, addDays(mon, 7)].map((wk) => db.doc(`weeks/${wk}_${id}`))));
-  const doneBy = {};
+  const doneBy = {}, weekBy = {};
   for (const s of snaps) {
     if (!s.exists) continue;
-    const n = (s.data().entries || []).filter((e) => e.choreId === ch.id && e.date === L.date && e.status !== "reversed").length;
-    doneBy[s.data().kidId] = (doneBy[s.data().kidId] || 0) + n;
+    const id = s.data().kidId;
+    const mine = (s.data().entries || []).filter((e) => e.choreId === ch.id && e.status !== "reversed");
+    doneBy[id] = (doneBy[id] || 0) + mine.filter((e) => e.date === L.date).length;
+    weekBy[id] = (weekBy[id] || 0) + mine.filter((e) => e.date >= mon && e.date <= sun).length;
   }
-  const lim = ch.limit || 1;
+  const lim = ch.limit || 1, wlim = ch.weekLimit > 0 ? ch.weekLimit : Infinity;
   const shared = kidsIds.reduce((s, id) => s + (doneBy[id] || 0), 0);
+  const sharedWeek = kidsIds.reduce((s, id) => s + (weekBy[id] || 0), 0);
   const room = {};
   for (const id of playerIds) {
-    const p = kidOf(cfg, id);
-    room[id] = ch.assign === "pool" && !p.adult ? lim - shared : lim - (doneBy[id] || 0);
+    const pool = ch.assign === "pool" && !kidOf(cfg, id).adult;
+    room[id] = Math.min(pool ? lim - shared : lim - (doneBy[id] || 0), pool ? wlim - sharedWeek : wlim - (weekBy[id] || 0));
   }
   return room;
 }
@@ -604,9 +612,10 @@ exports.createBattle = onCall(async (req) => {
   // Who's in it.
   let players, teams = null, opp = null;
   if (picked.solo) players = [me.id];
-  else if (picked.id === "raid") {
+  else if (G.isRaid(picked.id)) {
     const mates = ids(data.team).filter((id) => kidOf(cfg, id));
-    if (!mates.length || mates.length > 3) throw new HttpsError("invalid-argument", "Pick 1 to 3 teammates.");
+    if (picked.id === "raid" && !mates.length) throw new HttpsError("invalid-argument", "Pick 1 to 3 teammates.");
+    if (mates.length > 3) throw new HttpsError("invalid-argument", "Pick up to 3 teammates.");
     players = [me.id, ...mates];
     teams = { a: players };
   } else if (picked.id === "grownups") {
@@ -638,6 +647,7 @@ exports.createBattle = onCall(async (req) => {
   if (mode.id === "race") params.n = Math.min(6, Math.max(2, Math.round(Number(data.n) || 3)));
   if (mode.id === "blitz" || mode.id === "grownups") params.windowMin = [30, 60, 0].includes(Number(data.windowMin)) ? Number(data.windowMin) : 60;
   if (mode.id === "raid") params.days = Math.min(3, Math.max(1, Math.round(Number(data.days) || 1)));
+  if (mode.id === "babyraid") params.days = 1;
   if (G.TIMED.includes(mode.id) || mode.id === "judge") {
     const ch = cfg.chores.find((c) => c.id === String(data.choreId || "") && c.kind === "family");
     if (!ch) throw new HttpsError("invalid-argument", "Pick a chore.");
@@ -696,10 +706,17 @@ exports.createBattle = onCall(async (req) => {
     if (teams.b) b.teamHandicap = G.teamHandicaps(teams.a.map((id) => kidOf(cfg, id)), teams.b.map((id) => kidOf(cfg, id)), cfg);
     b.handicap = {};
   } else b.handicap = opp ? G.handicaps(meP, opp, cfg) : { [me.id]: 1 };
-  if (mode.id === "raid") {
-    const fam = await db.doc("xp/_family").get();
-    const boss = G.bossFor((fam.exists && fam.data().bossesBeaten) || 0);
-    Object.assign(params, { bossId: boss.id, bossName: boss.name, bossEmoji: boss.emoji, tier: boss.tier, hp: G.raidHp(players.length, params.days, boss.tier) });
+  if (G.isRaid(mode.id)) {
+    const fam = await db.doc("xp/_family").get(), fd = (fam.exists && fam.data()) || {};
+    if (mode.id === "babyraid") {
+      const boss = G.babyBossFor(fd.babyBossesBeaten || 0);
+      Object.assign(params, { bossId: boss.id, bossName: boss.name, bossEmoji: boss.emoji, tier: 0, hp: G.babyRaidHp(players.length) });
+    } else {
+      const boss = G.bossFor(fd.bossesBeaten || 0);
+      Object.assign(params, { bossId: boss.id, bossName: boss.name, bossEmoji: boss.emoji, tier: boss.tier, hp: G.raidHp(players.length, params.days, boss.tier) });
+    }
+    // A raid with nobody to invite (a solo Baby Boss Raid) starts right away.
+    if (players.length === 1) Object.assign(b, { status: "active", acceptedAt: now }, startWindow(cfg, b, now));
   }
   if (mode.solo) {
     b.acceptedAt = b.startAt = now;
@@ -709,7 +726,7 @@ exports.createBattle = onCall(async (req) => {
   const ref = await db.collection("battles").add(b);
   const others = players.filter((p) => p !== me.id);
   if (others.length) {
-    const what = mode.id === "raid" ? `Team up against ${params.bossEmoji} ${params.bossName}!` : `${picked.emoji} ${picked.name}.`;
+    const what = G.isRaid(mode.id) ? `Team up against ${params.bossEmoji} ${params.bossName}!` : `${picked.emoji} ${picked.name}.`;
     await pushTo(others, `⚔️ ${meP.name} challenged you!`, `${what} Open Boon Chores to accept or pass.`);
   }
   return { id: ref.id, mode: mode.id, twist };
@@ -719,7 +736,7 @@ exports.createBattle = onCall(async (req) => {
 function startWindow(cfg, b, now) {
   const eod = endOfLocalDay(cfg, now);
   if ((b.mode === "blitz" || b.mode === "grownups") && b.params.windowMin) return { startAt: now, endAt: Math.min(eod, now + b.params.windowMin * 60000) };
-  if (b.mode === "raid") return { startAt: now, endAt: eod + ((b.params.days || 1) - 1) * 86400000 };
+  if (G.isRaid(b.mode)) return { startAt: now, endAt: eod + ((b.params.days || 1) - 1) * 86400000 };
   if (b.mode === "streakduel") return { startAt: eod, endAt: eod + 14 * 86400000 };
   if (b.mode === "showdown") return { startAt: now, endAt: now + 8 * 86400000 };
   return { startAt: now, endAt: eod };
@@ -855,7 +872,6 @@ exports.checkRun = onCall(async (req) => {
     if (!s.exists) throw new HttpsError("not-found", "That battle is gone.");
     const b = s.data();
     if (!G.TIMED.includes(b.mode) || !["active", "confirming"].includes(b.status)) throw new HttpsError("failed-precondition", "There's nothing to check here.");
-    if (ownBattle(cfg, b, req.auth)) throw new HttpsError("permission-denied", "Another parent has to check a battle you're in.");
     const a = (b.attempts || {})[player];
     if (!a || a.ms == null || a.void) throw new HttpsError("failed-precondition", "That run isn't finished.");
     const by = req.auth.token.name || req.auth.token.email;
@@ -885,7 +901,6 @@ exports.judgeBattle = onCall(async (req) => {
     if (!s.exists) throw new HttpsError("not-found", "That battle is gone.");
     const b = s.data();
     if (b.status !== "judging") throw new HttpsError("failed-precondition", "That battle isn't waiting for a judge.");
-    if (ownBattle(cfg, b, req.auth)) throw new HttpsError("permission-denied", "Another parent has to judge a battle you're in.");
     if (pick !== "tie" && !b.players.includes(pick)) throw new HttpsError("invalid-argument", "Pick one of the players.");
     const by = req.auth.token.name || req.auth.token.email;
     t.update(ref, { status: "done", result: { ...(b.result || {}), needsParent: false, winner: pick === "tie" ? null : pick, tie: pick === "tie", reason: pick === "tie" ? "The judge called it a tie" : "The judge's pick", confirmedBy: by, confirmedAt: Date.now() } });
@@ -920,12 +935,6 @@ function qualityResult(b) {
   if (r && !r.noContest && finished.some((p) => !q[p])) return { ...r, reason: b.mode === "ghost" ? r.reason : "Fastest run done well" };
   return r;
 }
-// True when a signed-in parent is one of this battle's players.
-function ownBattle(cfg, b, auth) {
-  const email = String(auth.token.email || "").toLowerCase();
-  return b.players.some((p) => { const k = kidOf(cfg, p); return k && k.email && k.email.toLowerCase() === email; });
-}
-
 // Pays XP for a finished battle (idempotent), then takes it off the live list.
 async function afterSettle(cfg, id) {
   const ref = db.doc(`battles/${id}`);
@@ -950,23 +959,23 @@ async function afterSettle(cfg, id) {
       const other = b.players.find((o) => o !== p);
       if (ages[p] < ages[other]) count.push("giant");
     }
-    const label = r.record ? "record set" : r.tie ? "tie" : won ? (b.mode === "ghost" ? "new best" : b.mode === "raid" ? "boss beaten" : "won") : "played";
+    const label = r.record ? "record set" : r.tie ? "tie" : won ? (b.mode === "ghost" ? "new best" : G.isRaid(b.mode) ? "boss beaten" : "won") : "played";
     const pbMs = b.mode === "ghost" && won && b.attempts[p] ? b.attempts[p].ms : null;
     await applyXp(p, xp[p] ? [{ key: "battle:" + id, amount: xp[p], reason: `${mode ? mode.name : "Battle"}: ${label}`, count }] : [],
       [], pbMs != null ? (x) => { x.pb = { ...(x.pb || {}), [b.params.choreId]: pbMs }; return true; } : null);
     await syncBadges(cfg, p);
     await evalQuests(cfg, p);
   }
-  if (b.mode === "raid" && r.winnerSide) {
+  if (G.isRaid(b.mode) && r.winnerSide) {
     await db.runTransaction(async (t) => {
       const cur = await t.get(ref);
       if (cur.data().bossCounted) return;
-      t.set(db.doc("xp/_family"), { bossesBeaten: FieldValue.increment(1) }, { merge: true });
+      t.set(db.doc("xp/_family"), { [b.mode === "babyraid" ? "babyBossesBeaten" : "bossesBeaten"]: FieldValue.increment(1) }, { merge: true });
       t.update(ref, { bossCounted: true });
     });
   }
   await ref.update({ live: false, xp });
-  if (b.mode === "raid" || b.mode === "streakduel" || b.mode === "showdown") {
+  if (G.isRaid(b.mode) || b.mode === "streakduel" || b.mode === "showdown") {
     await pushTo(b.players, `${mode.emoji} ${mode.name} is over`, r.reason || "Open Boon Chores to see how it went.");
   }
 }
@@ -1096,8 +1105,7 @@ exports.confirmResult = onCall(async (req) => {
     const now = Date.now();
     if (parentMode) {
       if (!["confirming", "judging"].includes(b.status)) throw new HttpsError("failed-precondition", "That result is already settled.");
-      if (ownBattle(cfg, b, req.auth)) throw new HttpsError("permission-denied", "Another parent has to check a battle you're in.");
-      const by = req.auth.token.name || req.auth.token.email;
+        const by = req.auth.token.name || req.auth.token.email;
       if (action === "void") t.update(ref, { status: "done", result: { ...r, winner: null, winnerSide: null, tie: false, noContest: true, reason: "Called off by a parent", confirmedBy: by, confirmedAt: now } });
       else if (action === "confirm" && G.TIMED.includes(b.mode)) throw new HttpsError("failed-precondition", "Check each run as done well or not instead.");
       else if (action === "confirm" && b.status === "confirming") t.update(ref, { status: "done", result: { ...r, confirmedBy: by, confirmedAt: now } });

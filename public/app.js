@@ -8,7 +8,7 @@ import * as G from "./game.js";
 
 const CREATURES=G.CREATURES;
 const S={phase:"loading",user:null,role:null,device:null,config:null,bank:{},prefs:{},weeks:{},xp:{},battles:{},claims:{},bounties:{},game:{},devices:[],codes:[],ptab:"activity",viewKid:null,busy:{},
-  ui:{goalInput:"",newGoal:{name:"",target:""},ded:{kid:"",amount:0.25,reason:"",how:""},buy:null,pgoal:{},editGoal:null,kidView:null,adjust:null,openBuckets:{},confirmChore:null,prNote:null,split:{key:null,base:"",dirty:false,shares:{}},draft:null,pickCreature:false,wtab:"creature",prevPct:{},prevLvl:{},bb:null,levelUp:null,xpHist:{},pair:{code:"",name:""},newCode:{role:"display"},log:{kid:"",chore:"",note:""}}};
+  ui:{goalInput:"",newGoal:{name:"",target:""},ded:{kid:"",amount:0.25,reason:"",how:"",type:"ded"},buy:null,pgoal:{},editGoal:null,editChore:null,kidView:null,adjust:null,openBuckets:{},confirmChore:null,prNote:null,split:{key:null,base:"",dirty:false,shares:{}},draft:null,pickCreature:false,wtab:"creature",prevPct:{},prevLvl:{},bb:null,levelUp:null,xpHist:{},pair:{code:"",name:""},newCode:{role:"display"},log:{kid:"",chore:"",note:""}}};
 
 /* ---------- helpers ---------- */
 const $=s=>document.querySelector(s);
@@ -60,7 +60,7 @@ function kidState(id){
   const goals=[{id:"general",name:"General savings",target:0,balance:r2(bal.general||0)}];
   Object.entries(p.goals||{}).filter(([gid])=>!archivedIds.has(gid)).sort((a,c)=>(a[1].created||0)-(c[1].created||0))
     .forEach(([gid,g])=>goals.push({id:gid,name:g.name,target:g.target||0,balance:r2(bal[gid]||0)}));
-  return {creature:p.creature||null,interestTo:p.interestTo||"invest",prLog:p.prLog||{},prDone:p.prDone||{},prNotes:p.prNotes||{},goals,archived:b.archived||[],invest:r2(b.invest||0),give:r2(b.give||0),
+  return {creature:p.creature||null,interestTo:p.interestTo||"invest",prLog:p.prLog||{},prDone:p.prDone||{},prNotes:p.prNotes||{},seenWarnings:p.seenWarnings||[],goals,archived:b.archived||[],invest:r2(b.invest||0),give:r2(b.give||0),
     stats:Object.assign({chores:0,goalHits:0,redemptions:0,earned:0},b.stats||{}),lastInterestMonth:b.lastInterestMonth||null};
 }
 function creatureFor(kidId){const ks=kidState(kidId);const idx=cfg().kids.findIndex(k=>k.id===kidId);const starters=CREATURES.filter(c=>c[3]===1);
@@ -80,12 +80,18 @@ const cotdId=()=>G.choreOfDay(cfg().chores,ymd(),cfg());
 const choreXpFor=(kidId,ch)=>G.choreXp(ch,{cotd:cotdId()===ch.id,boost:G.streakBoost(cfg(),streak(kidId))});
 const battleList=()=>Object.entries(S.battles).map(([id,b])=>({id,...b})).sort((a,b)=>b.createdAt-a.createdAt);
 const weekDocId=(kid,wk)=>wk+"_"+kid;
-function getWeek(kid,wk){return Object.assign({kidId:kid,week:wk,goal:null,entries:[],deductions:[],closed:false},S.weeks[weekDocId(kid,wk)]||{});}
+function getWeek(kid,wk){return Object.assign({kidId:kid,week:wk,goal:null,entries:[],deductions:[],warnings:[],closed:false},S.weeks[weekDocId(kid,wk)]||{});}
 function activeWeek(kid){const wk=mondayOf(new Date());const w=S.weeks[weekDocId(kid,wk)];return (w&&w.closed)?addDays(wk,7):wk;}
 function weekNet(w){let n=0;for(const e of w.entries||[])if(e.status!=="reversed")n+=e.amount;for(const d of w.deductions||[])if(d.status==="active"||d.status==="final")n-=d.amount;return r2(n);}
 const choreCount=w=>(w.entries||[]).filter(e=>e.status!=="reversed").length;
-function countOnDate(kidId,choreId,date){let n=0;for(const w of Object.values(S.weeks)){if(w.kidId!==kidId)continue;for(const e of w.entries||[])if(e.choreId===choreId&&e.date===date&&e.status!=="reversed")n++;}return n;}
-function choreCountToday(kidId,ch,date){const me=kidCfg(kidId);if(ch.assign==="pool"&&!(me&&me.adult))return cfg().kids.filter(k=>!k.adult).reduce((s,k)=>s+countOnDate(k.id,ch.id,date),0);return countOnDate(kidId,ch.id,date);}
+function countBetween(kidId,choreId,from,to){let n=0;for(const w of Object.values(S.weeks)){if(w.kidId!==kidId)continue;for(const e of w.entries||[])if(e.choreId===choreId&&e.date>=from&&e.date<=to&&e.status!=="reversed")n++;}return n;}
+const countOnDate=(kidId,choreId,date)=>countBetween(kidId,choreId,date,date);
+// Who shares a chore's limits: kids share an Anyone chore, while an assigned chore or a grown-up's chore counts alone.
+function limitGroup(kidId,ch){const me=kidCfg(kidId);return ch.assign==="pool"&&!(me&&me.adult)?cfg().kids.filter(k=>!k.adult).map(k=>k.id):[kidId];}
+function choreCountToday(kidId,ch,date){return limitGroup(kidId,ch).reduce((s,id)=>s+countOnDate(id,ch.id,date),0);}
+// Times done in the Monday-to-Sunday week that holds `date`, for the weekly max.
+function choreCountWeek(kidId,ch,date){const mon=mondayOf(parseYmd(date));return limitGroup(kidId,ch).reduce((s,id)=>s+countBetween(id,ch.id,mon,addDays(mon,6)),0);}
+const weekFull=(kidId,ch,date)=>ch.weekLimit>0&&choreCountWeek(kidId,ch,date)>=ch.weekLimit;
 const openWeeks=kidId=>Object.values(S.weeks).filter(w=>w.kidId===kidId&&!w.closed).map(w=>getWeek(w.kidId,w.week));
 function prComplete(ks,date,frozen){if(ks.prDone&&ks.prDone[date])return true;if(frozen&&frozen.includes(date))return true;const ids=prChores().map(c=>c.id);if(!ids.length)return false;const d=ks.prLog[date]||[];return ids.every(i=>d.includes(i));}
 function streak(kidId){const ks=kidState(kidId),fz=xpState(kidId).frozen;let d=ymd();if(!prComplete(ks,d,fz))d=addDays(d,-1);let n=0;while(prComplete(ks,d,fz)&&n<400){n++;d=addDays(d,-1);}return n;}
@@ -130,7 +136,7 @@ function stopData(){unsubs.forEach(u=>u());unsubs=[];prBackfilled.clear();if(wee
 function onErr(e){console.warn(e);if(e&&e.code==="permission-denied"&&S.role!=="parent"){/* device was unpaired */}}
 function startData(){
   if(unsubs.length)return;
-  unsubs.push(onSnapshot(doc(db,"app/config"),s=>{S.config=s.exists()?s.data():null;backfillPrDone();softRender();},onErr));
+  unsubs.push(onSnapshot(doc(db,"app/config"),s=>{S.config=s.exists()?s.data():null;backfillPrDone();refreshCleanDraft();softRender();},onErr));
   unsubs.push(onSnapshot(collection(db,"bank"),s=>{const m={};s.forEach(d=>m[d.id]=d.data());S.bank=m;softRender();},onErr));
   unsubs.push(onSnapshot(collection(db,"prefs"),s=>{const m={};s.forEach(d=>m[d.id]=d.data());S.prefs=m;backfillPrDone();softRender();},onErr));
   unsubs.push(onSnapshot(collection(db,"xp"),s=>{const m={};s.forEach(d=>m[d.id]=d.data());S.xp=m;S.xpLoaded=true;softRender();},onErr));
@@ -257,7 +263,7 @@ function viewKid(kidId,embedded){
   if(S.ui.pickCreature)h+=wardrobe(k.id);
   h+=familyBar(true)+freezeNotice(k.id)+reminderBanner(k,ks,today);
   h+=w.goal==null?goalSetter(k,wk):goalCard(k,ks,w,net,cr);
-  h+=battleSection(k)+bountySection(k)+challengeCards(k.id)+prSection(k,ks,today)+choreSection(k,today)+moneySection(k,ks,w,net)+questSection(k)+rewardSection(k)+badgeSection(k.id)+activitySection(w);
+  h+=battleSection(k)+bountySection(k)+warningCards(k,ks)+challengeCards(k.id)+prSection(k,ks,today)+choreSection(k,today)+moneySection(k,ks,w,net)+questSection(k)+rewardSection(k)+badgeSection(k.id)+activitySection(w);
   return h+(embedded?"":`</div>`);
 }
 function pushControl(){
@@ -270,11 +276,11 @@ function pushControl(){
 function reminderBanner(k,ks,today){
   const times=(k.remind||[]).filter(Boolean).sort();if(!times.some(t=>t<=nowHM()))return "";
   const done=ks.prLog[today]||[];
-  const todo=[...prChores().filter(c=>!done.includes(c.id)).map(c=>c.name),...famChoresFor(k.id).filter(c=>c.assign===k.id&&countOnDate(k.id,c.id,today)===0).map(c=>c.name)];
+  const todo=[...prChores().filter(c=>!done.includes(c.id)).map(c=>c.name),...famChoresFor(k.id).filter(c=>c.assign===k.id&&countOnDate(k.id,c.id,today)===0&&!weekFull(k.id,c,today)).map(c=>c.name)];
   return todo.length?`<div class="banner" role="status">Still to do today: ${todo.map(esc).join(", ")}</div>`:"";
 }
 function goalSetter(k,wk){
-  const last=weekNet(getWeek(k.id,addDays(wk,-7)));const perDay=famChoresFor(k.id).reduce((s,c)=>s+choreValue(k,c)*(c.limit||1),0);const max=r2(perDay*daysLeft(wk));
+  const last=weekNet(getWeek(k.id,addDays(wk,-7)));const dl=daysLeft(wk);const max=r2(famChoresFor(k.id).reduce((s,c)=>{const room=c.weekLimit>0?Math.max(0,c.weekLimit-choreCountWeek(k.id,c,wk)):Infinity;return s+choreValue(k,c)*Math.min((c.limit||1)*dl,room);},0));
   const v=Number(S.ui.goalInput)||0;const chips=last>0?[q(last),q(last*1.25),q(last*1.5)]:[1,2.5,5];
   return `<section class="card goal goal-set"><h2>What do you want to earn this week?</h2>
     <p class="sub">${last>0?`Last week you earned ${money(last)}. `:""}Doing every chore every day would earn about ${money(max)}.</p>
@@ -290,6 +296,12 @@ function goalCard(k,ks,w,net,cr){
     <p class="goal-msg">${won?"Goal reached! Your bonus is locked in.":`${money(w.goal-net)} to go`}</p>
     <label class="inline">Bonus goes to <select data-change="bonusTo" aria-label="Where your bonus goes">${["split","spend","save","invest","give"].map(o=>`<option value="${o}" ${o===bt?"selected":""}>${destName(ks,o)}</option>`).join("")}</select></label></section>`;
 }
+// Warnings cost nothing. An unseen one is loud until the kid taps Got it; seen ones stay as a quiet list for the week.
+function warningCards(k,ks){const all=[];for(const w of openWeeks(k.id))for(const x of w.warnings||[])all.push(x);if(!all.length)return "";
+  const seen=new Set(ks.seenWarnings),fresh=all.filter(x=>!seen.has(x.id)),old=all.filter(x=>seen.has(x.id));let h="";
+  for(const x of fresh)h+=`<section class="card warning"><h3>⚠️ A warning from ${esc(x.by||"a parent")}</h3><p><b>${esc(x.reason)}</b></p><p class="hint">This one doesn't cost anything. Turn it around so it doesn't become a deduction.</p><button class="btn small" style="margin-top:10px" data-act="warn-seen" data-id="${x.id}">Got it</button></section>`;
+  if(old.length)h+=`<section class="card warning seen"><p class="sub">⚠️ Warnings this week: ${old.map(x=>`<b>${esc(x.reason)}</b>`).join(", ")}</p></section>`;
+  return h;}
 function challengeCards(kidId){let h="";for(const w of openWeeks(kidId))for(const d of w.deductions)if(d.status==="active")
   h+=`<section class="card challenge"><h3>Earn back ${money(d.amount)}</h3><p><b>${esc(d.reason)}</b></p>${d.how?`<p>How: ${esc(d.how)}</p>`:""}<p class="hint">When you've done it, ask a parent to mark it earned back. You have until Sunday's cash-out.</p></section>`;return h;}
 function prSection(k,ks,today){const prs=prChores();if(!prs.length)return "";const done=ks.prLog[today]||[],notes=ks.prNotes[today]||{},pn=S.ui.prNote;const s=streak(k.id),boost=G.streakBoost(cfg(),s),fr=xpState(k.id).freezes;
@@ -297,8 +309,8 @@ function prSection(k,ks,today){const prs=prChores();if(!prs.length)return "";con
     return `<button class="check ${on?"on":""}" data-act="toggle-pr" data-id="${c.id}" aria-pressed="${on}" ${asking?"disabled":""}><span class="box">${on?"✓":""}</span><span><b>${esc(c.name)}</b>${sub?`<small>${esc(sub)}</small>`:""}</span></button>${asking?`<div class="confirm"><label>What was it?<input data-bind="prNote.text" maxlength="120" placeholder="Say what you did" value="${esc(pn.text)}"></label><div class="row"><button class="btn small" data-act="save-pr-note" ${String(pn.text||"").trim()?"":"disabled"}>Check it off</button><button class="btn ghost small" data-act="cancel-pr-note">Cancel</button></div></div>`:""}`;}).join("")}</div>
     <p class="hint">These don't pay money. They're part of taking care of yourself. Finish all of them for +${G.XP.checklist} XP and to keep your streak going.${game().streakMultiplier.enabled?` A ${game().streakMultiplier.minStreak}-day streak makes all your XP count ×${game().streakMultiplier.mult}.`:""}</p></section>`;}
 function choreSection(k,today){const list=famChoresFor(k.id).sort((a,b)=>(a.assign==="pool")-(b.assign==="pool")),cc=S.ui.confirmChore,cot=cotdId();
-  return `<section class="card"><div class="sec-head"><h2>Family chores</h2></div>${list.length?list.map(c=>{const n=choreCountToday(k.id,c,today),lim=c.limit||1,full=n>=lim,busy=S.busy["c:"+c.id],asking=cc&&cc.choreId===c.id,ask=needsNote(c);
-    return `<div class="chore ${c.id===cot?"cotd":""}"><div><b>${esc(c.name)}</b><small><span class="tag ${c.assign===k.id?"mine":""}">${c.assign===k.id?"Yours":"Anyone"}</span>${c.id===cot?`<span class="tag star">⭐ Double XP today</span>`:""}${n} of ${lim} done today</small></div><div class="c-val">+${money(choreValue(k,c))}<small>+${choreXpFor(k.id,c)} XP</small></div><button class="btn small" data-act="do-chore" data-id="${c.id}" ${full||busy||asking?"disabled":""}>${busy?"Saving…":full?"All done":"I did it"}</button>
+  return `<section class="card"><div class="sec-head"><h2>Family chores</h2></div>${list.length?list.map(c=>{const n=choreCountToday(k.id,c,today),lim=c.limit||1,wl=c.weekLimit>0?c.weekLimit:0,wn=wl?choreCountWeek(k.id,c,today):0,wfull=wl&&wn>=wl,full=n>=lim||wfull,busy=S.busy["c:"+c.id],asking=cc&&cc.choreId===c.id,ask=needsNote(c);
+    return `<div class="chore ${c.id===cot?"cotd":""}"><div><b>${esc(c.name)}</b><small><span class="tag ${c.assign===k.id?"mine":""}">${c.assign===k.id?"Yours":"Anyone"}</span>${c.id===cot?`<span class="tag star">⭐ Double XP today</span>`:""}${n} of ${lim} done today${wl?`, ${wn} of ${wl} this week`:""}</small></div><div class="c-val">+${money(choreValue(k,c))}<small>+${choreXpFor(k.id,c)} XP</small></div><button class="btn small" data-act="do-chore" data-id="${c.id}" ${full||busy||asking?"disabled":""}>${busy?"Saving…":wfull?"Done this week":full?"All done":"I did it"}</button>
       ${asking?`<div class="confirm"><b>Did you do "${esc(c.name)}"?</b>${ask?`<label>What was it?<input data-bind="confirmChore.note" maxlength="120" placeholder="Say what you did" value="${esc(cc.note)}"></label>`:""}<div class="row"><button class="btn small" data-act="confirm-chore" ${ask&&!String(cc.note||"").trim()?"disabled":""}>Yes, I did it</button><button class="btn ghost small" data-act="cancel-chore">Not yet</button></div></div>`:""}</div>`;}).join(""):`<p class="empty">No chores set up yet.</p>`}</section>`;}
 function splitEditor(k,ks,w,goals,weekSave){
   if(goals.length<2)return "";
@@ -371,11 +383,11 @@ function freezeNotice(id){const n=xpState(id).notice;if(!n||n.type!=="freeze"||D
   return `<div class="banner freeze" role="status"><span>🧊 A streak freeze covered ${esc(parseYmd(n.date).toLocaleDateString(undefined,{weekday:"long"}))}. Your streak is safe!</span><button class="btn ghost small" data-act="freeze-ok" data-at="${n.at}">OK</button></div>`;}
 
 const bName=(b,id)=>esc((kidCfg(id)||{}).name||(b.names||{})[id]||"Someone");
-const TEAM=["raid","grownups"];
+const TEAM=["raid","babyraid","grownups"];
 function modeParams(b){const p=b.params||{};const tw=b.twist?`. ${esc(b.twist.text)}`:"";
   const t={race:`First to ${p.n} chores`,blitz:p.windowMin?`${p.windowMin}-minute blitz`:"Until midnight",grownups:p.windowMin?`${p.windowMin} minutes`:"Until midnight",
     territory:"Most Anyone chores by midnight",bingo:"First to a line",streakduel:"Don't miss a day",showdown:"Best share of weekly goal",
-    raid:`${p.bossEmoji||"🐉"} ${esc(p.bossName||"Boss")}, ${p.days||1} day${(p.days||1)>1?"s":""}`}[b.mode];
+    raid:`${p.bossEmoji||"🐉"} ${esc(p.bossName||"Boss")}, ${p.days||1} day${(p.days||1)>1?"s":""}`,babyraid:`${p.bossEmoji||"🐣"} ${esc(p.bossName||"Baby boss")}, today`}[b.mode];
   return (t||(p.choreName?esc(p.choreName):""))+tw;}
 function fmtEnd(t){const d=new Date(t);return d.getHours()===0&&d.getMinutes()===0?(d-Date.now()>26*3600e3?"at midnight "+d.toLocaleDateString(undefined,{weekday:"short"}):"at midnight"):"at "+d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});}
 function scoreHtml(b,id){
@@ -391,7 +403,7 @@ function teamLine(b,side){const ids=b.teams[side],ts=(b.teamScores||{})[side],h=
 function resultText(b,me){const r=b.result||{};const who=id=>id===me?"You":bName(b,id);
   if(r.noContest)return `No contest. ${esc(r.reason||"")}`;
   if(b.mode==="ghost")return r.record?"First record set! ⏱️":r.winner?"New personal best! 🎉":"Not this time. Try again!";
-  if(b.mode==="raid")return r.winnerSide?`${esc(b.params.bossEmoji)} Boss beaten! 🎉`:`${esc(r.reason||"The boss got away.")}`;
+  if(G.isRaid(b.mode))return r.winnerSide?`${esc(b.params.bossEmoji)} Boss beaten! 🎉`:`${esc(r.reason||"The boss got away.")}`;
   if(r.tie)return `It's a tie! ${esc(r.reason||"")}`;
   if(r.winnerSide){const mine=G.sideOf(b,me)===r.winnerSide;return mine?`Your team won! 🏆 ${esc(r.reason||"")}`:`${b.teams[r.winnerSide].map(p=>bName(b,p)).join(" and ")} won. ${esc(r.reason||"")}`;}
   return r.winner===me?`You won! 🏆 ${esc(r.reason||"")}`:`${who(r.winner)} won. ${esc(r.reason||"")}`;}
@@ -401,14 +413,14 @@ function bingoGrid(b,me){const p=b.params;const list=G.battleEntries(entriesFor(
 function entriesFor(id){return Object.values(S.weeks).filter(w=>w.kidId===id).flatMap(w=>w.entries||[]);}
 function battleCard(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Battle"};const other=b.players.find(p=>p!==me);const dis=S.busy.b?"disabled":"";
   let vs;
-  if(b.mode==="raid"){const ts=(b.teamScores||{}).a,dmg=ts?ts.raw:0,hp=b.params.hp||1;
+  if(G.isRaid(b.mode)){const ts=(b.teamScores||{}).a,dmg=ts?ts.raw:0,hp=b.params.hp||1;
     vs=`<div class="raid"><div class="boss">${esc(b.params.bossEmoji)}<b>${esc(b.params.bossName)}</b></div><div class="hp" role="img" aria-label="${Math.max(0,hp-dmg)} of ${hp} health left"><i style="width:${Math.max(0,100-dmg/hp*100)}%"></i></div><p class="sub">${Math.min(dmg,hp)} / ${hp} damage. Team: ${b.teams.a.map(p=>bName(b,p)).join(", ")}</p></div>`;}
   else if(b.teams)vs=`<div class="vs">${teamLine(b,"a")}<span class="vs-x">VS</span>${teamLine(b,"b")}</div>`;
   else if(b.players.length>1)vs=`<div class="vs">${b.players.map(p=>`<div>${crHtml(p)}<b>${p===me?"You":bName(b,p)}</b><span class="b-score">${scoreHtml(b,p)}</span></div>`).join(`<span class="vs-x">VS</span>`)}</div>`;
   else vs=`<div class="vs"><div>${crHtml(me)}<b>You</b><span class="b-score">${scoreHtml(b,me)}</span></div><span class="vs-x">VS</span><div><span class="cr">👻</span><b>Your best</b><span class="b-score">${b.pb!=null?fmtMs(b.pb):"None yet"}</span></div></div>`;
   let body="";
   if(b.status==="pending"){const acc=b.accepted||{},waiting=b.players.filter(p=>!acc[p]);
-    body=b.challenger!==me&&!acc[me]?`<p><b>${bName(b,b.challenger)}</b> ${b.mode==="raid"?"wants you on their team!":"challenged you!"}</p><div class="row"><button class="btn" data-act="b-accept" data-id="${b.id}" ${dis}>Accept</button><button class="btn ghost" data-act="b-decline" data-id="${b.id}" ${dis}>Not now</button></div>`
+    body=b.challenger!==me&&!acc[me]?`<p><b>${bName(b,b.challenger)}</b> ${G.isRaid(b.mode)?"wants you on their team!":"challenged you!"}</p><div class="row"><button class="btn" data-act="b-accept" data-id="${b.id}" ${dis}>Accept</button><button class="btn ghost" data-act="b-decline" data-id="${b.id}" ${dis}>Not now</button></div>`
       :`<p class="sub">Waiting for ${waiting.map(p=>bName(b,p)).join(", ")} to accept…</p>${b.challenger===me?`<button class="btn ghost small" data-act="b-cancel" data-id="${b.id}" ${dis}>Cancel challenge</button>`:""}`;}
   else if(b.status==="active"){
     if(G.TIMED.includes(b.mode)){const a=(b.attempts||{})[me];
@@ -421,7 +433,7 @@ function battleCard(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Batt
     else if(b.mode==="bingo")body=`${bingoGrid(b,me)}<p class="sub">Do the chores on your card. First to finish a row, column, or diagonal wins. Ends ${fmtEnd(b.endAt)}.</p>`;
     else if(b.mode==="streakduel")body=`<p class="sub">${ymd()<b.params.startDate?"Starts tomorrow.":"Checked each night."} Finish your daily list every day. Whoever misses first loses. Up to 14 days.</p>`;
     else if(b.mode==="showdown")body=`<p class="sub">Earn the biggest share of your weekly goal. Decided at Sunday's cash-out.</p>`;
-    else if(b.mode==="raid")body=`<p class="sub">Every chore your team does hits the boss. Beat it ${fmtEnd(b.endAt)}!</p>`;
+    else if(G.isRaid(b.mode))body=`<p class="sub">Every chore ${b.players.length>1?"your team does":"you do"} hits the boss. Beat it ${fmtEnd(b.endAt)}!</p>`;
     else body=`<p class="sub">${{race:`First to ${b.params.n} chores wins. Do chores below to score!`,territory:"Every Anyone chore you do is yours. Most claims wins.",grownups:"Every chore adds XP to your team's score."}[b.mode]||"Most chore XP wins. Bigger chores count more."} Ends ${fmtEnd(b.endAt)}.</p>`;}
   else if(b.status==="judging")body=`<p class="b-result">🧑‍⚖️ Both done! A parent is judging.</p>`;
   else if(b.status==="confirming"&&G.TIMED.includes(b.mode)){const r=b.result||{};const q=b.quality||{};
@@ -435,7 +447,7 @@ function battleCard(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Batt
     body=`<p class="b-result">${resultText(b,me)}</p>${act}`;}
   return `<div class="bcard ${b.status}"><div class="b-head"><b>${b.wildcard?"🃏 Wildcard: ":""}${m.emoji} ${esc(m.name)}</b><span class="sub">${modeParams(b)}</span></div>${vs}${body}</div>`;}
 function recentLine(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Battle"};const others=b.players.filter(p=>p!==me);const xp=(b.xp||{})[me]||0;
-  return `<li><span>${m.emoji} ${esc(m.name)}${others.length?` ${b.mode==="raid"?"with":"vs"} ${others.map(p=>bName(b,p)).join(", ")}`:""}<br><small>${resultText(b,me)}</small></span><span class="amt pos">${xp?"+"+xp+" XP":""}</span></li>`;}
+  return `<li><span>${m.emoji} ${esc(m.name)}${others.length?` ${G.isRaid(b.mode)?"with":"vs"} ${others.map(p=>bName(b,p)).join(", ")}`:""}<br><small>${resultText(b,me)}</small></span><span class="amt pos">${xp?"+"+xp+" XP":""}</span></li>`;}
 const bbChores=(kidId,mode)=>cfg().chores.filter(c=>c.kind==="family"&&!needsNote(c)&&(c.assign==="pool"||(mode==="ghost"&&c.assign===kidId)));
 function battleBuilder(k,bb){const bc=game().battles,lv=xpState(k.id).level,mode=G.modeById(bb.mode);
   const modeBtn=m=>{const why=(bc.modesOff||[]).includes(m.id)?"Turned off":lv<m.level?`🔒 Level ${m.level}`:m.kidsOnly&&k.adult?"Kids only":"";
@@ -443,7 +455,7 @@ function battleBuilder(k,bb){const bc=game().battles,lv=xpState(k.id).level,mode
   const pick=(list,key,multi,label)=>`<h3>${label}</h3><div class="seg" style="justify-content:flex-start">${list.map(p=>{const on=multi?(bb[key]||[]).includes(p.id):bb[key]===p.id;
     return `<button class="${on?"on":""}" data-act="bb-pick" data-key="${key}" data-multi="${multi?1:""}" data-id="${p.id}" aria-pressed="${on}">${creatureFor(p.id)[1]} ${esc(p.name)}</button>`;}).join("")}</div>`;
   const others=kidsSorted().filter(p=>p.id!==k.id);let who="";
-  if(mode&&mode.id==="raid")who=pick(others,"team",true,"Who's on your team? (up to 3)");
+  if(mode&&G.isRaid(mode.id))who=pick(others,"team",true,mode.id==="babyraid"?"Who's on your team? (optional, up to 3)":"Who's on your team? (up to 3)");
   else if(mode&&mode.id==="grownups"){const mine=others.filter(p=>!!p.adult===!!k.adult),theirs=others.filter(p=>!!p.adult!==!!k.adult);
     who=(mine.length?pick(mine,"team",true,"Your team (optional)"):"")+pick(theirs,"opponents",true,k.adult?"Kids to battle":"Grown-ups to battle");}
   else if(mode&&!mode.solo)who=pick(mode.kidsOnly?others.filter(p=>!p.adult):others,"opponent",false,"Who do you challenge?");
@@ -455,7 +467,7 @@ function battleBuilder(k,bb){const bc=game().battles,lv=xpState(k.id).level,mode
     params=`<label>Chore<select data-bind="bb.choreId">${bbChores(k.id,mode.id).map(c=>`<option value="${c.id}" ${bb.choreId===c.id?"selected":""}>${esc(c.name)}${mode.id==="ghost"&&pb[c.id]!=null?` (your best ${fmtMs(pb[c.id])})`:""}</option>`).join("")}</select></label>`;}
   const opp=mode&&!mode.solo&&!mode.team?kidCfg(bb.opponent):null;let hc="";
   if(opp&&mode.id!=="wildcard"){const h=G.handicaps(k,opp,cfg());const y=h[k.id]>1?k:h[opp.id]>1?opp:null;if(y)hc=`<p class="hint">${y.id===k.id?"You're":esc(y.name)+" is"} younger, so ${y.id===k.id?"your":"their"} score counts ×${h[y.id]}${mode.id==="bingo"?" (in Bingo: free squares instead)":""}.</p>`;}
-  const ready=mode&&(mode.solo||(mode.id==="raid"?(bb.team||[]).length>0&&(bb.team||[]).length<=3:mode.id==="grownups"?(bb.opponents||[]).length>0:!!opp));
+  const ready=mode&&(mode.solo||(mode.id==="raid"?(bb.team||[]).length>0&&(bb.team||[]).length<=3:mode.id==="babyraid"?(bb.team||[]).length<=3:mode.id==="grownups"?(bb.opponents||[]).length>0:!!opp));
   return `<div class="builder"><h3>Pick a mode</h3><div class="modes">${G.MODES.map(modeBtn).join("")}</div>${who}
     ${params?`<div class="row" style="margin-top:10px">${params}</div>`:""}${hc}
     <div class="row" style="margin-top:12px"><button class="btn" data-act="bb-send" ${!ready||S.busy.b?"disabled":""}>${S.busy.b?"Sending…":mode&&mode.solo?"Start":"Send challenge"}</button><button class="btn ghost" data-act="bb-close">Cancel</button></div></div>`;}
@@ -516,7 +528,7 @@ function viewDisplay(){
 function battleStrip(){const bl=battleList().filter(b=>b.live&&b.status!=="pending");if(!bl.length)return "";
   return `<div class="battle-strip" aria-label="Battles going on">${bl.map(b=>{const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Battle"};const r=b.result||{};
     let who;
-    if(b.mode==="raid"){const ts=(b.teamScores||{}).a;who=`<span class="bs-p">${b.teams.a.map(p=>crHtml(p)).join("")} vs ${esc(b.params.bossEmoji)} <span class="bs-score">${Math.max(0,(b.params.hp||0)-(ts?ts.raw:0))} HP left</span></span>`;}
+    if(G.isRaid(b.mode)){const ts=(b.teamScores||{}).a;who=`<span class="bs-p">${b.teams.a.map(p=>crHtml(p)).join("")} vs ${esc(b.params.bossEmoji)} <span class="bs-score">${Math.max(0,(b.params.hp||0)-(ts?ts.raw:0))} HP left</span></span>`;}
     else if(b.teams)who=["a","b"].map(sd=>`<span class="bs-p">${b.teams[sd].map(p=>crHtml(p)).join("")} <span class="bs-score">${((b.teamScores||{})[sd]||{}).adj||0}</span></span>`).join(`<span class="vs-x">vs</span>`);
     else who=b.players.map(p=>`<span class="bs-p">${crHtml(p)} <b>${bName(b,p)}</b> <span class="bs-score">${scoreHtml(b,p)}</span></span>`).join(`<span class="vs-x">vs</span>`);
     const tail=b.status==="judging"?`<em>Judging…</em>`:b.status==="confirming"&&G.TIMED.includes(b.mode)?`<em>⏳ Checking the work…</em>`:b.status==="confirming"?`<em>${r.noContest?"No contest":r.tie?"Tie!":b.mode==="ghost"?(r.winner?"New best!":"So close!"):r.winnerSide?b.teams[r.winnerSide].map(p=>bName(b,p)).join(" & ")+" win!":bName(b,r.winner)+" wins!"}</em>`:b.mode==="ghost"?`<span class="vs-x">vs</span><span class="bs-p">👻 best ${b.pb!=null?fmtMs(b.pb):"—"}</span>`:"";
@@ -538,16 +550,14 @@ const gameAlerts=()=>battleList().filter(b=>b.live&&(b.status==="judging"||needs
   +Object.values(S.claims).filter(c=>c.status==="pending").length+Object.values(S.bounties).filter(b=>b.status==="claimed").length;
 function pGame(){
   const live=battleList().filter(b=>b.live),cot=cotdId(),fam=cfg().chores.filter(c=>c.kind==="family"),g=game();
-  const email=String(S.user&&S.user.email||"").toLowerCase();
   const line=b=>{const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Battle"};const r=b.result||{};const names=b.teams?Object.values(b.teams).map(t=>t.map(p=>bName(b,p)).join(" & ")).join(" vs "):b.players.map(p=>bName(b,p)).join(" vs ");
-    const mine=b.players.some(p=>{const k=kidCfg(p);return k&&k.email&&k.email.toLowerCase()===email;});
     const times=G.TIMED.includes(b.mode)?" Times: "+b.players.map(p=>`${bName(b,p)} ${scoreHtml(b,p)}`).join(", ")+".":b.scores?" Score: "+b.players.map(p=>`${bName(b,p)} ${scoreHtml(b,p)}`).join(", ")+".":"";
     const qc=G.TIMED.includes(b.mode)?b.players.filter(p=>{const a=(b.attempts||{})[p];return a&&a.ms!=null&&!a.void;}):[];
-    const status=qc.length&&!mine?`Check that the chore was done well. Only runs done well count, and the fastest of those wins.`:b.status==="judging"?"Both are done. Go look, then pick the better job.":b.status==="confirming"?`${resultText(b,null)}${r.needsParent?(r.disputedBy?` ${bName(b,r.disputedBy)} asked you to check.`:" Flagged: a run under a minute."):" Waiting for the other player (auto-confirms after 12 hours)."}`:b.status==="pending"?"Waiting to be accepted.":"In progress.";
-    const checks=qc.length?`<div class="qc">${qc.map(p=>{const v=(b.quality||{})[p];return `<div class="qc-row"><span><b>${bName(b,p)}</b> ${fmtMs(b.attempts[p].ms)}</span>${mine?"":`<button class="btn small ${v===true?"":"ghost"}" data-act="p-check" data-id="${b.id}" data-player="${p}" data-ok="1" aria-pressed="${v===true}">✓ Done well</button><button class="btn small ${v===false?"warn":"ghost"}" data-act="p-check" data-id="${b.id}" data-player="${p}" data-ok="" aria-pressed="${v===false}">✗ Not good enough</button>`}</div>`;}).join("")}</div>`:"";
-    const btns=G.TIMED.includes(b.mode)&&b.status==="confirming"?(mine?`<small>Another parent needs to check this one.</small>`:`<button class="btn ghost small" data-act="p-bvoid" data-id="${b.id}">No contest</button>`):b.status==="judging"?(mine?`<small>Another parent needs to judge this one.</small>`:`<span class="row" style="flex:0 1 auto;gap:6px">${b.players.map(p=>`<button class="btn small" data-act="p-judge" data-id="${b.id}" data-winner="${p}">${bName(b,p)}</button>`).join("")}<button class="btn ghost small" data-act="p-judge" data-id="${b.id}" data-winner="tie">Tie</button></span>`)
-      :b.status==="confirming"&&!mine?`<button class="btn small" data-act="p-bconfirm" data-id="${b.id}">Confirm</button><button class="btn ghost small" data-act="p-bvoid" data-id="${b.id}">No contest</button>`
-      :b.status!=="confirming"?`<button class="btn ghost small" data-act="p-bcancel" data-id="${b.id}">Call off</button>`:`<small>Another parent needs to check this one.</small>`;
+    const status=qc.length?`Check that the chore was done well. Only runs done well count, and the fastest of those wins.`:b.status==="judging"?"Both are done. Go look, then pick the better job.":b.status==="confirming"?`${resultText(b,null)}${r.needsParent?(r.disputedBy?` ${bName(b,r.disputedBy)} asked you to check.`:" Flagged: a run under a minute."):" Waiting for the other player (auto-confirms after 12 hours)."}`:b.status==="pending"?"Waiting to be accepted.":"In progress.";
+    const checks=qc.length?`<div class="qc">${qc.map(p=>{const v=(b.quality||{})[p];return `<div class="qc-row"><span><b>${bName(b,p)}</b> ${fmtMs(b.attempts[p].ms)}</span><button class="btn small ${v===true?"":"ghost"}" data-act="p-check" data-id="${b.id}" data-player="${p}" data-ok="1" aria-pressed="${v===true}">✓ Done well</button><button class="btn small ${v===false?"warn":"ghost"}" data-act="p-check" data-id="${b.id}" data-player="${p}" data-ok="" aria-pressed="${v===false}">✗ Not good enough</button></div>`;}).join("")}</div>`:"";
+    const btns=G.TIMED.includes(b.mode)&&b.status==="confirming"?`<button class="btn ghost small" data-act="p-bvoid" data-id="${b.id}">No contest</button>`:b.status==="judging"?`<span class="row" style="flex:0 1 auto;gap:6px">${b.players.map(p=>`<button class="btn small" data-act="p-judge" data-id="${b.id}" data-winner="${p}">${bName(b,p)}</button>`).join("")}<button class="btn ghost small" data-act="p-judge" data-id="${b.id}" data-winner="tie">Tie</button></span>`
+      :b.status==="confirming"?`<button class="btn small" data-act="p-bconfirm" data-id="${b.id}">Confirm</button><button class="btn ghost small" data-act="p-bvoid" data-id="${b.id}">No contest</button>`
+      :`<button class="btn ghost small" data-act="p-bcancel" data-id="${b.id}">Call off</button>`;
     return `<li class="${qc.length?"has-qc":""}"><span style="flex:1"><b>${m.emoji} ${esc(m.name)}</b>: ${names}<br><small>${modeParams(b)}. ${status}${qc.length?"":times}</small>${checks}</span>${btns}</li>`;};
   const hist=id=>{const h=S.ui.xpHist[id];if(!h)return "";if(h==="loading")return `<p class="sub">Loading…</p>`;
     return h.length?`<ul class="feed">${h.map(e=>`<li><span>${esc(e.reason)}<br><small>${timeOf(e.t)}</small></span><span class="amt pos">+${e.amount} XP</span></li>`).join("")}</ul>`:`<p class="empty">No XP yet.</p>`;};
@@ -620,9 +630,10 @@ function pActivity(){
   const y=addDays(ymd(),-1);let flags="";
   for(const k of kidsSorted()){const ksy=kidState(k.id),done=ksy.prLog[y]||[];
     const missPr=ksy.prDone[y]?[]:prChores().filter(c=>!done.includes(c.id));
-    const missChores=k.adult?[]:famChoresFor(k.id).filter(c=>c.assign===k.id&&countOnDate(k.id,c.id,y)===0);
-    for(const c of missPr)flags+=`<div class="flag-row"><span><b>${esc(k.name)}</b> didn't check off ${esc(c.name)}</span><span class="btn-pair"><button class="btn ghost small" data-act="fix-pr" data-kid="${k.id}" data-date="${y}" data-id="${c.id}">It was done</button>${k.adult?"":`<button class="btn ghost small" data-act="prefill-ded" data-kid="${k.id}" data-reason="${esc("Missed: "+c.name)}">Deduct</button>`}</span></div>`;
-    for(const c of missChores)flags+=`<div class="flag-row"><span><b>${esc(k.name)}</b> didn't check off ${esc(c.name)}</span><button class="btn ghost small" data-act="prefill-ded" data-kid="${k.id}" data-reason="${esc("Missed: "+c.name)}">Deduct</button></div>`;}
+    const missChores=k.adult?[]:famChoresFor(k.id).filter(c=>c.assign===k.id&&countOnDate(k.id,c.id,y)===0&&!weekFull(k.id,c,y));
+    const act=m=>k.adult?"":`<button class="btn ghost small" data-act="prefill-warn" data-kid="${k.id}" data-reason="${esc("Missed: "+m)}">Warn</button><button class="btn ghost small" data-act="prefill-ded" data-kid="${k.id}" data-reason="${esc("Missed: "+m)}">Deduct</button>`;
+    for(const c of missPr)flags+=`<div class="flag-row"><span><b>${esc(k.name)}</b> didn't check off ${esc(c.name)}</span><span class="btn-pair"><button class="btn ghost small" data-act="fix-pr" data-kid="${k.id}" data-date="${y}" data-id="${c.id}">It was done</button>${act(c.name)}</span></div>`;
+    for(const c of missChores)flags+=`<div class="flag-row"><span><b>${esc(k.name)}</b> didn't check off ${esc(c.name)}</span><span class="btn-pair">${act(c.name)}</span></div>`;}
   const L=S.ui.log;if(!L.kid)L.kid=kidsSorted()[0].id;const lk=kidCfg(L.kid)||kidsSorted()[0];const lchores=famChoresFor(lk.id);if(!lchores.some(c=>c.id===L.chore))L.chore=lchores[0]?lchores[0].id:"";
   const all=[];for(const w0 of Object.values(S.weeks)){if(w0.closed)continue;const w=getWeek(w0.kidId,w0.week);for(const e of w.entries)all.push({e,w});}
   all.sort((a,b)=>b.e.t-a.e.t);
@@ -637,18 +648,22 @@ function pActivity(){
     return `<li><span style="flex:1"><b>${esc(k?k.name:"?")}</b>: ${l[0]}</span>${l[1]}${btn}</li>`;}).join("")}</ul>`:`<p class="empty">No chores logged yet this week.</p>`}</section>`;
 }
 function pDeductions(){
-  const d=S.ui.ded;if(!d.kid)d.kid=kidsSorted().find(k=>!k.adult)?.id||kidsSorted()[0].id;
-  let list="";for(const k of kidsSorted())for(const w of openWeeks(k.id))for(const e of w.deductions)
+  const d=S.ui.ded;if(!d.kid)d.kid=kidsSorted().find(k=>!k.adult)?.id||kidsSorted()[0].id;const warn=d.type==="warn";
+  let list="";for(const k of kidsSorted())for(const w of openWeeks(k.id)){const seen=new Set(kidState(k.id).seenWarnings);
+    for(const x of w.warnings||[])list+=`<li class="wrap"><span><b>${esc(k.name)}</b>: ${esc(x.reason)}<br><small>⚠️ Warning${x.by?" by "+esc(x.by):""}. ${seen.has(x.id)?"Seen ✓":"Not seen yet"}</small></span>
+      <button class="btn ghost small" data-act="warn-to-ded" data-kid="${k.id}" data-reason="${esc(x.reason)}">Deduct instead</button><button class="btn ghost small" data-act="remove-warn" data-kid="${k.id}" data-wk="${w.week}" data-id="${x.id}">Remove</button></li>`;
+    for(const e of w.deductions)
     list+=`<li><span style="flex:1"><b>${esc(k.name)}</b>: ${esc(e.reason)}<br><small>${e.how?"Earn back by: "+esc(e.how)+". ":""}${e.status==="active"?"Open":"Earned back"}${e.by?", by "+esc(e.by):""}</small></span><span class="amt ${e.status==="active"?"neg":"struck"}">−${money(e.amount)}</span>
-    ${e.status==="active"?`<button class="btn small" data-act="redeem" data-kid="${k.id}" data-wk="${w.week}" data-id="${e.id}">Earned back</button>`:""}<button class="btn ghost small" data-act="remove-ded" data-kid="${k.id}" data-wk="${w.week}" data-id="${e.id}">Remove</button></li>`;
-  return `<section class="card"><div class="sec-head"><h2>Add a deduction</h2></div>
+    ${e.status==="active"?`<button class="btn small" data-act="redeem" data-kid="${k.id}" data-wk="${w.week}" data-id="${e.id}">Earned back</button>`:""}<button class="btn ghost small" data-act="remove-ded" data-kid="${k.id}" data-wk="${w.week}" data-id="${e.id}">Remove</button></li>`;}
+  return `<section class="card"><div class="sec-head"><h2>Add a deduction or warning</h2></div>
+    <div class="seg" style="margin-bottom:10px"><button class="${warn?"":"on"}" data-act="ded-type" data-type="ded" aria-pressed="${!warn}">💸 Deduction</button><button class="${warn?"on":""}" data-act="ded-type" data-type="warn" aria-pressed="${warn}">⚠️ Warning (no money)</button></div>
     <div class="row"><label>Who<select data-bind="ded.kid">${kidsSorted().map(k=>`<option value="${k.id}" ${k.id===d.kid?"selected":""}>${esc(k.name)}</option>`).join("")}</select></label>
-    <label>Amount<input type="number" step="0.25" min="0.25" inputmode="decimal" data-bind="ded.amount" data-type="num" value="${esc(d.amount)}"></label></div>
+    ${warn?"":`<label>Amount<input type="number" step="0.25" min="0.25" inputmode="decimal" data-bind="ded.amount" data-type="num" value="${esc(d.amount)}"></label>`}</div>
     <div class="row" style="margin-top:10px"><label>Reason<input data-bind="ded.reason" value="${esc(d.reason)}" placeholder="Bad attitude at dinner"></label></div>
-    <div class="row" style="margin-top:10px"><label>How to earn it back<input data-bind="ded.how" value="${esc(d.how)}" placeholder="Apologize and keep a good attitude the rest of the day"></label></div>
-    <button class="btn block" style="margin-top:12px" data-act="add-ded">Add deduction</button>
-    <p class="hint">They can earn it back any time before Sunday's cash-out. After that it's final. Deductions never show on the leaderboard.</p></section>
-    <section class="card"><div class="sec-head"><h2>This week</h2></div>${list?`<ul class="feed">${list}</ul>`:`<p class="empty">No deductions this week.</p>`}</section>`;
+    ${warn?"":`<div class="row" style="margin-top:10px"><label>How to earn it back<input data-bind="ded.how" value="${esc(d.how)}" placeholder="Apologize and keep a good attitude the rest of the day"></label></div>`}
+    <button class="btn block" style="margin-top:12px" data-act="add-ded">${warn?"Give warning":"Add deduction"}</button>
+    <p class="hint">${warn?"A warning costs nothing. It shows on their screen until they tap Got it, and stays in this week's list. If it keeps happening, turn it into a deduction.":"They can earn it back any time before Sunday's cash-out. After that it's final. Deductions never show on the leaderboard."}</p></section>
+    <section class="card"><div class="sec-head"><h2>This week</h2></div>${list?`<ul class="feed">${list}</ul>`:`<p class="empty">No warnings or deductions this week.</p>`}</section>`;
 }
 // Every week that still needs cashing out: last week if it was missed, plus this week. They settle as one lump.
 function cashWeeks(kidId){const thisMon=mondayOf(new Date()),prev=addDays(thisMon,-7),out=[];
@@ -718,7 +733,10 @@ function pDevices(){
   <section class="card"><div class="sec-head"><h2>Paired devices</h2></div>${S.devices.length?S.devices.map(d=>`<div class="flag-row"><span><b>${esc(d.name)}</b><br><small>${esc(roleLabel(d))}</small> ${d.role==="kid"?`<span class="pill ${d.fcmToken?"on":""}">${d.fcmToken?"Reminders on":"Reminders off"}</span>`:""}</span><button class="btn ghost small" data-act="unpair" data-id="${d.id}">Unpair</button></div>`).join(""):`<p class="empty">No devices paired yet.</p>`}
   <p class="hint">Unpairing locks a device out right away. Use it for a lost tablet or to switch a tablet to someone else.</p></section>`;
 }
-function startDraft(){const c=clone(cfg());c.kids.forEach(k=>k.remindStr=(k.remind||[]).join(", "));c.chores.forEach(ch=>ch.ask=needsNote(ch));c.game=clone(G.gameCfg(c));S.ui.draft=c;}
+function startDraft(from){const c=clone(from||cfg());c.kids.forEach(k=>k.remindStr=(k.remind||[]).join(", "));c.chores.forEach(ch=>{ch.ask=needsNote(ch);if(ch.kind==="family")ch.weekLimit=ch.weekLimit>0?ch.weekLimit:0;});c.game=clone(G.gameCfg(c));S.ui.draft=c;S.ui.draftClean=JSON.stringify(c);}
+const draftDirty=()=>!!S.ui.draft&&JSON.stringify(S.ui.draft)!==S.ui.draftClean;
+// When the config changes underneath an untouched settings form, show the new values instead of stale ones.
+function refreshCleanDraft(){if(S.role==="parent"&&S.ptab==="settings"&&S.ui.draft&&S.config&&!draftDirty()){startDraft();render();}}
 function gameSettings(d){const g=d.game,b=g.battles;const chk=(path,on,label)=>`<label class="check-label"><input type="checkbox" data-bind="draft.game.${path}" ${on?"checked":""}> ${label}</label>`;
   return `<section class="card"><div class="sec-head"><h2>Game</h2></div>
     <div class="grid-2">${chk("quests.enabled",g.quests.enabled,"Weekly quests")}${chk("choreOfDay.enabled",g.choreOfDay.enabled,"Chore of the Day (double XP)")}${chk("streakMultiplier.enabled",g.streakMultiplier.enabled,`Streak bonus (×${g.streakMultiplier.mult} XP at ${g.streakMultiplier.minStreak}+ days)`)}${chk("battles.enabled",b.enabled,"Battles")}</div>
@@ -743,18 +761,23 @@ function gameSettings(d){const g=d.game,b=g.battles;const chk=(path,on,label)=>`
     <p class="hint">Off by default. When on, the Game tab suggests a raise and nothing changes until you tap Give raise.</p></section>`;}
 function pSettings(){
   if(!S.ui.draft)startDraft();const d=S.ui.draft;
-  const choreRow=(c,i)=>`<div class="set-block" data-drag="chore" data-kind="${c.kind}" data-i="${i}"><div class="row"><span class="drag-handle" data-handle role="button" aria-label="Drag to reorder" title="Drag to reorder">⠿</span><label>Chore<input data-bind="draft.chores.${i}.name" value="${esc(c.name)}"></label><label class="chk"><input type="checkbox" data-bind="draft.chores.${i}.ask" ${c.ask?"checked":""}>Ask what it was</label>
+  // One compact row per chore; tap it to open the full editor underneath (one at a time).
+  const who=id=>id==="pool"?"Anyone":((d.kids.find(k=>k.id===id)||{}).name||"Someone");
+  const facts=c=>(c.kind==="pr"?[c.note||"",c.ask?"asks what it was":""]:[`pays ×${c.mult||1}`,`${c.limit||1} a day`,c.weekLimit>0?`${c.weekLimit} a week`:"",who(c.assign),c.ask?"asks what it was":""]).filter(Boolean).map(esc).join(" · ");
+  const choreRow=(c,i)=>{const ed=S.ui.editChore===c.id;return `<div class="set-row ${ed?"editing":""}" data-drag="chore" data-kind="${c.kind}" data-i="${i}"><div class="set-head"><span class="drag-handle" data-handle role="button" aria-label="Drag to reorder" title="Drag to reorder">⠿</span><button type="button" class="set-open" data-act="edit-chore" data-id="${c.id}" aria-expanded="${ed}"><span><b>${esc(String(c.name||"").trim())||"(no name)"}</b><small>${facts(c)}</small></span><span class="chev" aria-hidden="true">›</span></button></div>
+    ${ed?`<div class="set-edit"><div class="row"><label>${c.kind==="pr"?"Item":"Chore"}<input data-bind="draft.chores.${i}.name" value="${esc(c.name)}"></label><label class="chk"><input type="checkbox" data-bind="draft.chores.${i}.ask" ${c.ask?"checked":""}>Ask what it was</label>
     ${c.kind==="pr"?`<label>Details<input data-bind="draft.chores.${i}.note" value="${esc(c.note||"")}"></label>`:`<label>Pays (× base rate)<input type="number" step="0.5" min="0" data-type="num" data-bind="draft.chores.${i}.mult" value="${esc(c.mult)}"></label>
-    <label>Daily limit<input type="number" step="1" min="1" data-type="num" data-bind="draft.chores.${i}.limit" value="${esc(c.limit)}"></label>
-    <label>Who<select data-bind="draft.chores.${i}.assign"><option value="pool" ${c.assign==="pool"?"selected":""}>Anyone</option>${d.kids.map(k=>`<option value="${k.id}" ${c.assign===k.id?"selected":""}>${esc(k.name)}</option>`).join("")}</select></label>`}
-    <button class="btn ghost small" style="flex:0 0 auto" data-act="rm-chore" data-i="${i}">Remove</button></div></div>`;
+    <label>Max per day<input type="number" step="1" min="1" data-type="num" data-bind="draft.chores.${i}.limit" value="${esc(c.limit)}"></label>
+    <label>Max per week<input type="number" step="1" min="0" data-type="num" data-bind="draft.chores.${i}.weekLimit" value="${c.weekLimit>0?esc(c.weekLimit):""}" placeholder="No limit"></label>
+    <label>Who<select data-bind="draft.chores.${i}.assign"><option value="pool" ${c.assign==="pool"?"selected":""}>Anyone</option>${d.kids.map(k=>`<option value="${k.id}" ${c.assign===k.id?"selected":""}>${esc(k.name)}</option>`).join("")}</select></label>`}</div>
+    <div class="row set-foot"><button class="btn small" data-act="edit-chore" data-id="${c.id}">Done</button><button class="btn ghost small" data-act="rm-chore" data-i="${i}">Remove</button></div></div>`:""}</div>`;};
   return pDevices()+`<section class="card"><div class="sec-head"><h2>People</h2><button class="btn ghost small" data-act="add-kid">Add person</button></div>
     ${d.kids.map((k,i)=>`<div class="set-block"><div class="row"><label>Name<input data-bind="draft.kids.${i}.name" value="${esc(k.name)}"></label><label class="chk" title="A grown-up gets their own lane and tab instead of a place in the kid list"><input type="checkbox" data-bind="draft.kids.${i}.adult" ${k.adult?"checked":""}>Adult</label>${k.adult?`<label>Google email<input type="email" data-bind="draft.kids.${i}.email" value="${esc(k.email||"")}" placeholder="Their parent sign-in"></label>`:`<label>Age<input type="number" data-type="num" data-bind="draft.kids.${i}.age" value="${esc(k.age)}"></label>`}
     <label>Base rate per chore<input type="number" step="0.05" data-type="num" data-bind="draft.kids.${i}.rate" value="${esc(k.rate)}"></label>
     <label>Reminder times<input data-bind="draft.kids.${i}.remindStr" value="${esc(k.remindStr)}" placeholder="15:30, 19:30"></label>
     <button class="btn ghost small" style="flex:0 0 auto" data-act="rm-kid" data-i="${i}">Remove</button></div></div>`).join("")}</section>
-  <section class="card"><div class="sec-head"><h2>Family chores (paid)</h2><button class="btn ghost small" data-act="add-chore" data-kind="family">Add chore</button></div><p class="hint drag-hint">Drag the ⠿ handle to change the order kids see.</p>${d.chores.map((c,i)=>c.kind==="family"?choreRow(c,i):"").join("")}</section>
-  <section class="card"><div class="sec-head"><h2>Personal responsibility (unpaid)</h2><button class="btn ghost small" data-act="add-chore" data-kind="pr">Add item</button></div><p class="hint drag-hint">Drag the ⠿ handle to change the order kids see.</p>${d.chores.map((c,i)=>c.kind==="pr"?choreRow(c,i):"").join("")}</section>
+  <section class="card"><div class="sec-head"><h2>Family chores (paid)</h2><button class="btn ghost small" data-act="add-chore" data-kind="family">Add chore</button></div><p class="hint drag-hint">Tap a chore to edit it. Drag the ⠿ handle to change the order kids see.</p>${d.chores.map((c,i)=>c.kind==="family"?choreRow(c,i):"").join("")}</section>
+  <section class="card"><div class="sec-head"><h2>Personal responsibility (unpaid)</h2><button class="btn ghost small" data-act="add-chore" data-kind="pr">Add item</button></div><p class="hint drag-hint">Tap an item to edit it. Drag the ⠿ handle to change the order kids see.</p>${d.chores.map((c,i)=>c.kind==="pr"?choreRow(c,i):"").join("")}</section>
   ${gameSettings(d)}
   <section class="card"><div class="sec-head"><h2>Invest interest (monthly)</h2></div><div class="grid-2">
     <label>Rate up to threshold (%)<input type="number" step="0.5" data-type="num" data-bind="draft.interest.low" value="${esc(d.interest.low)}"></label>
@@ -780,6 +803,7 @@ function setPr(kid,id,on,note){const today=ymd(),ks=kidState(kid),done=ks.prLog[
   if(complete){confetti(90);chime(true);toast(ks.prDone[today]?"All done for today.":`All done for today! Streak +1 and +${G.XP.checklist} XP.`);}}
 async function doChore(kidId,choreId,note){
   const k=kidCfg(kidId),ch=choreById(choreId),today=ymd();if(!k||!ch)return;
+  if(weekFull(k.id,ch,today)){toast("That one's done for this week.");return;}
   if(choreCountToday(k.id,ch,today)>=(ch.limit||1)){toast("That one's done for today.");return;}
   const wk=activeWeek(k.id),w=getWeek(k.id,wk),before=weekNet(w),amt=choreValue(k,ch);
   S.busy["c:"+choreId]=true;render();
@@ -843,7 +867,7 @@ async function handleAct(act,ds){
   case "bb-mode":{const bb=S.ui.bb;bb.mode=ds.id;if((G.TIMED.includes(ds.id)||ds.id==="judge")&&!bbChores(kid,ds.id).some(c=>c.id===bb.choreId)){const c=bbChores(kid,ds.id)[0];bb.choreId=c?c.id:"";}break;}
 
   case "bb-send":{const bb=S.ui.bb,m=G.modeById(bb.mode);const r=await bcall("createBattle",{mode:bb.mode,opponent:bb.opponent,team:bb.team,opponents:bb.opponents,n:Number(bb.n),windowMin:Number(bb.windowMin),days:Number(bb.days),choreId:bb.choreId});
-    if(r){S.ui.bb=null;const got=G.modeById(r.mode)||m;toast(m.solo?"Ghost race is on. Start when you're ready!":m.id==="wildcard"?`🃏 It's ${got.name}!${r.twist?" "+r.twist.text+".":""} Challenge sent.`:m.id==="raid"?"Team invite sent!":"Challenge sent!");}break;}
+    if(r){S.ui.bb=null;const got=G.modeById(r.mode)||m;toast(m.solo?"Ghost race is on. Start when you're ready!":m.id==="wildcard"?`🃏 It's ${got.name}!${r.twist?" "+r.twist.text+".":""} Challenge sent.`:G.isRaid(m.id)?((bb.team||[]).length?"Team invite sent!":"Baby boss raid is on. Go do chores!"):"Challenge sent!");}break;}
   case "b-accept":{const r=await bcall("respondBattle",{id:ds.id,accept:true});if(r){confetti(60);chime(false);toast(r.started?"Battle on! Go go go!":"You're in! Waiting for the others.");}break;}
   case "b-decline": await bcall("respondBattle",{id:ds.id,accept:false});break;
   case "b-cancel": await bcall("cancelBattle",{id:ds.id},"Called off.");break;
@@ -886,23 +910,31 @@ async function handleAct(act,ds){
   case "goal-chip": S.ui.goalInput=String(ds.v);break;
   case "set-goal":{const v=q(S.ui.goalInput);if(!(v>0)){toast("Pick a goal of at least $0.25.");return;}const wk=activeWeek(kid);S.ui.goalInput="";
     guard(setDoc(weekRef(kid,wk),{kidId:kid,week:wk,goal:v},{merge:true}));confetti(60);chime(false);break;}
-  case "do-chore": if(!choreById(ds.id))return;S.ui.confirmChore={choreId:ds.id,note:""};break;
+  case "do-chore": if(!choreById(ds.id))return;if((kidCfg(kid)||{}).adult){doChore(kid,ds.id,"");return;}S.ui.confirmChore={choreId:ds.id,note:""};break;
   case "cancel-chore": S.ui.confirmChore=null;break;
   case "confirm-chore":{const cc=S.ui.confirmChore;if(!cc)return;const note=String(cc.note||"").trim();if(needsNote(choreById(cc.choreId))&&!note){toast("Say what it was first.");return;}S.ui.confirmChore=null;doChore(kid,cc.choreId,note);return;}
   case "toggle-pr":{const id=ds.id,on=(kidState(kid).prLog[today]||[]).includes(id);
-    if(!on&&needsNote(choreById(id))){S.ui.prNote={id,text:""};break;}
+    if(!on&&needsNote(choreById(id))&&!(kidCfg(kid)||{}).adult){S.ui.prNote={id,text:""};break;}
     setPr(kid,id,!on,"");return;}
   case "cancel-pr-note": S.ui.prNote=null;break;
   case "save-pr-note":{const pn=S.ui.prNote;if(!pn)return;const text=String(pn.text||"").trim();if(!text){toast("Say what it was first.");return;}S.ui.prNote=null;setPr(kid,pn.id,true,text);return;}
   case "add-goal":{const g=S.ui.newGoal;const name=String(g.name||"").trim();const t=r2(g.target);if(!name||!(t>0)){toast("Give the goal a name and an amount.");return;}
     S.ui.newGoal={name:"",target:""};guard(setDoc(doc(db,"prefs",kid),{goals:{[uid()]:{name,target:t,created:Date.now()}}},{merge:true}));break;}
-  case "ptab": if(S.ptab==="settings"&&ds.tab!=="settings")S.ui.draft=null;S.ptab=ds.tab;S.ui.pickCreature=false;break;
+  case "ptab": if(S.ptab==="settings"&&ds.tab!=="settings"){if(draftDirty()&&!confirm("Leave Settings without saving your changes?"))return;S.ui.draft=null;S.ui.editChore=null;}S.ptab=ds.tab;S.ui.pickCreature=false;break;
   case "log-chore":{const L=S.ui.log;if(!L.chore)return;S.busy.log=true;render();try{const r=await call("completeChore")({kidId:L.kid,choreId:L.chore,note:String(L.note||"").trim()});L.note="";toast(`Logged +${money(r.data.amount)} for ${kidCfg(L.kid).name}.`);}catch(e){toast(errMsg(e));}finally{delete S.busy.log;render();}return;}
   case "reverse": case "restore": guard(txWeek(ds.kid,ds.wk,w=>{const e=w.entries.find(x=>x.id===ds.id);if(e)e.status=act==="reverse"?"reversed":"ok";}),act==="reverse"?"Reversed. Its XP comes off too.":"Restored, XP included.");return;
-  case "prefill-ded": S.ui.ded={kid:ds.kid,amount:0.25,reason:ds.reason,how:"Do it today plus one extra chore"};S.ptab="actions";break;
-  case "add-ded":{const d=S.ui.ded;const amt=q(d.amount);if(!(amt>0)||!String(d.reason).trim()){toast("Add an amount and a reason.");return;}const wk=activeWeek(d.kid);
+  case "prefill-ded": S.ui.ded={kid:ds.kid,amount:0.25,reason:ds.reason,how:"Do it today plus one extra chore",type:"ded"};S.ptab="actions";break;
+  case "ded-type": S.ui.ded.type=ds.type;break;
+  case "prefill-warn": S.ui.ded={kid:ds.kid,amount:0.25,reason:ds.reason,how:"",type:"warn"};S.ptab="actions";break;
+  case "warn-to-ded": S.ui.ded={kid:ds.kid,amount:0.25,reason:ds.reason,how:"Do it today plus one extra chore",type:"ded"};window.scrollTo(0,0);break;
+  case "remove-warn": guard(txWeek(ds.kid,ds.wk,w=>{w.warnings=(w.warnings||[]).filter(x=>x.id!==ds.id);}),"Warning removed.");return;
+  case "warn-seen": guard(setDoc(doc(db,"prefs",kid),{seenWarnings:arrayUnion(ds.id)},{merge:true}));return;
+  case "add-ded":{const d=S.ui.ded;if(d.type==="warn"){const reason=String(d.reason||"").trim();if(!reason){toast("Add a reason.");return;}const wk=activeWeek(d.kid);
+      guard(setDoc(weekRef(d.kid,wk),{kidId:d.kid,week:wk,warnings:arrayUnion({id:uid(),t:Date.now(),reason,by:parentName()})},{merge:true}),"Warning given.");
+      S.ui.ded={kid:d.kid,amount:0.25,reason:"",how:"",type:"warn"};break;}
+    const amt=q(d.amount);if(!(amt>0)||!String(d.reason).trim()){toast("Add an amount and a reason.");return;}const wk=activeWeek(d.kid);
     guard(setDoc(weekRef(d.kid,wk),{kidId:d.kid,week:wk,deductions:arrayUnion({id:uid(),t:Date.now(),amount:amt,reason:String(d.reason).trim(),how:String(d.how||"").trim(),status:"active",by:parentName()})},{merge:true}),"Deduction added.");
-    S.ui.ded={kid:d.kid,amount:0.25,reason:"",how:""};break;}
+    S.ui.ded={kid:d.kid,amount:0.25,reason:"",how:"",type:"ded"};break;}
   case "redeem": guard(txWeek(ds.kid,ds.wk,w=>{const e=w.deductions.find(x=>x.id===ds.id);if(e){e.status="redeemed";e.redeemedBy=parentName();}}).then(()=>setDoc(doc(db,"bank",ds.kid),{stats:{redemptions:increment(1)}},{merge:true})),"Earned back. Nice comeback.");return;
   case "remove-ded": if(!confirm("Remove this deduction entirely? Use this for mistakes. To reward a comeback, use Earned back instead."))return;guard(txWeek(ds.kid,ds.wk,w=>{w.deductions=w.deductions.filter(x=>x.id!==ds.id);}));return;
   case "cashout": doCashout(ds.kid);return;
@@ -937,9 +969,10 @@ async function handleAct(act,ds){
   case "unpair": if(!confirm("Unpair this device? It will need a new code to reconnect."))return;guard(deleteDoc(doc(db,"devices",ds.id)),"Device unpaired.");return;
   case "add-kid": S.ui.draft.kids.push({id:uid(),name:"New person",age:8,rate:0.25,remind:[],remindStr:"15:30, 19:30"});break;
   case "rm-kid": if(!confirm("Remove this person from the app? Their saved money records stay in the database."))return;S.ui.draft.kids.splice(Number(ds.i),1);break;
-  case "add-chore": S.ui.draft.chores.push(ds.kind==="pr"?{id:uid(),kind:"pr",name:"New item",note:"",ask:false}:{id:uid(),kind:"family",name:"New chore",mult:1,limit:1,assign:"pool",ask:false});break;
-  case "rm-chore": S.ui.draft.chores.splice(Number(ds.i),1);break;
-  case "discard-settings": S.ui.draft=null;break;
+  case "add-chore":{const id=uid();S.ui.draft.chores.push(ds.kind==="pr"?{id,kind:"pr",name:"New item",note:"",ask:false}:{id,kind:"family",name:"New chore",mult:1,limit:1,weekLimit:0,assign:"pool",ask:false});S.ui.editChore=id;break;}
+  case "rm-chore":{const i=Number(ds.i),c=S.ui.draft.chores[i];if(c&&c.id===S.ui.editChore)S.ui.editChore=null;S.ui.draft.chores.splice(i,1);break;}
+  case "edit-chore": S.ui.editChore=S.ui.editChore===ds.id?null:ds.id;break;
+  case "discard-settings": S.ui.draft=null;S.ui.editChore=null;break;
   case "save-settings":{const d=clone(S.ui.draft);
     d.kids.forEach(k=>{k.remind=String(k.remindStr||"").split(",").map(s=>s.trim()).filter(s=>/^\d{1,2}:\d{2}$/.test(s)).map(s=>s.padStart(5,"0"));delete k.remindStr;k.rate=r2(k.rate);k.adult=!!k.adult;k.age=k.adult?0:(Number(k.age)||0);
       const em=String(k.email||"").trim().toLowerCase();if(k.adult&&em)k.email=em;else delete k.email;});
@@ -948,8 +981,8 @@ async function handleAct(act,ds){
     for(const t of ["quietStart","quietEnd"])if(!/^\d{2}:\d{2}$/.test(b[t]||""))b[t]=G.GAME_DEFAULTS.battles[t];
     d.game.rewards=d.game.rewards.map(r=>({id:r.id||uid(),level:Math.min(30,Math.max(1,Math.round(Number(r.level)||1))),name:String(r.name||"").trim(),repeat:Math.max(0,Math.round(Number(r.repeat)||0))})).filter(r=>r.name);
     const mp=d.game.moneyPerks;mp.enabled=!!mp.enabled;mp.everyLevels=Math.max(1,Math.round(Number(mp.everyLevels)||5));mp.amount=Math.max(0,r2(mp.amount));
-    d.chores.forEach(c=>{c.ask=!!c.ask;if(c.kind==="family"){c.mult=Number(c.mult)||1;c.limit=Math.max(1,Math.round(Number(c.limit)||1));if(c.assign!=="pool"&&!d.kids.some(k=>k.id===c.assign))c.assign="pool";}});
-    S.ui.draft=null;guard(setDoc(doc(db,"app/config"),d),"Settings saved.");break;}
+    d.chores.forEach(c=>{c.ask=!!c.ask;if(c.kind==="family"){c.mult=Number(c.mult)||1;c.limit=Math.max(1,Math.round(Number(c.limit)||1));c.weekLimit=Math.max(0,Math.round(Number(c.weekLimit)||0));if(c.assign!=="pool"&&!d.kids.some(k=>k.id===c.assign))c.assign="pool";}});
+    startDraft(d);guard(setDoc(doc(db,"app/config"),d),"Settings saved.");break;}
   }
   render();
 }
@@ -963,6 +996,7 @@ document.addEventListener("click",e=>{const el=e.target.closest("[data-act]");if
 document.addEventListener("input",e=>{const el=e.target;if(!el.dataset.bind)return;let v=el.value;if(el.type==="checkbox")v=el.checked;else if(el.dataset.type==="num")v=v===""?"":Number(v);setPath(S.ui,el.dataset.bind,v);
   if(el.type==="checkbox"&&/^draft\.(kids\.\d+\.adult|game\.)/.test(el.dataset.bind)){render();return;}
   if(el.dataset.bind==="confirmChore.note"||el.dataset.bind==="prNote.text"){const b=document.querySelector(el.dataset.bind==="confirmChore.note"?'[data-act="confirm-chore"]':'[data-act="save-pr-note"]');if(b)b.disabled=!String(v).trim();}
+  {const m=/^draft\.chores\.(\d+)\.name$/.exec(el.dataset.bind);if(m){const b=document.querySelector(`[data-drag][data-i="${m[1]}"] .set-open b`);if(b)b.textContent=String(v).trim()||"(no name)";}}
   if(el.dataset.bind.startsWith("split.shares.")){S.ui.split.dirty=true;updateSplitUI();}
   if(el.dataset.bind.startsWith("adjust.goalBal.")){const t=document.querySelector(".adjust .save-total");if(t)t.textContent=money([...document.querySelectorAll('.adjust input[data-bind^="adjust.goalBal."]')].reduce((n,i)=>n+(Number(i.value)||0),0));}
   if(el.dataset.bind==="goalInput"){const m=document.querySelector(".goal-set .goal-msg");const n=Number(v)||0;if(m)m.textContent=n>0?`Reach it and you get a +${money(r2(n*BONUS_RATE))} bonus.`:"Bigger goal, bigger bonus.";}});
