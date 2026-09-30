@@ -2,7 +2,7 @@ import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import * as G from "../../public/game.js";
 import {
-  CONFIG, db, reset, kidClient, parentClient, closeAll, waitFor, quiet, xpOf, eventKeys, battle, rejects,
+  CONFIG, db, reset, kidClient, parentClient, closeAll, today, waitFor, quiet, xpOf, eventKeys, battle, rejects,
 } from "./helpers.mjs";
 
 after(closeAll);
@@ -168,4 +168,19 @@ test("scheduled tick: challenges expire, timed-out battles finish, results auto-
   await rejects(k1.call("cancelBattle", { id: c.id }), /Only a parent/);
   await parent.call("cancelBattle", { id: c.id });
   assert.equal((await battle(c.id)).status, "cancelled");
+});
+
+test("per-mode and weekly battle limits", async () => {
+  const cfg = { ...CONFIG, game: { ...CONFIG.game, battles: { ...CONFIG.game.battles, dailyCap: 10, weeklyCap: 3, modeLimits: { race: { day: 1 } } } } };
+  await reset(cfg);
+  const k1 = await kidClient("k1"), k2 = await kidClient("k2"), k3 = await kidClient("k3");
+  const done = (mode, extra = {}) => db.collection("battles").add({ mode, status: "done", live: false, players: ["k1", "k2"], challenger: "k1", day: today(), createdAt: Date.now(), ...extra });
+  await done("race");
+  await done("race", { status: "cancelled" }); // called off: doesn't count
+  await rejects(k1.call("createBattle", { mode: "race", opponent: "k3" }), /done 1 Race battle today/);
+  await rejects(k3.call("createBattle", { mode: "race", opponent: "k1" }), /Teslyn has done 1 Race battle today/);
+  await done("blitz");
+  await k1.call("createBattle", { mode: "timetrial", opponent: "k3", choreId: "c1" }); // third this week
+  await rejects(k1.call("createBattle", { mode: "ghost", choreId: "c2" }), /done 3 battles this week/);
+  await k2.call("createBattle", { mode: "ghost", choreId: "c2" }).catch((e) => { throw new Error("k2 has room: " + e.message); });
 });

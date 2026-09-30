@@ -342,3 +342,26 @@ test("a timed run that fails the parent's check earns no XP", () => {
   assert.deepEqual(G.battleXp(b, { winner: "c" }), { a: 0, c: G.XP.win });
   assert.deepEqual(G.battleXp({ ...b, quality: { a: true, c: true } }, { winner: "a" }), { a: G.XP.win, c: G.XP.loss });
 });
+
+test("battle limits: per person, per day and week, overall and per mode", () => {
+  const mon = "2026-09-28", today = "2026-09-30";
+  const b = (day, mode, status = "done", extra = {}) => ({ day, mode, status, players: ["a", "c"], ...extra });
+  const cfg = (battles) => ({ game: { battles: { dailyCap: 3, weeklyCap: 5, modeLimits: { race: { day: 1, week: 2 }, wildcard: { week: 1 } }, ...battles } } });
+  const L = (config, mode, list, who = "a") => G.battleLimit(config, mode, list, who, today, mon);
+  assert.equal(L(cfg(), "race", []), null);
+  assert.deepEqual(L(cfg(), "race", [b(today, "race")]), { scope: "day", mode: "race", n: 1 });
+  assert.equal(L(cfg(), "blitz", [b(today, "race")]), null, "other modes are still open");
+  assert.deepEqual(L(cfg(), "race", [b("2026-09-28", "race"), b("2026-09-29", "race")]), { scope: "week", mode: "race", n: 2 });
+  assert.equal(L(cfg(), "race", [b("2026-09-27", "race"), b("2026-09-21", "race")]), null, "last week doesn't count");
+  assert.equal(L(cfg(), "race", [b(today, "race", "declined"), b(today, "race", "expired"), b(today, "race", "cancelled")]), null, "battles that never happened don't count");
+  assert.equal(L(cfg(), "race", [b(today, "race", "done", { players: ["c", "d"] })]), null, "only your own battles count");
+  const three = [b(today, "blitz"), b(today, "bingo"), b(today, "judge")];
+  assert.deepEqual(L(cfg(), "timetrial", three), { scope: "day", all: true, n: 3 });
+  const five = ["2026-09-28", "2026-09-28", "2026-09-29", "2026-09-29", "2026-09-29"].map((d) => b(d, "blitz"));
+  assert.deepEqual(L(cfg(), "timetrial", five), { scope: "week", all: true, n: 5 });
+  assert.equal(L(cfg({ weeklyCap: 0 }), "timetrial", five), null, "0 means no weekly limit");
+  assert.deepEqual(L(cfg(), "wildcard", [b("2026-09-29", "blitz", "done", { wildcard: true })]), { scope: "week", mode: "wildcard", n: 1 }, "wildcards count as Wildcard");
+  assert.equal(L(cfg(), "blitz", [b(today, "blitz", "done", { wildcard: true })]), null);
+  assert.equal(G.battleLimitText({ scope: "day", all: true, n: 3 }), "You've done 3 battles today. That's the limit.");
+  assert.equal(G.battleLimitText({ scope: "week", mode: "race", n: 1 }, "Maggie"), "Maggie has done 1 Race battle this week. That's the limit.");
+});

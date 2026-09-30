@@ -268,13 +268,47 @@ async function actor(req, cfg) {
   return { id: d.kidId, parent: false, by: null };
 }
 
+// Sends to each person's paired tablets, and for grown-ups also to the phone they signed in on
+// (a parent push token whose email matches the adult's profile email).
 async function pushTo(ids, title, body) {
   try {
     const devices = (await db.collection("devices").where("role", "==", "kid").get()).docs;
-    await sendPush(devices.filter((d) => ids.includes(d.data().kidId) && d.data().fcmToken), { title, body });
+    const targets = devices.filter((d) => ids.includes(d.data().kidId) && d.data().fcmToken);
+    const cfg = await getConfig();
+    const emails = ((cfg && cfg.kids) || []).filter((k) => ids.includes(k.id) && k.adult && k.email).map((k) => k.email.toLowerCase());
+    if (emails.length) {
+      const phones = (await db.collection("parentTokens").get()).docs;
+      targets.push(...phones.filter((d) => d.data().fcmToken && emails.includes(String(d.data().email || "").toLowerCase())));
+    }
+    await sendPush(targets, { title, body });
   } catch (e) {
     console.warn("push failed", e);
   }
+}
+// Parents who asked to hear about every battle in the family (Game tab switch).
+async function pushBattleFeed(title, body, skipIds = []) {
+  try {
+    const cfg = await getConfig();
+    const skip = ((cfg && cfg.kids) || []).filter((k) => skipIds.includes(k.id) && k.email).map((k) => k.email.toLowerCase());
+    const docs = (await db.collection("parentTokens").get()).docs
+      .filter((d) => d.data().fcmToken && d.data().battleFeed && !skip.includes(String(d.data().email || "").toLowerCase()));
+    await sendPush(docs, { title, body });
+  } catch (e) {
+    console.warn("battle feed push failed", e);
+  }
+}
+// A short line for one player's result: "🏆 You won the Race! +40 XP"
+function resultPush(cfg, b, p, xp) {
+  const mode = G.modeById(b.mode) || { emoji: "⚔️", name: "battle" };
+  const r = b.result || {};
+  const plus = xp ? ` +${xp} XP.` : "";
+  if (r.noContest) return [`${mode.emoji} ${mode.name}: no contest`, `${r.reason || "Nobody earned XP."}`];
+  if (b.mode === "ghost") return [r.winner ? `👻 ${r.record ? "Record set" : "New personal best"}!` : "👻 Not this time", `${r.winner ? "Your time counts." : "Try again to beat your best."}${plus}`];
+  if (G.isRaid(b.mode)) return [r.winnerSide ? `${mode.emoji} Boss beaten!` : `${mode.emoji} The boss got away`, `${r.reason || ""}${plus}`];
+  if (r.tie) return [`${mode.emoji} ${mode.name}: it's a tie!`, `${r.reason || ""}${plus}`];
+  if (G.isWinner(b, r, p)) return [`🏆 You won the ${mode.name}!`, `${r.reason || ""}${plus}`];
+  const who = r.winnerSide ? b.teams[r.winnerSide].map((q) => personName(cfg, q)).join(" and ") : personName(cfg, r.winner);
+  return [`${mode.emoji} ${who} won the ${mode.name}`, `Good try!${plus}`];
 }
 
 /* ---------- XP ledger ---------- */
@@ -675,9 +709,9 @@ exports.createBattle = onCall(async (req) => {
   if (mode.id === "showdown") params.week = mondayOf(L.date, L.dow);
 
   // Guardrails: one live battle per group, a daily cap, a cooldown after a decline.
-  const [liveSnap, todaySnap] = await Promise.all([
+  const [liveSnap, weekSnap] = await Promise.all([
     db.collection("battles").where("live", "==", true).get(),
-    db.collection("battles").where("day", "==", L.date).get(),
+    db.collection("battles").where("day", ">=", mondayOf(L.date, L.dow)).get(),
   ]);
   const live = liveSnap.docs.map((d) => d.data());
   const overlap = (b) => b.players.filter((p) => players.includes(p)).length;
@@ -687,15 +721,14 @@ exports.createBattle = onCall(async (req) => {
   if (mode.solo && live.some((b) => b.mode === "ghost" && b.players[0] === me.id)) {
     throw new HttpsError("failed-precondition", "Finish your ghost race first.");
   }
-  const today = todaySnap.docs.map((d) => d.data()).filter((b) => !["declined", "expired", "cancelled"].includes(b.status));
+  const thisWeek = weekSnap.docs.map((d) => d.data());
   for (const p of players) {
-    if (today.filter((b) => b.players.includes(p)).length >= bc.dailyCap) {
-      throw new HttpsError("failed-precondition", p === me.id ? `You've done ${bc.dailyCap} battles today. That's the limit.`
-        : `${kidOf(cfg, p).name} has done ${bc.dailyCap} battles today. That's the limit.`);
-    }
+    const lim = G.battleLimit(cfg, picked.id, thisWeek, p, L.date, mondayOf(L.date, L.dow));
+    if (lim) throw new HttpsError("failed-precondition", G.battleLimitText(lim, p === me.id ? null : kidOf(cfg, p).name));
   }
-  if (players.length > 1 && todaySnap.docs.some((d) => {
+  if (players.length > 1 && weekSnap.docs.some((d) => {
     const b = d.data();
+    if (b.day !== L.date) return false;
     return b.status === "declined" && b.players.includes(me.id) && players.includes(b.declinedBy || b.players[1]) && b.respondedAt > Date.now() - MS_COOLDOWN;
   })) throw new HttpsError("failed-precondition", "They said not now. Try again in an hour.");
 
@@ -777,6 +810,7 @@ exports.respondBattle = onCall(async (req) => {
   const mode = G.modeById(b.mode);
   if (!accept) await pushTo([b.challenger], `${personName(cfg, me.id)} said not now`, "Maybe later.");
   else if (b.status === "active") {
+    await pushBattleFeed(`⚔️ ${mode.name} started`, b.players.map((p) => personName(cfg, p)).join(" vs "), b.players);
     await pushTo(b.players.filter((p) => p !== me.id), `⚔️ ${mode.name} is on!`,
       b.mode === "streakduel" ? "It starts tomorrow. Don't miss a day!" : "Go go go!");
   }
@@ -949,7 +983,8 @@ async function afterSettle(cfg, id) {
   const b = s.data();
   if (b.status === "confirming" && b.live && !b.notified) {
     await ref.update({ notified: true });
-    await pushTo(b.players, "⚔️ Battle over!", "Open Boon Chores to see who won.");
+    if (b.result && b.result.qualityCheck) await pushTo(b.players, "⏳ Time's in!", "A parent will check the work, then the winner is final.");
+    else await pushTo(b.players, "⚔️ Battle over!", "Open Boon Chores to see who won.");
     if (b.result && b.result.qualityCheck) await pushParents("⏱️ Check the work", `${b.players.map((p) => personName(cfg, p)).join(" and ")} finished a timed run. Check it was done well in the Game tab.`);
     else if (b.result && b.result.needsParent) await pushParents("⚔️ A battle needs a parent", "A result needs checking in the Game tab.");
   }
@@ -981,9 +1016,13 @@ async function afterSettle(cfg, id) {
     });
   }
   await ref.update({ live: false, xp });
-  if (G.isRaid(b.mode) || b.mode === "streakduel" || b.mode === "showdown") {
-    await pushTo(b.players, `${mode.emoji} ${mode.name} is over`, r.reason || "Open Boon Chores to see how it went.");
+  for (const p of b.players) {
+    const [title, body] = resultPush(cfg, b, p, xp[p]);
+    await pushTo([p], title, body);
   }
+  const names = b.players.map((p) => personName(cfg, p)).join(" vs ");
+  const [ft] = resultPush(cfg, b, null, 0);
+  await pushBattleFeed(`${mode.emoji} ${mode.name} over: ${names}`, ft.replace(/^\S+\s/, ""), b.players);
 }
 
 // Recomputes live scores for chore-scored battles after a chore is logged or reversed.
@@ -1144,6 +1183,8 @@ async function runBattleTick(now = Date.now()) {
     try {
       if (b.status === "pending" && now - b.createdAt > MS_PENDING) {
         await d.ref.update({ status: "expired", live: false });
+        const others = b.players.filter((p) => p !== b.challenger && !(b.accepted || {})[p]);
+        await pushTo([b.challenger], "⏰ Challenge expired", `${others.map((p) => personName(cfg, p)).join(" and ")} didn't answer in time.`);
       } else if (b.status === "active") {
         await refreshBattle(cfg, d.id, now);
       } else if (b.status === "confirming" || b.status === "judging") {

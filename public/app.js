@@ -143,6 +143,7 @@ function startData(){
   unsubs.push(onSnapshot(collection(db,"claims"),s=>{const m={};s.forEach(d=>m[d.id]={id:d.id,...d.data()});S.claims=m;softRender();},onErr));
   unsubs.push(onSnapshot(collection(db,"bounties"),s=>{const m={};s.forEach(d=>m[d.id]=d.data());S.bounties=m;softRender();},onErr));
   unsubs.push(onSnapshot(doc(db,"app/game"),s=>{S.game=s.exists()?s.data():{};softRender();},onErr));
+  if(S.role==="parent"&&S.user){unsubs.push(onSnapshot(doc(db,"parentTokens",S.user.uid),s=>{S.myToken=s.exists()?s.data():null;softRender();},onErr));}
   if(S.role==="parent"){
     unsubs.push(onSnapshot(collection(db,"devices"),s=>{S.devices=s.docs.map(d=>({id:d.id,...d.data()}));softRender(true);},onErr));
     unsubs.push(onSnapshot(collection(db,"pairCodes"),s=>{S.codes=s.docs.map(d=>({id:d.id,...d.data()}));softRender(true);},onErr));
@@ -271,7 +272,7 @@ function pushControl(){
   const perm=Notification.permission;
   if(perm==="granted"&&S.device&&S.device.fcmToken)return "";
   if(perm==="denied")return `<p class="hint">Reminders are blocked. Allow notifications for this app in the tablet's settings to get them.</p>`;
-  return `<button class="btn ghost block" style="margin-top:12px" data-act="enable-push">Turn on chore reminders</button>`;
+  return `<button class="btn ghost block" style="margin-top:12px" data-act="enable-push">🔔 Turn on notifications (reminders and battles)</button>`;
 }
 function reminderBanner(k,ks,today){
   const times=(k.remind||[]).filter(Boolean).sort();if(!times.some(t=>t<=nowHM()))return "";
@@ -453,7 +454,7 @@ function recentLine(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Batt
   return `<li><span>${m.emoji} ${esc(m.name)}${others.length?` ${G.isRaid(b.mode)?"with":"vs"} ${others.map(p=>bName(b,p)).join(", ")}`:""}<br><small>${resultText(b,me)}</small></span><span class="amt pos">${xp?"+"+xp+" XP":""}</span></li>`;}
 const bbChores=(kidId,mode)=>cfg().chores.filter(c=>c.kind==="family"&&!needsNote(c)&&(c.assign==="pool"||(mode==="ghost"&&c.assign===kidId)));
 function battleBuilder(k,bb){const bc=game().battles,lv=xpState(k.id).level,mode=G.modeById(bb.mode);
-  const modeBtn=m=>{const why=(bc.modesOff||[]).includes(m.id)?"Turned off":lv<m.level?`🔒 Level ${m.level}`:m.kidsOnly&&k.adult?"Kids only":"";
+  const modeBtn=m=>{const lim=battleLimitFor(k.id,m.id);const why=(bc.modesOff||[]).includes(m.id)?"Turned off":lv<m.level?`🔒 Level ${m.level}`:m.kidsOnly&&k.adult?"Kids only":lim?(lim.scope==="day"?"Done for today":"Done for this week"):"";
     return `<button class="mode ${bb.mode===m.id?"on":""}" data-act="bb-mode" data-id="${m.id}" ${why?"disabled":""} aria-pressed="${bb.mode===m.id}"><span>${m.emoji}</span><b>${esc(m.name)}</b><small>${esc(why||m.desc)}</small></button>`;};
   const pick=(list,key,multi,label)=>`<h3>${label}</h3><div class="seg" style="justify-content:flex-start">${list.map(p=>{const on=multi?(bb[key]||[]).includes(p.id):bb[key]===p.id;
     return `<button class="${on?"on":""}" data-act="bb-pick" data-key="${key}" data-multi="${multi?1:""}" data-id="${p.id}" aria-pressed="${on}">${creatureFor(p.id)[1]} ${esc(p.name)}</button>`;}).join("")}</div>`;
@@ -474,12 +475,19 @@ function battleBuilder(k,bb){const bc=game().battles,lv=xpState(k.id).level,mode
   return `<div class="builder"><h3>Pick a mode</h3><div class="modes">${G.MODES.map(modeBtn).join("")}</div>${who}
     ${params?`<div class="row" style="margin-top:10px">${params}</div>`:""}${hc}
     <div class="row" style="margin-top:12px"><button class="btn" data-act="bb-send" ${!ready||S.busy.b?"disabled":""}>${S.busy.b?"Sending…":mode&&mode.solo?"Start":"Send challenge"}</button><button class="btn ghost" data-act="bb-close">Cancel</button></div></div>`;}
+// This person's battle limits, counted the same way the server does (null mode: overall limits only).
+const battleLimitFor=(id,modeId)=>G.battleLimit(cfg(),modeId||"-",battleList(),id,ymd(),mondayOf(new Date()));
+function battleUse(id){const mon=mondayOf(new Date()),n=b=>!["declined","expired","cancelled"].includes(b.status)&&b.players.includes(id);
+  const wk=battleList().filter(b=>n(b)&&b.day>=mon&&b.day<=addDays(mon,6));return {day:wk.filter(b=>b.day===ymd()).length,week:wk.length};}
 function battleSection(k){const bc=game().battles;const mine=battleList().filter(b=>b.players.includes(k.id));const live=mine.filter(b=>b.live);const recent=mine.filter(b=>!b.live&&b.status==="done").slice(0,3);
   if(!bc.enabled&&!live.length&&!recent.length)return "";
   const bb=S.ui.bb&&S.ui.bb.kid===k.id?S.ui.bb:null;const asleep=bc.enabled&&G.inQuietHours(nowHM(),cfg());
   const t12=hm=>{const [h,m]=hm.split(":").map(Number);return new Date(2000,0,1,h,m).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});};
   const x=xpState(k.id).counts;const rec=(x.win||0)+(x.loss||0)+(x.tie||0)?`<span class="sub">${x.win||0} won, ${x.loss||0} lost${x.tie?`, ${x.tie} tied`:""}</span>`:"";
-  return `<section class="card battles"><div class="sec-head"><h2>⚔️ Battles</h2>${rec}${bc.enabled&&!bb?(asleep?`<span class="sub">😴 Asleep until ${t12(bc.quietEnd)}</span>`:`<button class="btn small" data-act="bb-open">Challenge</button>`):""}</div>
+  const used=battleUse(k.id),allDone=battleLimitFor(k.id,null);
+  const btn=asleep?`<span class="sub">😴 Asleep until ${t12(bc.quietEnd)}</span>`:allDone?`<span class="sub">✋ ${allDone.scope==="day"?"That's all for today":"That's all for this week"}</span>`:`<button class="btn small" data-act="bb-open">Challenge</button>`;
+  const usage=bc.enabled?`<p class="hint" style="margin:0 0 6px">Battles today: ${used.day} of ${bc.dailyCap}${bc.weeklyCap>0?`. This week: ${used.week} of ${bc.weeklyCap}`:""}.</p>`:"";
+  return `<section class="card battles"><div class="sec-head"><h2>⚔️ Battles</h2>${rec}${bc.enabled&&!bb?btn:""}</div>${usage}
     ${bb?battleBuilder(k,bb):""}${live.map(b=>battleCard(b,k.id)).join("")}
     ${!live.length&&!bb?`<p class="empty">${bc.enabled?"No battles right now. Challenge someone, or race your own best time.":"Battles are turned off."}</p>`:""}
     ${recent.length?`<ul class="feed recent">${recent.map(b=>recentLine(b,k.id)).join("")}</ul>`:""}</section>`;}
@@ -577,9 +585,13 @@ function pGame(){
     <button class="btn block" style="margin-top:10px" data-act="backfill" ${S.busy.backfill?"disabled":""}>${S.busy.backfill?"Counting…":"Count past chores"}</button></div></section>`+familyGoalCard()+raisesCard();
 }
 // Parent notifications on this phone: reward claims, bounties, and battles that need a parent.
-function pushCard(){if(!("Notification" in window))return "";const perm=Notification.permission;if(perm==="granted"&&S.ui.parentPushOn)return "";
-  return perm==="denied"?`<p class="hint">Notifications are blocked for this site in your phone's settings.</p>`
-    :`<button class="btn ghost block" style="margin-top:14px" data-act="parent-push">🔔 Notify this phone when something needs a parent</button>`;}
+function pushCard(){if(!("Notification" in window))return "";const perm=Notification.permission;
+  if(perm==="denied")return `<p class="hint">Notifications are blocked for this site in your phone's settings.</p>`;
+  if(!(perm==="granted"&&S.myToken&&S.myToken.fcmToken))return `<button class="btn ghost block" style="margin-top:14px" data-act="parent-push">🔔 Notify this phone: things that need a parent, and my own battles</button>`;
+  const me=kidsSorted().find(k=>k.adult&&k.email&&k.email.toLowerCase()===String(S.user.email||"").toLowerCase());
+  return `<section class="card"><div class="sec-head"><h2>🔔 This phone</h2></div>
+    <p class="hint" style="margin-top:0">Notifications are on for claims, bounties, and battles that need a parent${me?`, plus ${esc(me.name)}'s own battles`:". Add your email to your adult profile in Settings to hear about your own battles"}.</p>
+    <label class="check-label"><input type="checkbox" data-act="battle-feed" ${S.myToken.battleFeed?"checked":""}> Also tell me when the kids start and finish battles</label></section>`;}
 function claimsCard(){const all=Object.values(S.claims),pend=all.filter(c=>c.status==="pending"),appr=all.filter(c=>c.status==="approved");
   if(!pend.length&&!appr.length&&!game().rewards.length)return "";
   const nm=id=>esc((kidCfg(id)||{}).name||"?");
@@ -759,7 +771,7 @@ function modeGuide(){const X=G.XP,std=`Win ${X.win} XP, tie ${X.tie}, and ${X.lo
   wildcard:{how:"Picks Race, Blitz, Territory, or Chore Bingo at random and adds a twist: one chore counts double.",xp:"The same as the mode it picks.",notes:"The twist chore is shown when the battle starts."},
 };}
 function battlesGeneral(b){const X=G.XP,hm=t=>{const [h,m]=String(t||"").split(":").map(Number);return isNaN(h)?"":new Date(2000,0,1,h,m||0).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});};const pct=b.handicapPct??Math.round(b.handicapPerYear*100);
-  return `<p><b>Starting one.</b> Someone challenges from their screen and the other side taps Accept. No battle starts in quiet hours (${hm(b.quietStart)} to ${hm(b.quietEnd)}), and each person can join at most ${b.dailyCap} a day. Both are set below.</p>
+  return `<p><b>Starting one.</b> Someone challenges from their screen and the other side taps Accept. No battle starts in quiet hours (${hm(b.quietStart)} to ${hm(b.quietEnd)}), and each person can join at most ${b.dailyCap} a day${b.weeklyCap>0?` and ${b.weeklyCap} a week`:""}. Open a mode to give it its own daily or weekly limit. Declined, expired, and called-off battles don't count.</p>
   <p><b>Fair fights.</b> Younger players get a handicap: their score is multiplied by ${pct}% per year of age difference, up to ×${b.handicapMax}. Adults count as ${b.adultAge}. Chore Bingo gives free squares instead.</p>
   <p><b>XP, never money.</b> A win pays ${X.win} XP, a tie ${X.tie}, and taking part ${X.loss}. Streak Duel and Goal Showdown pay double because they run for days. Boss Raid pays ${X.raidWin} each for a win (Baby Boss Raid ${X.babyRaidWin}).</p>
   <p><b>Confirming.</b> Speed results become final when the other side or a parent confirms them, or on their own after 12 hours. Disputed results wait for a parent in the Game tab. Time Trial and Ghost Race need a parent's quality check within 48 hours.</p>
@@ -780,11 +792,14 @@ function gameSettings(d){const g=d.game,b=g.battles;const chk=(path,on,label)=>`
   return `<section class="card"><div class="sec-head"><h2>Game</h2></div>
     <div class="grid-2">${chk("quests.enabled",g.quests.enabled,"Weekly quests")}${chk("choreOfDay.enabled",g.choreOfDay.enabled,"Chore of the Day (double XP)")}${chk("streakMultiplier.enabled",g.streakMultiplier.enabled,`Streak bonus (×${g.streakMultiplier.mult} XP at ${g.streakMultiplier.minStreak}+ days)`)}${chk("battles.enabled",b.enabled,"Battles")}</div>
     <h3 style="margin-top:14px">Battle modes</h3><p class="hint" style="margin:2px 0 4px">Tick a mode to allow it. Tap one to see how it works.</p>
-    <div class="guide">${gRow("m:all","How battles work","Challenges, handicaps, XP, confirming, and what carries over",battlesGeneral(b))}${G.MODES.filter(m=>!m.soon).map(m=>{const t=modeGuide()[m.id]||{};return gRow("m:"+m.id,`${m.emoji} ${esc(m.name)} <span class="pill">Level ${m.level}</span>`,esc(m.desc),`<p><b>How it works.</b> ${t.how||""}</p><p><b>XP.</b> ${t.xp||""}</p>${t.notes?`<p><b>Good to know.</b> ${t.notes}</p>`:""}`,`<label class="g-on"><input type="checkbox" data-act="toggle-mode" data-id="${m.id}" ${(b.modesOff||[]).includes(m.id)?"":"checked"} aria-label="Allow ${esc(m.name)}" title="Allow ${esc(m.name)}"></label>`);}).join("")}</div>
+    <div class="guide">${gRow("m:all","How battles work","Challenges, handicaps, XP, confirming, and what carries over",battlesGeneral(b))}${G.MODES.filter(m=>!m.soon).map(m=>{const t=modeGuide()[m.id]||{};const ml=(b.modeLimits||{})[m.id]||{};const limTxt=[ml.day>0?`${ml.day} a day`:"",ml.week>0?`${ml.week} a week`:""].filter(Boolean).join(", ");
+      return gRow("m:"+m.id,`${m.emoji} ${esc(m.name)} <span class="pill">Level ${m.level}</span>${limTxt?` <span class="pill">Max ${limTxt}</span>`:""}`,esc(m.desc),`<p><b>How it works.</b> ${t.how||""}</p><p><b>XP.</b> ${t.xp||""}</p>${t.notes?`<p><b>Good to know.</b> ${t.notes}</p>`:""}
+      <div class="row" style="margin-top:8px"><label>Max per person per day<input type="number" min="0" step="1" data-type="num" data-bind="draft.game.battles.modeLimits.${m.id}.day" value="${esc(ml.day||"")}" placeholder="No limit"></label><label>Max per person per week<input type="number" min="0" step="1" data-type="num" data-bind="draft.game.battles.modeLimits.${m.id}.week" value="${esc(ml.week||"")}" placeholder="No limit"></label></div>`,`<label class="g-on"><input type="checkbox" data-act="toggle-mode" data-id="${m.id}" ${(b.modesOff||[]).includes(m.id)?"":"checked"} aria-label="Allow ${esc(m.name)}" title="Allow ${esc(m.name)}"></label>`);}).join("")}</div>
     <div class="grid-2" style="margin-top:12px">
     <label>No battles from<input type="time" data-bind="draft.game.battles.quietStart" value="${esc(b.quietStart)}"></label>
     <label>Until<input type="time" data-bind="draft.game.battles.quietEnd" value="${esc(b.quietEnd)}"></label>
     <label>Battles per person per day<input type="number" min="1" step="1" data-type="num" data-bind="draft.game.battles.dailyCap" value="${esc(b.dailyCap)}"></label>
+    <label>Battles per person per week (0 = no limit)<input type="number" min="0" step="1" data-type="num" data-bind="draft.game.battles.weeklyCap" value="${esc(b.weeklyCap||0)}"></label>
     <label>Handicap per year younger (%)<input type="number" min="0" step="1" data-type="num" data-bind="draft.game.battles.handicapPct" value="${esc(b.handicapPct??Math.round(b.handicapPerYear*100))}"></label>
     <label>Biggest handicap (×)<input type="number" min="1" step="0.05" data-type="num" data-bind="draft.game.battles.handicapMax" value="${esc(b.handicapMax)}"></label></div>
     <p class="hint">Handicap example: with 8% per year, a kid 4 years younger scores ×1.32. Adults count as age ${b.adultAge}. XP never goes down, and battles never cost money.</p>
@@ -877,7 +892,7 @@ async function enablePush(silent){
     if(!silent){const p=await Notification.requestPermission();if(p!=="granted"){render();return;}}
     const reg=await navigator.serviceWorker.register("/firebase-messaging-sw.js");
     const token=await getToken(m,{vapidKey:VAPID_KEY,serviceWorkerRegistration:reg});
-    if(token&&S.role==="parent"){await setDoc(doc(db,"parentTokens",S.user.uid),{fcmToken:token,email:S.user.email||"",at:Date.now()});S.ui.parentPushOn=true;if(!silent)toast("Notifications are on for this phone.");render();return;}
+    if(token&&S.role==="parent"){await setDoc(doc(db,"parentTokens",S.user.uid),{fcmToken:token,email:S.user.email||"",at:Date.now()},{merge:true});S.ui.parentPushOn=true;if(!silent)toast("Notifications are on for this phone.");render();return;}
     if(token&&S.device&&token!==S.device.fcmToken)await updateDoc(doc(db,"devices",S.user.uid),{fcmToken:token,tokenAt:Date.now()});
     if(!silent)toast("Reminders are on.");}
   catch(e){if(!silent)toast("Couldn't turn on reminders: "+errMsg(e));}
@@ -934,6 +949,7 @@ async function handleAct(act,ds){
     guard(runTransaction(db,async t=>{const ref=doc(db,"app/config");const c=(await t.get(ref)).data();const k=c.kids.find(x=>x.id===ds.kid);if(!k)return;
       if(act==="raise")k.rate=r2((k.rate||0)+mp.amount*Number(ds.n));k.perkLevel=lv;t.set(ref,c);}),act==="raise"?"Raise given.":"Skipped until the next one.");return;}
   case "parent-push": enablePush(false);return;
+  case "battle-feed": guard(setDoc(doc(db,"parentTokens",S.user.uid),{battleFeed:!(S.myToken&&S.myToken.battleFeed)},{merge:true}),S.myToken&&S.myToken.battleFeed?"Battle news off.":"You'll hear about every battle.");return;
   case "add-reward": S.ui.draft.game.rewards.push({id:uid(),level:5,name:"",repeat:0});break;
   case "rm-reward": S.ui.draft.game.rewards.splice(Number(ds.i),1);break;
   case "starter-rewards": S.ui.draft.game.rewards.push({id:uid(),level:3,name:"Pick a family movie",repeat:0},{id:uid(),level:5,name:"Pick Friday dinner",repeat:5},{id:uid(),level:10,name:"30 minutes later bedtime (once)",repeat:5},{id:uid(),level:15,name:"Ice cream trip with a parent",repeat:0});break;
@@ -1019,7 +1035,8 @@ async function handleAct(act,ds){
     d.kids.forEach(k=>{k.remind=String(k.remindStr||"").split(",").map(s=>s.trim()).filter(s=>/^\d{1,2}:\d{2}$/.test(s)).map(s=>s.padStart(5,"0"));delete k.remindStr;k.rate=r2(k.rate);k.adult=!!k.adult;k.age=k.adult?0:(Number(k.age)||0);
       const em=String(k.email||"").trim().toLowerCase();if(k.adult&&em)k.email=em;else delete k.email;});
     const b=d.game.battles;if(b.handicapPct!=null){b.handicapPerYear=Math.max(0,Number(b.handicapPct)||0)/100;delete b.handicapPct;}
-    b.handicapMax=Math.max(1,Number(b.handicapMax)||1);b.dailyCap=Math.max(1,Math.round(Number(b.dailyCap)||1));
+    b.handicapMax=Math.max(1,Number(b.handicapMax)||1);b.dailyCap=Math.max(1,Math.round(Number(b.dailyCap)||1));b.weeklyCap=Math.max(0,Math.round(Number(b.weeklyCap)||0));
+    const ml={};for(const [id,v] of Object.entries(b.modeLimits||{})){const day=Math.max(0,Math.round(Number(v&&v.day)||0)),week=Math.max(0,Math.round(Number(v&&v.week)||0));if(day||week)ml[id]={day,week};}b.modeLimits=ml;
     for(const t of ["quietStart","quietEnd"])if(!/^\d{2}:\d{2}$/.test(b[t]||""))b[t]=G.GAME_DEFAULTS.battles[t];
     d.game.rewards=d.game.rewards.map(r=>({id:r.id||uid(),level:Math.min(30,Math.max(1,Math.round(Number(r.level)||1))),name:String(r.name||"").trim(),repeat:Math.max(0,Math.round(Number(r.repeat)||0))})).filter(r=>r.name);
     const mp=d.game.moneyPerks;mp.enabled=!!mp.enabled;mp.everyLevels=Math.max(1,Math.round(Number(mp.everyLevels)||5));mp.amount=Math.max(0,r2(mp.amount));

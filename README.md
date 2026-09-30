@@ -141,7 +141,7 @@ Younger players get an automatic handicap: their score is multiplied by 8% per y
 
 Other speed results are final once someone on the other side or a parent confirms them, or on their own after 12 hours. Disputed results wait for a parent in the **Game** tab. Streak Duel, Goal Showdown, and Boss Raid are decided from the family's records and need no confirming.
 
-To limit battles, go to **Settings** > Game. You can set quiet hours (no battles from 8:30 PM to 7 AM by default), a daily limit per person (3), turn off single modes, or turn battles off entirely.
+To limit battles, go to **Settings** > Game. You can set quiet hours (no battles from 8:30 PM to 7 AM by default), how many battles each person can join per day (3) and per week (no limit by default), and open any mode to give it its own per-day or per-week limit, like chore limits. Declined, expired, and called-off battles don't count. You can also turn off single modes or battles entirely.
 
 **More ways to play:**
 
@@ -151,7 +151,7 @@ To limit battles, go to **Settings** > Game. You can set quiet hours (no battles
 - **Bounties:** in the Game tab, post a one-off job worth extra XP ("Clean out the garage together, 200 XP"), for anyone or one person. A kid taps "I did it" and you award the XP.
 - **Family goal:** in the Game tab, set a shared reward ("Pizza night") and how much XP the whole family needs to earn together. The bar shows on every screen and the family display, and celebrates when it fills.
 - **Raises (off by default):** in Settings > Game you can have the Game tab suggest a per-chore raise every few levels. Nothing changes until you tap Give raise.
-- **Notifications for parents:** in the Game tab, tap "Notify this phone" to get a push when a reward is claimed, a bounty is done, or a battle needs a parent.
+- **Notifications:** on a kid's tablet, tap "Turn on notifications" for chore reminders and battle news: new challenges, accepted or declined, results with XP earned, and expired challenges. On a parent's phone, tap "Notify this phone" in the Game tab for anything that needs a parent (claims, bounties, checks, judging) and, if your email is on your adult profile, your own battles. A switch there also sends you every kids' battle as it starts and finishes.
 
 ## Developing and testing
 

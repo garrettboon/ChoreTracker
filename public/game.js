@@ -41,6 +41,8 @@ export const GAME_DEFAULTS = {
   streakMultiplier: { enabled: true, minStreak: 7, mult: 1.25 },
   battles: {
     enabled: true, modesOff: [], quietStart: "20:30", quietEnd: "07:00", dailyCap: 3,
+    weeklyCap: 0,     // battles per person per week, all modes together (0 = no limit)
+    modeLimits: {},   // { modeId: { day, week } } per person (0 or missing = no limit)
     handicapPerYear: 0.08, handicapMax: 1.5, adultAge: 18,
   },
 };
@@ -271,6 +273,31 @@ export function badgeList(s) {
 }
 
 /* ---------- battles ---------- */
+// Battle limits, like chore limits: per person, per day and per week (Monday to Sunday),
+// overall and per mode. Declined, expired, and called-off battles don't count.
+// Wildcard battles count as Wildcard, whatever mode they turned into.
+export const battleModeKey = (b) => (b.wildcard ? "wildcard" : b.mode);
+export function battleLimit(config, modeId, battles, personId, today, monday) {
+  const bc = gameCfg(config).battles;
+  const sunday = addDays(monday, 6);
+  const mine = (battles || []).filter((b) => !["declined", "expired", "cancelled"].includes(b.status)
+    && (b.players || []).includes(personId) && b.day >= monday && b.day <= sunday);
+  const day = mine.filter((b) => b.day === today);
+  if (bc.dailyCap > 0 && day.length >= bc.dailyCap) return { scope: "day", all: true, n: bc.dailyCap };
+  if (bc.weeklyCap > 0 && mine.length >= bc.weeklyCap) return { scope: "week", all: true, n: bc.weeklyCap };
+  const ml = (bc.modeLimits || {})[modeId] || {};
+  const same = (list) => list.filter((b) => battleModeKey(b) === modeId).length;
+  if (ml.day > 0 && same(day) >= ml.day) return { scope: "day", mode: modeId, n: ml.day };
+  if (ml.week > 0 && same(mine) >= ml.week) return { scope: "week", mode: modeId, n: ml.week };
+  return null;
+}
+// "You've done 3 battles today. That's the limit." / "Maggie has done 2 Race battles this week. …"
+export function battleLimitText(lim, who) {
+  const m = lim.mode ? modeById(lim.mode) : null;
+  const what = `${lim.n} ${m ? m.name + " " : ""}battle${lim.n === 1 ? "" : "s"}`;
+  return `${who ? `${who} has` : "You've"} done ${what} ${lim.scope === "day" ? "today" : "this week"}. That's the limit.`;
+}
+
 export const effAge = (p, adultAge = 18) => (p && p.adult ? adultAge : Number(p && p.age) || 0);
 const round2 = (n) => Math.round(n * 100) / 100;
 // Younger player's score multiplier; the older player is always 1.
