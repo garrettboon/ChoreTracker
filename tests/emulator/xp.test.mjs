@@ -71,27 +71,34 @@ test("chore limits: a max per person a day, and family-wide maxes per day and pe
   await rejects(dad.call("completeChore", { kidId: "dad", choreId: "wk" }), /done for this week/);
   const w = await db.collection("weeks").where("kidId", "==", "dad").get();
   assert.deepEqual(w.docs[0].data().entries.map((e) => e.choreId).sort(), ["each", "fam"]);
+  // Let the XP triggers from those chores finish before the next test clears the database.
+  await waitFor(async () => (await xpOf("k1"))?.counts?.chore === 3 && (await xpOf("k2"))?.counts?.chore === 2 && (await xpOf("dad"))?.counts?.chore === 2, { msg: "chores counted" });
+  await Promise.all(["k1", "k2", "dad"].map((id) => quiet(`xp/${id}`)));
 });
 
 test("morning badges: chores before 9 AM are counted, and 3 or 5 in one day earn Early bird and Rise and shine", async () => {
   await reset();
+  const k2 = await kidClient("k2");
+  await k2.call("completeChore", { kidId: "k2", choreId: "c2" });
+  await waitFor(async () => (await xpOf("k2"))?.total === G.XP.chore + G.XP.badge, { msg: "one chore + first badge" });
+  // That chore was logged just now, so it counts as a morning chore only when this test runs before 9 AM in Denver.
   const d = today();
-  const [y, mo, dd] = d.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, mo - 1, dd)); dt.setUTCDate(dt.getUTCDate() - ((dt.getUTCDay() + 6) % 7));
-  const mon = dt.toISOString().slice(0, 10);
-  // An offset of -06:30 lands between Denver's daylight (-06:00) and standard (-07:00) time, so 7:00 here is 6:30 or 7:30 AM in Denver, same date.
+  const nowEarly = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Denver", hour: "numeric", hourCycle: "h23" }).format(new Date())) < G.EARLY_HOUR ? 1 : 0;
+  // An offset of -06:30 sits between Denver's daylight (-06:00) and standard (-07:00) time, so 7:00 here is 6:30 or 7:30 AM in Denver on the same date.
   const at = (h, i) => ({ id: "m" + i, t: Date.parse(`${d}T${String(h).padStart(2, "0")}:00:00-06:30`), type: "chore", choreId: "c1", name: "Sweep", amount: 0.25, date: d, status: "ok" });
-  const ref = db.doc(`weeks/${mon}_k2`);
-  await ref.set({ kidId: "k2", week: mon, entries: [at(7, 1), at(7, 2), at(8, 3)] });
-  const x = await waitFor(async () => { const x = await xpOf("k2"); return x && x.total === G.XP.chore * 3 + G.XP.badge * 2 && x; }, { msg: "3 chores + first chore + Early bird" });
-  assert.equal(x.counts.early, 3);
-  assert.equal(x.earlyBest, 3);
+  const w = await weekDocOf("k2");
+  const base = w.data();
+  await w.ref.set({ ...base, entries: [...base.entries, at(7, 1), at(7, 2), at(8, 3)] });
+  const x = await waitFor(async () => { const x = await xpOf("k2"); return x && x.total === G.XP.chore * 4 + G.XP.badge * 2 && x; }, { msg: "4 chores + first chore + Early bird" });
+  assert.equal(x.counts.early, 3 + nowEarly);
+  assert.equal(x.earlyBest, 3 + nowEarly);
   assert.ok((await eventKeys("k2")).includes("badge:early3"));
   // Two more before 9 AM, and one in the evening that is a chore but not a morning one.
-  await ref.set({ kidId: "k2", week: mon, entries: [at(7, 1), at(7, 2), at(8, 3), at(8, 4), at(8, 5), at(20, 6)] });
-  const x2 = await waitFor(async () => { const x = await xpOf("k2"); return x && x.total === G.XP.chore * 6 + G.XP.badge * 3 && x; }, { msg: "6 chores + first chore + Early bird + Rise and shine" });
-  assert.equal(x2.counts.early, 5);
-  assert.equal(x2.earlyBest, 5);
+  await w.ref.set({ ...base, entries: [...base.entries, at(7, 1), at(7, 2), at(8, 3), at(8, 4), at(8, 5), at(20, 6)] });
+  const x2 = await waitFor(async () => { const x = await xpOf("k2"); return x && x.total === G.XP.chore * 7 + G.XP.badge * 3 && x; }, { msg: "7 chores + first chore + Early bird + Rise and shine" });
+  assert.equal(x2.counts.early, 5 + nowEarly);
+  assert.equal(x2.earlyBest, 5 + nowEarly);
+  assert.ok((await eventKeys("k2")).includes("badge:early5"));
 });
 
 test("chore of the day pays double", async () => {
