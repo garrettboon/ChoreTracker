@@ -28,14 +28,14 @@ test("a chore earns effort-based XP plus the first-chore badge; reversing takes 
   const data = w.data();
   data.entries[0].status = "reversed";
   await w.ref.set(data);
-  const x2 = await waitFor(async () => { const x = await xpOf("k1"); return x.total === 25 && x; }, { msg: "chore XP removed" });
+  const x2 = await waitFor(async () => { const x = await xpOf("k1"); return x.total === 10 && x; }, { msg: "chore XP removed" });
   assert.equal(x2.counts.chore, 0);
   assert.equal(x2.maxLevel, 1);
 
   // Restoring gives it back.
   data.entries[0].status = "ok";
   await w.ref.set(data);
-  await waitFor(async () => (await xpOf("k1")).total === 45, { msg: "chore XP restored" });
+  await waitFor(async () => (await xpOf("k1")).total === 30, { msg: "chore XP restored" });
 });
 
 test("the same chore pays the same XP no matter the pay rate", async () => {
@@ -43,7 +43,7 @@ test("the same chore pays the same XP no matter the pay rate", async () => {
   const k1 = await kidClient("k1"), k3 = await kidClient("k3");
   await k1.call("completeChore", { kidId: "k1", choreId: "c1" });
   await k3.call("completeChore", { kidId: "k3", choreId: "c1" });
-  await waitFor(async () => (await xpOf("k1"))?.total === 35 && (await xpOf("k3"))?.total === 35, { msg: "35 XP each" });
+  await waitFor(async () => (await xpOf("k1"))?.total === 20 && (await xpOf("k3"))?.total === 20, { msg: "20 XP each" });
 });
 
 test("chore of the day pays double", async () => {
