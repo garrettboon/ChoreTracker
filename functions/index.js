@@ -127,13 +127,18 @@ function logChore(kidId, choreId, by, note = "") {
     const refs = [];
     for (const id of counted) for (const wk of [mon, addDays(mon, 7)]) refs.push(db.doc(`weeks/${wk}_${id}`));
     const snaps = await t.getAll(...refs);
-    let n = 0;
+    // Today's count and this week's count (Monday through Sunday), shared by the kids on an Anyone chore.
+    const sun = addDays(mon, 6);
+    let n = 0, wn = 0;
     for (const s of snaps) {
       if (!s.exists) continue;
       for (const e of s.data().entries || []) {
-        if (e.choreId === choreId && e.date === L.date && e.status !== "reversed") n++;
+        if (e.choreId !== choreId || e.status === "reversed") continue;
+        if (e.date === L.date) n++;
+        if (e.date >= mon && e.date <= sun) wn++;
       }
     }
+    if (ch.weekLimit > 0 && wn >= ch.weekLimit) throw new HttpsError("failed-precondition", "That one's done for this week.");
     if (n >= (ch.limit || 1)) throw new HttpsError("failed-precondition", "That one's done for today.");
 
     const thisWeek = snaps.find((s) => s.id === `${mon}_${kidId}`);
@@ -545,25 +550,28 @@ async function battleEntries(cfg, b) {
   return out;
 }
 
-// How many of today's limit is left on a chore, as seen by each player.
+// How many more times a chore can be done today (within its daily and weekly limits), as seen by each player.
 async function choreRoom(cfg, ch, playerIds) {
   const L = localParts(tzOf(cfg));
-  const mon = mondayOf(L.date, L.dow);
+  const mon = mondayOf(L.date, L.dow), sun = addDays(mon, 6);
   const kidsIds = cfg.kids.filter((k) => !k.adult).map((k) => k.id);
   const ids = [...new Set([...kidsIds, ...playerIds])];
   const snaps = await db.getAll(...ids.flatMap((id) => [mon, addDays(mon, 7)].map((wk) => db.doc(`weeks/${wk}_${id}`))));
-  const doneBy = {};
+  const doneBy = {}, weekBy = {};
   for (const s of snaps) {
     if (!s.exists) continue;
-    const n = (s.data().entries || []).filter((e) => e.choreId === ch.id && e.date === L.date && e.status !== "reversed").length;
-    doneBy[s.data().kidId] = (doneBy[s.data().kidId] || 0) + n;
+    const id = s.data().kidId;
+    const mine = (s.data().entries || []).filter((e) => e.choreId === ch.id && e.status !== "reversed");
+    doneBy[id] = (doneBy[id] || 0) + mine.filter((e) => e.date === L.date).length;
+    weekBy[id] = (weekBy[id] || 0) + mine.filter((e) => e.date >= mon && e.date <= sun).length;
   }
-  const lim = ch.limit || 1;
+  const lim = ch.limit || 1, wlim = ch.weekLimit > 0 ? ch.weekLimit : Infinity;
   const shared = kidsIds.reduce((s, id) => s + (doneBy[id] || 0), 0);
+  const sharedWeek = kidsIds.reduce((s, id) => s + (weekBy[id] || 0), 0);
   const room = {};
   for (const id of playerIds) {
-    const p = kidOf(cfg, id);
-    room[id] = ch.assign === "pool" && !p.adult ? lim - shared : lim - (doneBy[id] || 0);
+    const pool = ch.assign === "pool" && !kidOf(cfg, id).adult;
+    room[id] = Math.min(pool ? lim - shared : lim - (doneBy[id] || 0), pool ? wlim - sharedWeek : wlim - (weekBy[id] || 0));
   }
   return room;
 }

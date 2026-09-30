@@ -47,6 +47,24 @@ test("the same chore pays the same XP no matter the pay rate", async () => {
   await waitFor(async () => (await xpOf("k1"))?.total === G.XP.chore + G.XP.badge && (await xpOf("k3"))?.total === G.XP.chore + G.XP.badge, { msg: "same XP each" });
 });
 
+test("daily and weekly limits are shared by the kids on an Anyone chore, and a grown-up counts alone", async () => {
+  const chores = [...CONFIG.chores,
+    { id: "once", kind: "family", name: "Vacuum", mult: 1, limit: 1, assign: "pool" },
+    { id: "twice", kind: "family", name: "Mow", mult: 1, limit: 5, weekLimit: 2, assign: "pool" }];
+  await reset({ ...CONFIG, chores });
+  const k1 = await kidClient("k1"), k2 = await kidClient("k2"), dad = await parentClient("dad@test.com");
+  await k1.call("completeChore", { kidId: "k1", choreId: "once" });
+  await rejects(k2.call("completeChore", { kidId: "k2", choreId: "once" }), /done for today/);
+  await k1.call("completeChore", { kidId: "k1", choreId: "twice" });
+  await k2.call("completeChore", { kidId: "k2", choreId: "twice" });
+  await rejects(k1.call("completeChore", { kidId: "k1", choreId: "twice" }), /done for this week/);
+  // A parent logging it for a kid hits the same weekly limit; the grown-up's own lane has its own count.
+  await rejects(dad.call("completeChore", { kidId: "k3", choreId: "twice" }), /done for this week/);
+  await dad.call("completeChore", { kidId: "dad", choreId: "twice" });
+  const w = await db.collection("weeks").where("kidId", "==", "dad").get();
+  assert.equal(w.docs[0].data().entries.filter((e) => e.choreId === "twice").length, 1);
+});
+
 test("chore of the day pays double", async () => {
   await reset({ ...CONFIG, game: { ...CONFIG.game, choreOfDay: { enabled: true, pin: { date: today(), choreId: "c2" } } } });
   const k2 = await kidClient("k2");
