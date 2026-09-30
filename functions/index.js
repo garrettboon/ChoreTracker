@@ -685,7 +685,7 @@ exports.createBattle = onCall(async (req) => {
 
   const params = {};
   if (mode.id === "race") params.n = Math.min(6, Math.max(2, Math.round(Number(data.n) || 3)));
-  if (mode.id === "blitz" || mode.id === "grownups") params.windowMin = [30, 60, 0].includes(Number(data.windowMin)) ? Number(data.windowMin) : 60;
+  if (G.TIMEBOX_MODES.includes(mode.id)) params.windowMin = G.timeLimit(cfg, mode.id, picked.id === "wildcard" ? null : data.windowMin);
   if (mode.id === "raid") params.days = Math.min(3, Math.max(1, Math.round(Number(data.days) || 1)));
   if (mode.id === "babyraid") params.days = 1;
   if (G.TIMED.includes(mode.id) || mode.id === "judge") {
@@ -759,7 +759,7 @@ exports.createBattle = onCall(async (req) => {
   }
   if (mode.solo) {
     b.acceptedAt = b.startAt = now;
-    b.endAt = endOfLocalDay(cfg, now);
+    b.endAt = startWindow(cfg, b, now).endAt;
     b.pb = (xd.pb || {})[params.choreId] ?? null;
   }
   const ref = await db.collection("battles").add(b);
@@ -774,7 +774,7 @@ exports.createBattle = onCall(async (req) => {
 // When an accepted battle starts and ends.
 function startWindow(cfg, b, now) {
   const eod = endOfLocalDay(cfg, now);
-  if ((b.mode === "blitz" || b.mode === "grownups") && b.params.windowMin) return { startAt: now, endAt: Math.min(eod, now + b.params.windowMin * 60000) };
+  if (G.TIMEBOX_MODES.includes(b.mode) && b.params.windowMin) return { startAt: now, endAt: Math.min(eod, now + b.params.windowMin * 60000) };
   if (G.isRaid(b.mode)) return { startAt: now, endAt: eod + ((b.params.days || 1) - 1) * 86400000 };
   if (b.mode === "streakduel") return { startAt: eod, endAt: eod + 14 * 86400000 };
   if (b.mode === "showdown") return { startAt: now, endAt: now + 8 * 86400000 };

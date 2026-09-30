@@ -135,6 +135,8 @@ What levels unlock: new creatures (the first 13 stay free), accessories, screen 
 | Kids vs. Grown-ups | level 15 | Team battle; the kids' team gets a handicap |
 | Wildcard | level 20 | A random mode, often with a twist like "Clean bathroom counts double" |
 
+**Time limits:** when starting a same-day battle (Race, Blitz, Territory, Bingo, Baby Boss Raid, Kids vs. Grown-ups, Time Trial, Ghost Race, Judge's Pick), pick how long it runs: until midnight, 15 minutes to 2 hours, or a custom number of minutes (5 to 240). Parents set each mode's default under Settings > Game.
+
 Younger players get an automatic handicap: their score is multiplied by 8% per year of age difference, up to ×1.5. Adults count as 18. In Bingo the younger player gets free squares instead.
 
 **Time Trial and Ghost Race need a parent's quality check.** When a kid finishes a timed run, the result is only pending. In the **Game** tab a parent marks each run **✓ Done well** or **✗ Not good enough** (you can check each run as soon as it's finished). Only runs done well count, so the fastest run done well wins, and a run that fails the check earns no XP. Unchecked runs become no contest after 48 hours.
@@ -146,6 +148,7 @@ To limit battles, go to **Settings** > Game. You can set quiet hours (no battles
 **More ways to play:**
 
 - **Morning badges:** Early bird for 3 chores before 9 AM in one day, Rise and shine for 5 in one day, and Morning person for 25 chores before 9 AM in all. Like every badge, each pays 10 XP once.
+- **Chore icons:** every chore shows an icon picked from its name (🧹 sweep, 🍽️ dishes, 🧺 laundry…). To change one, open the chore in Settings and tap an icon or type any emoji.
 - **Weekly quests:** everyone gets 3 quests each Monday, like "Do 3 different chores in one day" or "Do a chore before 9 AM". They pay 15 to 25 XP and are checked automatically. You can turn them off in Settings > Game.
 - **Rewards:** in Settings > Game, list real-world rewards by level (for example level 5: pick Friday dinner, again every 5 levels). Kids claim them from their screen, and you approve them and mark them given in the Game tab.
 - **Bounties:** in the Game tab, post a one-off job worth extra XP ("Clean out the garage together, 200 XP"), for anyone or one person. A kid taps "I did it" and you award the XP.

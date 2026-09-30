@@ -76,6 +76,7 @@ function titleOf(id){const lv=xpState(id).level,t=equipped(id).title;const f=G.T
 // A person's creature with its growth stage and accessory.
 function crHtml(id){const cr=creatureFor(id),hat=G.HATS.find(h=>h[0]===equipped(id).hat);return `<span class="cr stage-${G.stageFor(xpState(id).level)}">${cr[1]}${hat?`<i class="hat hat-${hat[0]}" aria-hidden="true">${hat[1]}</i>`:""}</span>`;}
 const game=()=>G.gameCfg(cfg());
+const icon=ch=>`<span class="c-ic" aria-hidden="true">${esc(G.choreIcon(ch))}</span>`;
 const cotdId=()=>G.choreOfDay(cfg().chores,ymd(),cfg());
 const choreXpFor=(kidId,ch)=>G.choreXp(ch,{cotd:cotdId()===ch.id,boost:G.streakBoost(cfg(),streak(kidId))});
 const battleList=()=>Object.entries(S.battles).map(([id,b])=>({id,...b})).sort((a,b)=>b.createdAt-a.createdAt);
@@ -307,11 +308,11 @@ function challengeCards(kidId){let h="";for(const w of openWeeks(kidId))for(cons
   h+=`<section class="card challenge"><h3>Earn back ${money(d.amount)}</h3><p><b>${esc(d.reason)}</b></p>${d.how?`<p>How: ${esc(d.how)}</p>`:""}<p class="hint">When you've done it, ask a parent to mark it earned back. You have until Sunday's cash-out.</p></section>`;return h;}
 function prSection(k,ks,today){const prs=prChores();if(!prs.length)return "";const done=ks.prLog[today]||[],notes=ks.prNotes[today]||{},pn=S.ui.prNote;const s=streak(k.id),boost=G.streakBoost(cfg(),s),fr=xpState(k.id).freezes;
   return `<section class="card"><div class="sec-head"><h2>Every day</h2><span><span class="streak">🔥 ${s} day${s===1?"":"s"} in a row</span>${boost>1?` <span class="pill boost" title="Streak bonus on all XP">×${boost} XP</span>`:""}${fr?` <span class="pill" title="Streak freezes save your streak on a missed day">🧊 ${fr}</span>`:""}</span></div><div class="checks">${prs.map(c=>{const on=done.includes(c.id),asking=pn&&pn.id===c.id,sub=on&&notes[c.id]?notes[c.id]:c.note;
-    return `<button class="check ${on?"on":""}" data-act="toggle-pr" data-id="${c.id}" aria-pressed="${on}" ${asking?"disabled":""}><span class="box">${on?"✓":""}</span><span><b>${esc(c.name)}</b>${sub?`<small>${esc(sub)}</small>`:""}</span></button>${asking?`<div class="confirm"><label>What was it?<input data-bind="prNote.text" maxlength="120" placeholder="Say what you did" value="${esc(pn.text)}"></label><div class="row"><button class="btn small" data-act="save-pr-note" ${String(pn.text||"").trim()?"":"disabled"}>Check it off</button><button class="btn ghost small" data-act="cancel-pr-note">Cancel</button></div></div>`:""}`;}).join("")}</div>
+    return `<button class="check ${on?"on":""}" data-act="toggle-pr" data-id="${c.id}" aria-pressed="${on}" ${asking?"disabled":""}><span class="box">${on?"✓":""}</span><span><b>${icon(c)}${esc(c.name)}</b>${sub?`<small>${esc(sub)}</small>`:""}</span></button>${asking?`<div class="confirm"><label>What was it?<input data-bind="prNote.text" maxlength="120" placeholder="Say what you did" value="${esc(pn.text)}"></label><div class="row"><button class="btn small" data-act="save-pr-note" ${String(pn.text||"").trim()?"":"disabled"}>Check it off</button><button class="btn ghost small" data-act="cancel-pr-note">Cancel</button></div></div>`:""}`;}).join("")}</div>
     <p class="hint">These don't pay money. They're part of taking care of yourself. Finish all of them for +${G.XP.checklist} XP and to keep your streak going.${game().streakMultiplier.enabled?` A ${game().streakMultiplier.minStreak}-day streak makes all your XP count ×${game().streakMultiplier.mult}.`:""}</p></section>`;}
 function choreSection(k,today){const list=famChoresFor(k.id).sort((a,b)=>(a.assign==="pool")-(b.assign==="pool")),cc=S.ui.confirmChore,cot=cotdId();
   return `<section class="card"><div class="sec-head"><h2>Family chores</h2></div>${list.length?list.map(c=>{const L=limitState(k.id,c,today),full=!!L.reason,mine=c.assign===k.id,busy=S.busy["c:"+c.id],asking=cc&&cc.choreId===c.id,ask=needsNote(c);
-    return `<div class="chore ${c.id===cot?"cotd":""}"><div><b>${esc(c.name)}</b><small><span class="tag ${c.assign===k.id?"mine":""}">${c.assign===k.id?"Yours":"Anyone"}</span>${c.id===cot?`<span class="tag star">⭐ Double XP today</span>`:""}</small></div><div class="c-val">+${money(choreValue(k,c))}<small>+${choreXpFor(k.id,c)} XP</small></div><button class="btn small" data-act="do-chore" data-id="${c.id}" ${full||busy||asking?"disabled":""}>${busy?"Saving…":L.reason==="week"?"Done this week":L.reason==="family"?"All done today":L.reason==="person"?(mine?"All done":"Your max today"):"I did it"}</button><small class="c-count">${mine?"":"you "}${L.me} of ${L.lim} today${L.flim?`, family ${L.fam} of ${L.flim} today`:""}${L.wlim?`, family ${L.wk} of ${L.wlim} this week`:""}</small>
+    return `<div class="chore ${c.id===cot?"cotd":""}"><div><b>${icon(c)}${esc(c.name)}</b><small><span class="tag ${c.assign===k.id?"mine":""}">${c.assign===k.id?"Yours":"Anyone"}</span>${c.id===cot?`<span class="tag star">⭐ Double XP today</span>`:""}</small></div><div class="c-val">+${money(choreValue(k,c))}<small>+${choreXpFor(k.id,c)} XP</small></div><button class="btn small" data-act="do-chore" data-id="${c.id}" ${full||busy||asking?"disabled":""}>${busy?"Saving…":L.reason==="week"?"Done this week":L.reason==="family"?"All done today":L.reason==="person"?(mine?"All done":"Your max today"):"I did it"}</button><small class="c-count">${mine?"":"you "}${L.me} of ${L.lim} today${L.flim?`, family ${L.fam} of ${L.flim} today`:""}${L.wlim?`, family ${L.wk} of ${L.wlim} this week`:""}</small>
       ${asking?`<div class="confirm"><b>Did you do "${esc(c.name)}"?</b>${ask?`<label>What was it?<input data-bind="confirmChore.note" maxlength="120" placeholder="Say what you did" value="${esc(cc.note)}"></label>`:""}<div class="row"><button class="btn small" data-act="confirm-chore" ${ask&&!String(cc.note||"").trim()?"disabled":""}>Yes, I did it</button><button class="btn ghost small" data-act="cancel-chore">Not yet</button></div></div>`:""}</div>`;}).join(""):`<p class="empty">No chores set up yet.</p>`}</section>`;}
 function splitEditor(k,ks,w,goals,weekSave){
   if(goals.length<2)return "";
@@ -357,7 +358,7 @@ function badgeSection(kidId){const b=badgeList(kidId),got=b.filter(x=>x[3]),open
   return `<section class="card"><div class="sec-head"><h2>Badges</h2><span class="sub">${got.length} of ${b.length}. +${G.XP.badge} XP each</span></div>
     <div class="badges">${shown.map(tile).join("")}</div>
     <button class="btn ghost small" style="margin-top:10px" data-act="all-badges" aria-expanded="${!!open}">${open?"Show fewer":`Show all ${b.length}`}</button></section>`;}
-function choreLine(e){const rev=e.status==="reversed";return [`<span class="${rev?"struck":""}">${esc(e.name)}${e.detail?`: ${esc(e.detail)}`:""}<br><small>${timeOf(e.t)}${rev?", reversed":""}</small></span>`,`<span class="amt ${rev?"struck":"pos"}">+${money(e.amount)}</span>`];}
+function choreLine(e){const rev=e.status==="reversed";return [`<span class="${rev?"struck":""}">${icon(choreById(e.choreId)||{name:e.name,kind:"family"})}${esc(e.name)}${e.detail?`: ${esc(e.detail)}`:""}<br><small>${timeOf(e.t)}${rev?", reversed":""}</small></span>`,`<span class="amt ${rev?"struck":"pos"}">+${money(e.amount)}</span>`];}
 function dedLine(d){const st={active:"can still earn back",redeemed:"earned back",final:"final"}[d.status]||d.status;return [`<span class="${d.status==="redeemed"?"struck":""}">${esc(d.reason)}<br><small>${timeOf(d.t)}, ${st}</small></span>`,`<span class="amt ${d.status==="redeemed"?"struck":"neg"}">−${money(d.amount)}</span>`];}
 function activitySection(w){const list=[...w.entries.map(e=>({t:e.t,l:choreLine(e)})),...w.deductions.map(d=>({t:d.t,l:dedLine(d)}))].sort((a,b)=>b.t-a.t).slice(0,10);
   return `<section class="card"><div class="sec-head"><h2>This week</h2></div>${list.length?`<ul class="feed">${list.map(x=>`<li>${x.l.join("")}</li>`).join("")}</ul>`:`<p class="empty">Nothing yet. Pick a chore and get your creature moving.</p>`}</section>`;}
@@ -387,10 +388,11 @@ function freezeNotice(id){const n=xpState(id).notice;if(!n||n.type!=="freeze"||D
 const bName=(b,id)=>esc((kidCfg(id)||{}).name||(b.names||{})[id]||"Someone");
 const TEAM=["raid","babyraid","grownups"];
 function modeParams(b){const p=b.params||{};const tw=b.twist?`. ${esc(b.twist.text)}`:"";
-  const t={race:`First to ${p.n} chores`,blitz:p.windowMin?`${p.windowMin}-minute blitz`:"Until midnight",grownups:p.windowMin?`${p.windowMin} minutes`:"Until midnight",
+  const t={race:`First to ${p.n} chores`,blitz:p.windowMin?`${G.timeText(p.windowMin)} blitz`:"Until midnight",grownups:p.windowMin?G.timeText(p.windowMin):"Until midnight",
     territory:"Most Anyone chores by midnight",bingo:"First to a line",streakduel:"Don't miss a day",showdown:"Best share of weekly goal",
     raid:`${p.bossEmoji||"🐉"} ${esc(p.bossName||"Boss")}, ${p.days||1} day${(p.days||1)>1?"s":""}`,babyraid:`${p.bossEmoji||"🐣"} ${esc(p.bossName||"Baby boss")}, today`}[b.mode];
-  return (t||(p.choreName?esc(p.choreName):""))+tw;}
+  const time=p.windowMin&&!["blitz","grownups"].includes(b.mode)?`, ${G.timeText(p.windowMin)}`:"";
+  return (t||(p.choreName?`${esc(G.choreIcon(choreById(p.choreId)||{name:p.choreName}))} ${esc(p.choreName)}`:""))+time+tw;}
 function fmtEnd(t){const d=new Date(t);return d.getHours()===0&&d.getMinutes()===0?(d-Date.now()>26*3600e3?"at midnight "+d.toLocaleDateString(undefined,{weekday:"short"}):"at midnight"):"at "+d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});}
 function scoreHtml(b,id){
   if(G.TIMED.includes(b.mode)){const a=(b.attempts||{})[id],q=(b.quality||{})[id];return !a?"–":a.void?"✗":a.ms!=null?fmtMs(a.ms)+(q===true?` <small title="A parent checked it">✓</small>`:q===false?` <small title="Didn't pass the parent's check">✗</small>`:""):`<span class="tt-clock" data-start="${a.startAt}"></span>`;}
@@ -410,7 +412,7 @@ function resultText(b,me){const r=b.result||{};const who=id=>id===me?"You":bName
   if(r.winnerSide){const mine=G.sideOf(b,me)===r.winnerSide;return mine?`Your team won! 🏆 ${esc(r.reason||"")}`:`${b.teams[r.winnerSide].map(p=>bName(b,p)).join(" and ")} won. ${esc(r.reason||"")}`;}
   return r.winner===me?`You won! 🏆 ${esc(r.reason||"")}`:`${who(r.winner)} won. ${esc(r.reason||"")}`;}
 function bingoGrid(b,me){const p=b.params;const list=G.battleEntries(entriesFor(me),b.startAt,b.endAt);const marks=G.bingoMarks(b,list,me);
-  return `<div class="bingo" role="grid" aria-label="Your bingo card">${p.card.map((c,i)=>`<div class="sq ${marks[i]?"on":""}" role="gridcell">${marks[i]&&((p.free||{})[me]||[]).includes(i)?"FREE":esc((p.cardNames||[])[i]||c)}</div>`).join("")}</div>`;}
+  return `<div class="bingo" role="grid" aria-label="Your bingo card">${p.card.map((c,i)=>`<div class="sq ${marks[i]?"on":""}" role="gridcell">${marks[i]&&((p.free||{})[me]||[]).includes(i)?"FREE":`<span class="sq-ic">${esc(G.choreIcon(choreById(c)||{name:(p.cardNames||[])[i]}))}</span>${esc((p.cardNames||[])[i]||c)}`}</div>`).join("")}</div>`;}
 // This person's chore entries from the weeks on screen.
 function entriesFor(id){return Object.values(S.weeks).filter(w=>w.kidId===id).flatMap(w=>w.entries||[]);}
 // Hour of the day in the family's time zone, as the server counts it (24 when an entry has no time).
@@ -464,11 +466,13 @@ function battleBuilder(k,bb){const bc=game().battles,lv=xpState(k.id).level,mode
     who=(mine.length?pick(mine,"team",true,"Your team (optional)"):"")+pick(theirs,"opponents",true,k.adult?"Kids to battle":"Grown-ups to battle");}
   else if(mode&&!mode.solo)who=pick(mode.kidsOnly?others.filter(p=>!p.adult):others,"opponent",false,"Who do you challenge?");
   let params="";
-  if(bb.mode==="race")params=`<label>First to<select data-bind="bb.n">${[2,3,4,5,6].map(n=>`<option value="${n}" ${Number(bb.n)===n?"selected":""}>${n} chores</option>`).join("")}</select></label>`;
-  if(bb.mode==="blitz"||bb.mode==="grownups")params=`<label>How long<select data-bind="bb.windowMin">${[[30,"30 minutes"],[60,"1 hour"],[0,"Until midnight"]].map(([v,l])=>`<option value="${v}" ${Number(bb.windowMin)===v?"selected":""}>${l}</option>`).join("")}</select></label>`;
-  if(bb.mode==="raid")params=`<label>How many days<select data-bind="bb.days">${[1,2,3].map(n=>`<option value="${n}" ${Number(bb.days)===n?"selected":""}>${n} day${n>1?"s":""}</option>`).join("")}</select></label>`;
+  if(bb.mode==="race")params+=`<label>First to<select data-bind="bb.n">${[2,3,4,5,6].map(n=>`<option value="${n}" ${Number(bb.n)===n?"selected":""}>${n} chores</option>`).join("")}</select></label>`;
+  if(G.TIMEBOX_MODES.includes(bb.mode)){const cur=String(bb.windowMin),custom=cur==="custom"||!G.TIME_CHOICES.map(String).includes(cur);
+    params+=`<label>Time limit<select data-bind="bb.windowMin">${G.TIME_CHOICES.map(v=>`<option value="${v}" ${!custom&&Number(cur)===v?"selected":""}>${v?G.timeText(v):"Until midnight"}</option>`).join("")}<option value="custom" ${custom?"selected":""}>Custom…</option></select></label>
+    ${custom?`<label style="flex:0 1 130px">Minutes<input type="number" min="${G.MIN_TIME}" max="${G.MAX_TIME}" step="5" data-bind="bb.customMin" value="${esc(bb.customMin||(cur!=="custom"?cur:30))}"></label>`:""}`;}
+  if(bb.mode==="raid")params+=`<label>How many days<select data-bind="bb.days">${[1,2,3].map(n=>`<option value="${n}" ${Number(bb.days)===n?"selected":""}>${n} day${n>1?"s":""}</option>`).join("")}</select></label>`;
   if(mode&&(G.TIMED.includes(mode.id)||mode.id==="judge")){const pb=xpState(k.id).pb;
-    params=`<label>Chore<select data-bind="bb.choreId">${bbChores(k.id,mode.id).map(c=>`<option value="${c.id}" ${bb.choreId===c.id?"selected":""}>${esc(c.name)}${mode.id==="ghost"&&pb[c.id]!=null?` (your best ${fmtMs(pb[c.id])})`:""}</option>`).join("")}</select></label>`;}
+    params+=`<label>Chore<select data-bind="bb.choreId">${bbChores(k.id,mode.id).map(c=>`<option value="${c.id}" ${bb.choreId===c.id?"selected":""}>${esc(c.name)}${mode.id==="ghost"&&pb[c.id]!=null?` (your best ${fmtMs(pb[c.id])})`:""}</option>`).join("")}</select></label>`;}
   const opp=mode&&!mode.solo&&!mode.team?kidCfg(bb.opponent):null;let hc="";
   if(opp&&mode.id!=="wildcard"){const h=G.handicaps(k,opp,cfg());const y=h[k.id]>1?k:h[opp.id]>1?opp:null;if(y)hc=`<p class="hint">${y.id===k.id?"You're":esc(y.name)+" is"} younger, so ${y.id===k.id?"your":"their"} score counts ×${h[y.id]}${mode.id==="bingo"?" (in Bingo: free squares instead)":""}.</p>`;}
   const ready=mode&&(mode.solo||(mode.id==="raid"?(bb.team||[]).length>0&&(bb.team||[]).length<=3:mode.id==="babyraid"?(bb.team||[]).length<=3:mode.id==="grownups"?(bb.opponents||[]).length>0:!!opp));
@@ -523,7 +527,7 @@ function familyBar(compact){const g=S.game.familyGoal;const fp=G.familyProgress(
 function viewDisplay(){
   const d=(7-new Date().getDay())%7;const cash=d===0?"Cash-out tonight":`Cash-out in ${d} day${d===1?"":"s"}`;
   const all=[];for(const w of Object.values(S.weeks))for(const e of w.entries||[])if(e.status!=="reversed")all.push({...e,kidId:w.kidId});
-  const recent=all.sort((a,b)=>b.t-a.t).slice(0,5).map(e=>{const k=kidCfg(e.kidId);return k?`<b>${esc(k.name)}</b> ${esc(e.name.toLowerCase())}${e.detail?` (${esc(e.detail)})`:""} +${money(e.amount)}`:"";}).filter(Boolean);
+  const recent=all.sort((a,b)=>b.t-a.t).slice(0,5).map(e=>{const k=kidCfg(e.kidId);return k?`<b>${esc(k.name)}</b> ${esc(G.choreIcon(choreById(e.choreId)||{name:e.name}))} ${esc(e.name.toLowerCase())}${e.detail?` (${esc(e.detail)})`:""} +${money(e.amount)}`:"";}).filter(Boolean);
   const ups=cfg().kids.map(k=>({k,lu:xpState(k.id).levelUp})).filter(x=>x.lu&&Date.now()-x.lu.at<24*3600e3).map(x=>`⭐ <b>${esc(x.k.name)}</b> reached level ${x.lu.level}!`);
   const cot=choreById(cotdId()||"");
   return `<div class="board"><header class="board-head"><h1>Boon Chore Tracker</h1><div class="when">${new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"})}. <b>${cash}</b>${cot?`<span class="cotd-chip">⭐ Double XP: ${esc(cot.name)}</span>`:""}</div></header>
@@ -633,7 +637,7 @@ function fixDayCard(){const prs=prChores();if(!prs.length)return "";
   return `<section class="card"><div class="sec-head"><h2>Fix a missed day</h2><span class="sub">🔥 ${esc(kidCfg(f.kid).name)}: ${s} day${s===1?"":"s"} in a row</span></div>
     <div class="row"><label>Who<select data-bind="fix.kid">${kidsSorted().map(k=>`<option value="${k.id}" ${k.id===f.kid?"selected":""}>${esc(k.name)}</option>`).join("")}</select></label>
     <label>Day<select data-bind="fix.date">${dates.map(d=>`<option value="${d}" ${d===f.date?"selected":""}>${label(d)}</option>`).join("")}</select></label></div>
-    <div class="checks" style="margin-top:10px">${prs.map(c=>{const on=done.includes(c.id);return `<button class="check ${on?"on":""}" data-act="fix-pr-toggle" data-id="${c.id}" aria-pressed="${on}"><span class="box">${on?"✓":""}</span><span><b>${esc(c.name)}</b></span></button>`;}).join("")}</div>
+    <div class="checks" style="margin-top:10px">${prs.map(c=>{const on=done.includes(c.id);return `<button class="check ${on?"on":""}" data-act="fix-pr-toggle" data-id="${c.id}" aria-pressed="${on}"><span class="box">${on?"✓":""}</span><span><b>${icon(c)}${esc(c.name)}</b></span></button>`;}).join("")}</div>
     <p class="hint">${full?"✅ That day counts toward the streak.":"Check off what was done that day. When every item is checked, the day counts toward the streak again."} Streak freezes used on a day you fix come back.</p></section>`;}
 // Check a daily item on or off for a past day, the same way the kid screen does for today.
 function setPrDay(kid,id,on,date){const ks=kidState(kid),done=ks.prLog[date]||[];
@@ -654,7 +658,7 @@ function pActivity(){
   all.sort((a,b)=>b.e.t-a.e.t);
   return `<section class="card"><div class="sec-head"><h2>Log a chore</h2></div><p class="hint" style="margin-top:0">For anyone without their tablet handy.</p>
     <div class="row"><label>Who<select data-bind="log.kid">${kidsSorted().map(k=>`<option value="${k.id}" ${k.id===lk.id?"selected":""}>${esc(k.name)}</option>`).join("")}</select></label>
-    <label>Chore<select data-bind="log.chore">${lchores.map(c=>`<option value="${c.id}" ${c.id===L.chore?"selected":""}>${esc(c.name)} (+${money(choreValue(lk,c))})</option>`).join("")}</select></label>${needsNote(choreById(L.chore))?`<label>What was it<input data-bind="log.note" maxlength="120" placeholder="What the chore was" value="${esc(L.note||"")}"></label>`:""}
+    <label>Chore<select data-bind="log.chore">${lchores.map(c=>`<option value="${c.id}" ${c.id===L.chore?"selected":""}>${esc(G.choreIcon(c))} ${esc(c.name)} (+${money(choreValue(lk,c))})</option>`).join("")}</select></label>${needsNote(choreById(L.chore))?`<label>What was it<input data-bind="log.note" maxlength="120" placeholder="What the chore was" value="${esc(L.note||"")}"></label>`:""}
     <button class="btn" style="flex:0 0 auto" data-act="log-chore" ${S.busy.log?"disabled":""}>${S.busy.log?"Saving…":"Log it"}</button></div></section>
   <section class="card"><div class="sec-head"><h2>Missed yesterday</h2></div>${flags||`<p class="empty">Nothing missed yesterday.</p>`}<p class="hint">Nothing is deducted automatically. You decide. If a daily item was really done but not checked off, tap It was done to fix the streak.</p></section>
   ${fixDayCard()}
@@ -794,7 +798,8 @@ function gameSettings(d){const g=d.game,b=g.battles;const chk=(path,on,label)=>`
     <h3 style="margin-top:14px">Battle modes</h3><p class="hint" style="margin:2px 0 4px">Tick a mode to allow it. Tap one to see how it works.</p>
     <div class="guide">${gRow("m:all","How battles work","Challenges, handicaps, XP, confirming, and what carries over",battlesGeneral(b))}${G.MODES.filter(m=>!m.soon).map(m=>{const t=modeGuide()[m.id]||{};const ml=(b.modeLimits||{})[m.id]||{};const limTxt=[ml.day>0?`${ml.day} a day`:"",ml.week>0?`${ml.week} a week`:""].filter(Boolean).join(", ");
       return gRow("m:"+m.id,`${m.emoji} ${esc(m.name)} <span class="pill">Level ${m.level}</span>${limTxt?` <span class="pill">Max ${limTxt}</span>`:""}`,esc(m.desc),`<p><b>How it works.</b> ${t.how||""}</p><p><b>XP.</b> ${t.xp||""}</p>${t.notes?`<p><b>Good to know.</b> ${t.notes}</p>`:""}
-      <div class="row" style="margin-top:8px"><label>Max per person per day<input type="number" min="0" step="1" data-type="num" data-bind="draft.game.battles.modeLimits.${m.id}.day" value="${esc(ml.day||"")}" placeholder="No limit"></label><label>Max per person per week<input type="number" min="0" step="1" data-type="num" data-bind="draft.game.battles.modeLimits.${m.id}.week" value="${esc(ml.week||"")}" placeholder="No limit"></label></div>`,`<label class="g-on"><input type="checkbox" data-act="toggle-mode" data-id="${m.id}" ${(b.modesOff||[]).includes(m.id)?"":"checked"} aria-label="Allow ${esc(m.name)}" title="Allow ${esc(m.name)}"></label>`);}).join("")}</div>
+      <div class="row" style="margin-top:8px"><label>Max per person per day<input type="number" min="0" step="1" data-type="num" data-bind="draft.game.battles.modeLimits.${m.id}.day" value="${esc(ml.day||"")}" placeholder="No limit"></label><label>Max per person per week<input type="number" min="0" step="1" data-type="num" data-bind="draft.game.battles.modeLimits.${m.id}.week" value="${esc(ml.week||"")}" placeholder="No limit"></label>
+      ${G.TIMEBOX_MODES.includes(m.id)?(()=>{const dv=G.timeLimit({game:{battles:b}},m.id),opts=[...new Set([...G.TIME_CHOICES,dv])].sort((x,y)=>(x||1e9)-(y||1e9));return `<label>Default time limit<select data-bind="draft.game.battles.modeTimes.${m.id}">${opts.map(v=>`<option value="${v}" ${v===dv?"selected":""}>${v?G.timeText(v):"Until midnight"}</option>`).join("")}</select></label>`;})():""}</div>`,`<label class="g-on"><input type="checkbox" data-act="toggle-mode" data-id="${m.id}" ${(b.modesOff||[]).includes(m.id)?"":"checked"} aria-label="Allow ${esc(m.name)}" title="Allow ${esc(m.name)}"></label>`);}).join("")}</div>
     <div class="grid-2" style="margin-top:12px">
     <label>No battles from<input type="time" data-bind="draft.game.battles.quietStart" value="${esc(b.quietStart)}"></label>
     <label>Until<input type="time" data-bind="draft.game.battles.quietEnd" value="${esc(b.quietEnd)}"></label>
@@ -819,13 +824,15 @@ function pSettings(){
   // One compact row per chore; tap it to open the full editor underneath (one at a time).
   const who=id=>id==="pool"?"Anyone":((d.kids.find(k=>k.id===id)||{}).name||"Someone");
   const facts=c=>(c.kind==="pr"?[c.note||"",c.ask?"asks what it was":""]:[`pays ×${c.mult||1}`,`each ${c.limit||1} a day`,c.familyLimit>0?`family ${c.familyLimit} a day`:"",c.weekLimit>0?`family ${c.weekLimit} a week`:"",who(c.assign),c.ask?"asks what it was":""]).filter(Boolean).map(esc).join(" · ");
-  const choreRow=(c,i)=>{const ed=S.ui.editChore===c.id;return `<div class="set-row ${ed?"editing":""}" data-drag="chore" data-kind="${c.kind}" data-i="${i}"><div class="set-head"><span class="drag-handle" data-handle role="button" aria-label="Drag to reorder" title="Drag to reorder">⠿</span><button type="button" class="set-open" data-act="edit-chore" data-id="${c.id}" aria-expanded="${ed}"><span><b>${esc(String(c.name||"").trim())||"(no name)"}</b><small>${facts(c)}</small></span><span class="chev" aria-hidden="true">›</span></button></div>
+  const choreRow=(c,i)=>{const ed=S.ui.editChore===c.id;return `<div class="set-row ${ed?"editing":""}" data-drag="chore" data-kind="${c.kind}" data-i="${i}"><div class="set-head"><span class="drag-handle" data-handle role="button" aria-label="Drag to reorder" title="Drag to reorder">⠿</span><button type="button" class="set-open" data-act="edit-chore" data-id="${c.id}" aria-expanded="${ed}"><span><b>${icon(c)}${esc(String(c.name||"").trim())||"(no name)"}</b><small>${facts(c)}</small></span><span class="chev" aria-hidden="true">›</span></button></div>
     ${ed?`<div class="set-edit"><div class="row"><label>${c.kind==="pr"?"Item":"Chore"}<input data-bind="draft.chores.${i}.name" value="${esc(c.name)}"></label><label class="chk"><input type="checkbox" data-bind="draft.chores.${i}.ask" ${c.ask?"checked":""}>Ask what it was</label>
     ${c.kind==="pr"?`<label>Details<input data-bind="draft.chores.${i}.note" value="${esc(c.note||"")}"></label>`:`<label>Pays (× base rate)<input type="number" step="0.5" min="0" data-type="num" data-bind="draft.chores.${i}.mult" value="${esc(c.mult)}"></label>
     <label>Max per person per day<input type="number" step="1" min="1" data-type="num" data-bind="draft.chores.${i}.limit" value="${esc(c.limit)}"></label>
     <label>Max per family per day<input type="number" step="1" min="0" data-type="num" data-bind="draft.chores.${i}.familyLimit" value="${c.familyLimit>0?esc(c.familyLimit):""}" placeholder="No limit"></label>
     <label>Max per family per week<input type="number" step="1" min="0" data-type="num" data-bind="draft.chores.${i}.weekLimit" value="${c.weekLimit>0?esc(c.weekLimit):""}" placeholder="No limit"></label>
     <label>Who<select data-bind="draft.chores.${i}.assign"><option value="pool" ${c.assign==="pool"?"selected":""}>Anyone</option>${d.kids.map(k=>`<option value="${k.id}" ${c.assign===k.id?"selected":""}>${esc(k.name)}</option>`).join("")}</select></label>`}</div>
+    <div class="icon-pick"><span class="sub">Icon</span>${["",...G.CHORE_ICON_CHOICES].map(e=>{const on=(c.icon||"")===e;return `<button type="button" class="${on?"on":""}" data-act="chore-icon" data-i="${i}" data-icon="${e}" aria-pressed="${on}" title="${e?"":"Pick from the name"}">${e||`Auto ${esc(G.choreIcon({...c,icon:""}))}`}</button>`;}).join("")}
+      <label style="flex:0 1 120px">Or type one<input maxlength="8" data-bind="draft.chores.${i}.icon" value="${esc(c.icon||"")}" placeholder="🙂"></label></div>
     <div class="row set-foot"><button class="btn small" data-act="edit-chore" data-id="${c.id}">Done</button><button class="btn ghost small" data-act="rm-chore" data-i="${i}">Remove</button></div></div>`:""}</div>`;};
   return pDevices()+`<section class="card"><div class="sec-head"><h2>People</h2><button class="btn ghost small" data-act="add-kid">Add person</button></div>
     <div class="people"><div class="p-head"><span>Name</span><span title="A grown-up gets their own lane and tab instead of a place in the kid list">Adult</span><span>Age</span><span title="What one chore pays before its multiplier">Rate $</span><span>Reminders</span><span></span></div>
@@ -916,18 +923,19 @@ async function handleAct(act,ds){
     else guard(setDoc(doc(db,"prefs",kid),{equipped:{[ds.slot]:ds.id}},{merge:true}));break;
   case "lu-ok": try{localStorage.setItem(seenKey(S.ui.levelUp.kid),String(S.ui.levelUp.at));}catch(e){} S.ui.levelUp=null;break;
   case "freeze-ok": try{localStorage.setItem("boon.freezeSeen."+kid,String(ds.at));}catch(e){} break;
-  case "bb-open":{const pool=bbChores(kid,"timetrial")[0];S.ui.bb={kid,mode:"race",opponent:"",team:[],opponents:[],n:"3",windowMin:"60",days:"1",choreId:pool?pool.id:""};break;}
+  case "bb-open":{const pool=bbChores(kid,"timetrial")[0];S.ui.bb={kid,mode:"race",opponent:"",team:[],opponents:[],n:"3",windowMin:String(G.timeLimit(cfg(),"race")),customMin:"",days:"1",choreId:pool?pool.id:""};break;}
   case "bb-pick":{const bb=S.ui.bb;if(ds.multi){const l=new Set(bb[ds.key]||[]);if(l.has(ds.id))l.delete(ds.id);else l.add(ds.id);bb[ds.key]=[...l];}else bb[ds.key]=ds.id;break;}
   case "bb-close": S.ui.bb=null;break;
-  case "bb-mode":{const bb=S.ui.bb;bb.mode=ds.id;if((G.TIMED.includes(ds.id)||ds.id==="judge")&&!bbChores(kid,ds.id).some(c=>c.id===bb.choreId)){const c=bbChores(kid,ds.id)[0];bb.choreId=c?c.id:"";}break;}
+  case "bb-mode":{const bb=S.ui.bb;bb.mode=ds.id;bb.windowMin=String(G.timeLimit(cfg(),ds.id));bb.customMin="";if((G.TIMED.includes(ds.id)||ds.id==="judge")&&!bbChores(kid,ds.id).some(c=>c.id===bb.choreId)){const c=bbChores(kid,ds.id)[0];bb.choreId=c?c.id:"";}break;}
 
-  case "bb-send":{const bb=S.ui.bb,m=G.modeById(bb.mode);const r=await bcall("createBattle",{mode:bb.mode,opponent:bb.opponent,team:bb.team,opponents:bb.opponents,n:Number(bb.n),windowMin:Number(bb.windowMin),days:Number(bb.days),choreId:bb.choreId});
+  case "bb-send":{const bb=S.ui.bb,m=G.modeById(bb.mode);const r=await bcall("createBattle",{mode:bb.mode,opponent:bb.opponent,team:bb.team,opponents:bb.opponents,n:Number(bb.n),windowMin:bb.windowMin==="custom"||!G.TIME_CHOICES.map(String).includes(String(bb.windowMin))?Number(bb.customMin||bb.windowMin):Number(bb.windowMin),days:Number(bb.days),choreId:bb.choreId});
     if(r){S.ui.bb=null;const got=G.modeById(r.mode)||m;toast(m.solo?"Ghost race is on. Start when you're ready!":m.id==="wildcard"?`🃏 It's ${got.name}!${r.twist?" "+r.twist.text+".":""} Challenge sent.`:G.isRaid(m.id)?((bb.team||[]).length?"Team invite sent!":"Baby boss raid is on. Go do chores!"):"Challenge sent!");}break;}
   case "b-accept":{const r=await bcall("respondBattle",{id:ds.id,accept:true});if(r){confetti(60);chime(false);toast(r.started?"Battle on! Go go go!":"You're in! Waiting for the others.");}break;}
   case "b-decline": await bcall("respondBattle",{id:ds.id,accept:false});break;
   case "b-cancel": await bcall("cancelBattle",{id:ds.id},"Called off.");break;
   case "b-start": await bcall("startAttempt",{id:ds.id},"Timer started. Go!");break;
   case "b-finish":{const r=await bcall("finishAttempt",{id:ds.id});if(r){confetti(80);chime(true);toast(r.ms!=null?`Done in ${fmtMs(r.ms)}! Chore logged.`:"Turned in! Chore logged.");}break;}
+  case "chore-icon": S.ui.draft.chores[Number(ds.i)].icon=ds.icon;break;
   case "fix-pr": setPrDay(ds.kid,ds.id,true,ds.date);return;
   case "fix-pr-toggle":{const f=S.ui.fix;const on=(kidState(f.kid).prLog[f.date]||[]).includes(ds.id);setPrDay(f.kid,ds.id,!on,f.date);return;}
   case "p-check": await bcall("checkRun",{id:ds.id,player:ds.player,ok:!!ds.ok,as:null},ds.ok?"Marked done well.":"Marked not good enough.");break;
@@ -1037,10 +1045,11 @@ async function handleAct(act,ds){
     const b=d.game.battles;if(b.handicapPct!=null){b.handicapPerYear=Math.max(0,Number(b.handicapPct)||0)/100;delete b.handicapPct;}
     b.handicapMax=Math.max(1,Number(b.handicapMax)||1);b.dailyCap=Math.max(1,Math.round(Number(b.dailyCap)||1));b.weeklyCap=Math.max(0,Math.round(Number(b.weeklyCap)||0));
     const ml={};for(const [id,v] of Object.entries(b.modeLimits||{})){const day=Math.max(0,Math.round(Number(v&&v.day)||0)),week=Math.max(0,Math.round(Number(v&&v.week)||0));if(day||week)ml[id]={day,week};}b.modeLimits=ml;
+    const mt={};for(const [id,v] of Object.entries(b.modeTimes||{})){const n=Math.round(Number(v));if(n===0||(n>=G.MIN_TIME&&n<=G.MAX_TIME))mt[id]=n;}b.modeTimes=mt;
     for(const t of ["quietStart","quietEnd"])if(!/^\d{2}:\d{2}$/.test(b[t]||""))b[t]=G.GAME_DEFAULTS.battles[t];
     d.game.rewards=d.game.rewards.map(r=>({id:r.id||uid(),level:Math.min(30,Math.max(1,Math.round(Number(r.level)||1))),name:String(r.name||"").trim(),repeat:Math.max(0,Math.round(Number(r.repeat)||0))})).filter(r=>r.name);
     const mp=d.game.moneyPerks;mp.enabled=!!mp.enabled;mp.everyLevels=Math.max(1,Math.round(Number(mp.everyLevels)||5));mp.amount=Math.max(0,r2(mp.amount));
-    d.chores.forEach(c=>{c.ask=!!c.ask;if(c.kind==="family"){c.mult=Number(c.mult)||1;c.limit=Math.max(1,Math.round(Number(c.limit)||1));c.familyLimit=Math.max(0,Math.round(Number(c.familyLimit)||0));c.weekLimit=Math.max(0,Math.round(Number(c.weekLimit)||0));if(c.assign!=="pool"&&!d.kids.some(k=>k.id===c.assign))c.assign="pool";}});
+    d.chores.forEach(c=>{c.ask=!!c.ask;c.icon=String(c.icon||"").trim().slice(0,8);if(!c.icon)delete c.icon;if(c.kind==="family"){c.mult=Number(c.mult)||1;c.limit=Math.max(1,Math.round(Number(c.limit)||1));c.familyLimit=Math.max(0,Math.round(Number(c.familyLimit)||0));c.weekLimit=Math.max(0,Math.round(Number(c.weekLimit)||0));if(c.assign!=="pool"&&!d.kids.some(k=>k.id===c.assign))c.assign="pool";}});
     startDraft(d);guard(setDoc(doc(db,"app/config"),d),"Settings saved.");break;}
   }
   render();

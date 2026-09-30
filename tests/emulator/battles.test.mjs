@@ -184,3 +184,23 @@ test("per-mode and weekly battle limits", async () => {
   await rejects(k1.call("createBattle", { mode: "ghost", choreId: "c2" }), /done 3 battles this week/);
   await k2.call("createBattle", { mode: "ghost", choreId: "c2" }).catch((e) => { throw new Error("k2 has room: " + e.message); });
 });
+
+test("a custom time limit ends the battle early", async () => {
+  await reset({ ...CONFIG, game: { ...CONFIG.game, battles: { ...CONFIG.game.battles, modeTimes: { race: 20 } } } });
+  const k1 = await kidClient("k1"), k2 = await kidClient("k2"), parent = await parentClient();
+  const d = await k1.call("createBattle", { mode: "race", opponent: "k2" });
+  assert.equal((await battle(d.id)).params.windowMin, 20, "parent's default for the mode");
+  await k1.call("cancelBattle", { id: d.id });
+  const { id } = await k1.call("createBattle", { mode: "race", opponent: "k2", n: 5, windowMin: 30 });
+  await k2.call("respondBattle", { id, accept: true });
+  let b = await battle(id);
+  assert.equal(b.params.windowMin, 30);
+  assert.ok(Math.abs(b.endAt - b.startAt - Math.min(30 * 60000, b.endAt - b.startAt)) < 1000 && b.endAt - b.startAt <= 30 * 60000 + 1000, "ends within 30 minutes");
+  await k1.call("completeChore", { kidId: "k1", choreId: "c1" });
+  await waitFor(async () => (await battle(id)).scores?.k1?.raw === 1, { msg: "score" });
+  await parent.call("testHooks", { run: "tick", now: b.endAt + 1000 });
+  b = await battle(id);
+  assert.equal(b.status, "confirming");
+  assert.equal(b.result.winner, "k1");
+  await quiet("xp/k1");
+});

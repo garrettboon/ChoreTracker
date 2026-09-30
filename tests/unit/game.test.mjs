@@ -365,3 +365,36 @@ test("battle limits: per person, per day and week, overall and per mode", () => 
   assert.equal(G.battleLimitText({ scope: "day", all: true, n: 3 }), "You've done 3 battles today. That's the limit.");
   assert.equal(G.battleLimitText({ scope: "week", mode: "race", n: 1 }, "Maggie"), "Maggie has done 1 Race battle this week. That's the limit.");
 });
+
+test("battle time limits: challenger's pick, else the parent's default, within bounds", () => {
+  assert.equal(G.timeLimit({}, "race"), 0, "race runs until midnight by default");
+  assert.equal(G.timeLimit({}, "blitz"), 60);
+  assert.equal(G.timeLimit({}, "babyraid", 30), 30);
+  assert.equal(G.timeLimit({}, "babyraid", "0"), 0);
+  assert.equal(G.timeLimit({}, "race", 3), 0, "too short falls back to the default");
+  assert.equal(G.timeLimit({}, "race", 999), 0, "too long falls back to the default");
+  const cfg = { game: { battles: { modeTimes: { babyraid: 45, race: 20 } } } };
+  assert.equal(G.timeLimit(cfg, "babyraid"), 45);
+  assert.equal(G.timeLimit(cfg, "babyraid", 15), 15);
+  assert.equal(G.timeLimit(cfg, "streakduel", 30), 0, "multi-day modes have no time limit");
+  assert.equal(G.timeText(0), "until midnight");
+  assert.equal(G.timeText(30), "30 minutes");
+  assert.equal(G.timeText(60), "1 hour");
+  assert.equal(G.timeText(90), "1 h 30 min");
+  assert.equal(G.timeText(120), "2 hours");
+});
+
+test("chore icons: a parent's pick, else one from the name", () => {
+  assert.equal(G.choreIcon({ name: "Sweep a room" }), "🧹");
+  assert.equal(G.choreIcon({ name: "Wash 20 dishes" }), "🍽️");
+  assert.equal(G.choreIcon({ name: "Empty dish drainer" }), "🍽️");
+  assert.equal(G.choreIcon({ name: "Do laundry" }), "🧺");
+  assert.equal(G.choreIcon({ name: "Clean bathroom" }), "🚽");
+  assert.equal(G.choreIcon({ name: "Brush teeth at night" }), "🪥");
+  assert.equal(G.choreIcon({ name: "Parent choice" }), "🎲");
+  assert.equal(G.choreIcon({ name: "Clean up 20 things in a room" }), "🧼");
+  assert.equal(G.choreIcon({ name: "Mystery job" }), "✨");
+  assert.equal(G.choreIcon({ name: "Mystery item", kind: "pr" }), "✅");
+  assert.equal(G.choreIcon({ name: "Sweep a room", icon: "🦄" }), "🦄", "a parent's pick wins");
+  assert.equal(new Set(G.CHORE_ICON_CHOICES).size, G.CHORE_ICON_CHOICES.length);
+});

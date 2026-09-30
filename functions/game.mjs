@@ -43,6 +43,7 @@ export const GAME_DEFAULTS = {
     enabled: true, modesOff: [], quietStart: "20:30", quietEnd: "07:00", dailyCap: 3,
     weeklyCap: 0,     // battles per person per week, all modes together (0 = no limit)
     modeLimits: {},   // { modeId: { day, week } } per person (0 or missing = no limit)
+    modeTimes: {},    // { modeId: minutes } default time limit in the challenge screen (0 = until midnight)
     handicapPerYear: 0.08, handicapMax: 1.5, adultAge: 18,
   },
 };
@@ -111,6 +112,20 @@ export const MODES = [
 export const modeById = (id) => MODES.find((m) => m.id === id);
 export const TIMED = ["timetrial", "ghost"];
 export const isRaid = (mode) => mode === "raid" || mode === "babyraid";
+// Same-day modes a challenger can put a time limit on (minutes; 0 = until midnight).
+export const TIMEBOX_MODES = ["race", "blitz", "territory", "bingo", "babyraid", "grownups", "timetrial", "ghost", "judge"];
+export const TIME_CHOICES = [0, 15, 30, 45, 60, 90, 120];
+export const MIN_TIME = 5, MAX_TIME = 240;
+// The time limit to use: what the challenger asked for, else the parent's default for the mode.
+export function timeLimit(config, modeId, requested) {
+  if (!TIMEBOX_MODES.includes(modeId)) return 0;
+  const clean = (v) => { const n = Math.round(Number(v)); return n === 0 ? 0 : n >= MIN_TIME && n <= MAX_TIME ? n : null; };
+  const asked = requested === undefined || requested === null || requested === "" ? null : clean(requested);
+  if (asked != null) return asked;
+  const def = clean(((gameCfg(config).battles.modeTimes) || {})[modeId]);
+  return def != null ? def : modeId === "blitz" || modeId === "grownups" ? 60 : 0;
+}
+export const timeText = (min) => (!min ? "until midnight" : min % 60 === 0 ? `${min / 60} hour${min > 60 ? "s" : ""}` : min > 60 ? `${Math.floor(min / 60)} h ${min % 60} min` : `${min} minutes`);
 export const MAX_TRIAL_MS = 2 * 3600 * 1000; // longer than this voids the attempt
 
 // Every unlock id a person has at a level, prefixed by kind:
@@ -202,6 +217,28 @@ export function streakBoost(config, currentStreak) {
 }
 export function choreXp(ch, { cotd = false, boost = 1 } = {}) {
   return Math.round(baseChoreXp(ch) * (cotd ? 2 : 1) * boost);
+}
+
+/* ---------- chore icons ---------- */
+// Icon picked from the chore's name when a parent hasn't chosen one. First match wins.
+const ICON_WORDS = [
+  [/parent'?s? choice/, "🎲"], [/sweep|vacuum|mop|broom/, "🧹"], [/drainer|dish|plate|silverware/, "🍽️"],
+  [/laundry|clothes|fold|sock/, "🧺"], [/bathroom|toilet|sink/, "🚽"], [/shower|bath\b|bathe/, "🛁"],
+  [/teeth|tooth|floss/, "🪥"], [/bed\b|make bed/, "🛏️"], [/toy|lego/, "🧸"], [/yard|lawn|leaves|rake|weed|garden/, "🌿"],
+  [/plant|water the/, "🪴"], [/read|book/, "📚"], [/homework|study|school/, "📝"], [/practice|piano|music|violin|guitar/, "🎹"],
+  [/trash|garbage|rubbish/, "🗑️"], [/recycl/, "♻️"], [/dog|puppy|walk/, "🐶"], [/cat\b|kitty|litter/, "🐱"], [/fish|pet|feed/, "🐾"],
+  [/car\b|wash the car/, "🚗"], [/window|glass|mirror/, "🪟"], [/dust/, "🪶"], [/cook|dinner|lunch|breakfast|meal/, "🍳"],
+  [/table/, "🍴"], [/grocer|shopping|unload/, "🛒"], [/snow|shovel/, "❄️"], [/wipe|counter|scrub/, "🧽"],
+  [/morning/, "🌅"], [/night|evening|bedtime/, "🌙"], [/tidy|clean up|pick up|room|declutter/, "🧼"], [/exercise|sport|run\b/, "⚽"],
+];
+export const CHORE_ICON_CHOICES = ["🧹", "🍽️", "🧺", "🚽", "🛁", "🪥", "🛏️", "🧸", "🌿", "🪴", "📚", "📝", "🎹", "🗑️", "♻️",
+  "🐶", "🐱", "🐾", "🚗", "🪟", "🪶", "🍳", "🍴", "🛒", "❄️", "🧽", "🧼", "🌅", "🌙", "⚽", "🎲", "⭐", "💪", "✅"];
+export function choreIcon(ch) {
+  if (!ch) return "✨";
+  if (ch.icon) return ch.icon;
+  const name = String(ch.name || "").toLowerCase();
+  for (const [re, icon] of ICON_WORDS) if (re.test(name)) return icon;
+  return ch.kind === "pr" ? "✅" : "✨";
 }
 
 /* ---------- badges ---------- */
