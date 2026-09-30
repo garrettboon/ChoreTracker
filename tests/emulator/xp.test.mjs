@@ -47,22 +47,51 @@ test("the same chore pays the same XP no matter the pay rate", async () => {
   await waitFor(async () => (await xpOf("k1"))?.total === G.XP.chore + G.XP.badge && (await xpOf("k3"))?.total === G.XP.chore + G.XP.badge, { msg: "same XP each" });
 });
 
-test("daily and weekly limits are shared by the kids on an Anyone chore, and a grown-up counts alone", async () => {
+test("chore limits: a max per person a day, and family-wide maxes per day and per week that count grown-ups too", async () => {
   const chores = [...CONFIG.chores,
-    { id: "once", kind: "family", name: "Vacuum", mult: 1, limit: 1, assign: "pool" },
-    { id: "twice", kind: "family", name: "Mow", mult: 1, limit: 5, weekLimit: 2, assign: "pool" }];
+    { id: "each", kind: "family", name: "Vacuum", mult: 1, limit: 1, assign: "pool" },
+    { id: "fam", kind: "family", name: "Sweep porch", mult: 1, limit: 5, familyLimit: 2, assign: "pool" },
+    { id: "wk", kind: "family", name: "Mow", mult: 1, limit: 5, weekLimit: 2, assign: "pool" }];
   await reset({ ...CONFIG, chores });
-  const k1 = await kidClient("k1"), k2 = await kidClient("k2"), dad = await parentClient("dad@test.com");
-  await k1.call("completeChore", { kidId: "k1", choreId: "once" });
-  await rejects(k2.call("completeChore", { kidId: "k2", choreId: "once" }), /done for today/);
-  await k1.call("completeChore", { kidId: "k1", choreId: "twice" });
-  await k2.call("completeChore", { kidId: "k2", choreId: "twice" });
-  await rejects(k1.call("completeChore", { kidId: "k1", choreId: "twice" }), /done for this week/);
-  // A parent logging it for a kid hits the same weekly limit; the grown-up's own lane has its own count.
-  await rejects(dad.call("completeChore", { kidId: "k3", choreId: "twice" }), /done for this week/);
-  await dad.call("completeChore", { kidId: "dad", choreId: "twice" });
+  const k1 = await kidClient("k1"), k2 = await kidClient("k2"), k3 = await kidClient("k3"), dad = await parentClient("dad@test.com");
+  // Max per person per day: everyone gets their own count.
+  await k1.call("completeChore", { kidId: "k1", choreId: "each" });
+  await rejects(k1.call("completeChore", { kidId: "k1", choreId: "each" }), /max per person/);
+  await k2.call("completeChore", { kidId: "k2", choreId: "each" });
+  await dad.call("completeChore", { kidId: "dad", choreId: "each" });
+  // Max per family per day: a grown-up's chore uses up the family's count too.
+  await k1.call("completeChore", { kidId: "k1", choreId: "fam" });
+  await dad.call("completeChore", { kidId: "dad", choreId: "fam" });
+  await rejects(k2.call("completeChore", { kidId: "k2", choreId: "fam" }), /done for today/);
+  // Max per family per week, whoever does it or logs it.
+  await k1.call("completeChore", { kidId: "k1", choreId: "wk" });
+  await k2.call("completeChore", { kidId: "k2", choreId: "wk" });
+  await rejects(k3.call("completeChore", { kidId: "k3", choreId: "wk" }), /done for this week/);
+  await rejects(dad.call("completeChore", { kidId: "k3", choreId: "wk" }), /done for this week/);
+  await rejects(dad.call("completeChore", { kidId: "dad", choreId: "wk" }), /done for this week/);
   const w = await db.collection("weeks").where("kidId", "==", "dad").get();
-  assert.equal(w.docs[0].data().entries.filter((e) => e.choreId === "twice").length, 1);
+  assert.deepEqual(w.docs[0].data().entries.map((e) => e.choreId).sort(), ["each", "fam"]);
+});
+
+test("morning badges: chores before 9 AM are counted, and 3 or 5 in one day earn Early bird and Rise and shine", async () => {
+  await reset();
+  const d = today();
+  const [y, mo, dd] = d.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, mo - 1, dd)); dt.setUTCDate(dt.getUTCDate() - ((dt.getUTCDay() + 6) % 7));
+  const mon = dt.toISOString().slice(0, 10);
+  // An offset of -06:30 lands between Denver's daylight (-06:00) and standard (-07:00) time, so 7:00 here is 6:30 or 7:30 AM in Denver, same date.
+  const at = (h, i) => ({ id: "m" + i, t: Date.parse(`${d}T${String(h).padStart(2, "0")}:00:00-06:30`), type: "chore", choreId: "c1", name: "Sweep", amount: 0.25, date: d, status: "ok" });
+  const ref = db.doc(`weeks/${mon}_k2`);
+  await ref.set({ kidId: "k2", week: mon, entries: [at(7, 1), at(7, 2), at(8, 3)] });
+  const x = await waitFor(async () => { const x = await xpOf("k2"); return x && x.total === G.XP.chore * 3 + G.XP.badge * 2 && x; }, { msg: "3 chores + first chore + Early bird" });
+  assert.equal(x.counts.early, 3);
+  assert.equal(x.earlyBest, 3);
+  assert.ok((await eventKeys("k2")).includes("badge:early3"));
+  // Two more before 9 AM, and one in the evening that is a chore but not a morning one.
+  await ref.set({ kidId: "k2", week: mon, entries: [at(7, 1), at(7, 2), at(8, 3), at(8, 4), at(8, 5), at(20, 6)] });
+  const x2 = await waitFor(async () => { const x = await xpOf("k2"); return x && x.total === G.XP.chore * 6 + G.XP.badge * 3 && x; }, { msg: "6 chores + first chore + Early bird + Rise and shine" });
+  assert.equal(x2.counts.early, 5);
+  assert.equal(x2.earlyBest, 5);
 });
 
 test("chore of the day pays double", async () => {

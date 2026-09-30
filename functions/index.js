@@ -111,6 +111,11 @@ exports.pairDevice = onCall(async (req) => {
   });
 });
 
+// Hour of the day (0-23) of a timestamp in a time zone; 24 when there is no timestamp.
+const hourIn = (tz, t) => (Number.isFinite(t) ? Number(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hourCycle: "h23" }).format(new Date(t))) : 24);
+// A chore done before 9 AM family time counts toward the morning badges.
+const isEarly = (tz, e) => hourIn(tz, e.t) < G.EARLY_HOUR;
+
 // Logs one chore inside a transaction. Shared by completeChore and Time Trial finishes.
 function logChore(kidId, choreId, by, note = "") {
   return db.runTransaction(async (t) => {
@@ -122,24 +127,25 @@ function logChore(kidId, choreId, by, note = "") {
     if (ch.assign !== "pool" && ch.assign !== kidId) throw new HttpsError("permission-denied", "That chore belongs to someone else.");
 
     const L = localParts(cfg.timezone || FAMILY_TZ);
-    const mon = mondayOf(L.date, L.dow);
-    const counted = ch.assign === "pool" && !kid.adult ? cfg.kids.filter((k) => !k.adult).map((k) => k.id) : [kidId];
+    const mon = mondayOf(L.date, L.dow), sun = addDays(mon, 6);
+    // Everyone's entries count toward the family's totals for today and this week (grown-ups included);
+    // only this person's entries count toward the max per person.
     const refs = [];
-    for (const id of counted) for (const wk of [mon, addDays(mon, 7)]) refs.push(db.doc(`weeks/${wk}_${id}`));
+    for (const k of cfg.kids) for (const wk of [mon, addDays(mon, 7)]) refs.push(db.doc(`weeks/${wk}_${k.id}`));
     const snaps = await t.getAll(...refs);
-    // Today's count and this week's count (Monday through Sunday), shared by the kids on an Anyone chore.
-    const sun = addDays(mon, 6);
-    let n = 0, wn = 0;
+    const ownIds = new Set([mon, addDays(mon, 7)].map((w) => `${w}_${kidId}`));
+    let me = 0, fam = 0, week = 0;
     for (const s of snaps) {
       if (!s.exists) continue;
       for (const e of s.data().entries || []) {
         if (e.choreId !== choreId || e.status === "reversed") continue;
-        if (e.date === L.date) n++;
-        if (e.date >= mon && e.date <= sun) wn++;
+        if (e.date === L.date) { fam++; if (ownIds.has(s.id)) me++; }
+        if (e.date >= mon && e.date <= sun) week++;
       }
     }
-    if (ch.weekLimit > 0 && wn >= ch.weekLimit) throw new HttpsError("failed-precondition", "That one's done for this week.");
-    if (n >= (ch.limit || 1)) throw new HttpsError("failed-precondition", "That one's done for today.");
+    if (ch.weekLimit > 0 && week >= ch.weekLimit) throw new HttpsError("failed-precondition", "That one's done for this week.");
+    if (ch.familyLimit > 0 && fam >= ch.familyLimit) throw new HttpsError("failed-precondition", "That one's done for today.");
+    if (me >= (ch.limit || 1)) throw new HttpsError("failed-precondition", "That one's at its max per person for today.");
 
     const thisWeek = snaps.find((s) => s.id === `${mon}_${kidId}`);
     const wk = thisWeek && thisWeek.exists && thisWeek.data().closed ? addDays(mon, 7) : mon;
@@ -357,7 +363,7 @@ async function weekXp(cfg, personId, before, after, historical) {
       if (boost == null) boost = await choreBoost(cfg, personId);
       amount = G.choreXp(ch, { cotd: G.choreOfDay(cfg.chores, e.date, cfg) === e.choreId, boost });
     }
-    adds.push({ key: "chore:" + e.id, amount, reason: e.name || ch.name || "Chore", count: ["chore"] });
+    adds.push({ key: "chore:" + e.id, amount, reason: e.name || ch.name || "Chore", count: isEarly(tzOf(cfg), e) ? ["chore", "early"] : ["chore"] });
   }
   const prevD = new Map(((before && before.deductions) || []).map((d) => [d.id, d]));
   for (const d of after.deductions || []) {
@@ -385,8 +391,11 @@ async function syncBadges(cfg, personId) {
   const saved = Object.values(bank.goalBal || {}).reduce((s, v) => s + (Number(v) || 0), 0) +
     archived.reduce((s, a) => s + (a.bought || 0), 0);
   const counts = xd.counts || {};
+  const tz = tzOf(cfg);
+  const earlyBest = Math.max(xd.earlyBest || 0, G.bestMorning(ws.flatMap((s) => (s.exists ? s.data().entries || [] : [])).map((e) => ({ ...e, hour: hourIn(tz, e.t) }))));
   const list = G.badgeList({
     chores: (st.chores || 0) + live, goalHits: st.goalHits || 0, redemptions: st.redemptions || 0,
+    early: counts.early || 0, earlyBest,
     bestStreak: G.bestStreak(prefs.prLog, prIdsOf(cfg), [...(xd.frozenDates || []), ...doneDates(prefs)]),
     saved, invest: bank.invest || 0, give: bank.give || 0, bought: archived.length,
     wins: counts.win || 0, giant: counts.giant || 0, level: xd.maxLevel || 1,
@@ -394,7 +403,7 @@ async function syncBadges(cfg, personId) {
   });
   await applyXp(personId, list.filter((x) => x[3]).map((x) => ({
     key: "badge:" + x[0], amount: G.XP.badge, reason: "Badge: " + x[2], count: ["badge"],
-  })));
+  })), [], (x) => { if (earlyBest > (x.earlyBest || 0)) { x.earlyBest = earlyBest; return true; } return false; });
 }
 
 // Checklist XP and streak milestones. `sinceDate` limits milestones to runs reaching them
@@ -550,36 +559,33 @@ async function battleEntries(cfg, b) {
   return out;
 }
 
-// How many more times a chore can be done today (within its daily and weekly limits), as seen by each player.
+// How many more times a chore can be done today: each player's own room under the max per person,
+// and the family's shared room under its max per day and max per week.
 async function choreRoom(cfg, ch, playerIds) {
   const L = localParts(tzOf(cfg));
   const mon = mondayOf(L.date, L.dow), sun = addDays(mon, 6);
-  const kidsIds = cfg.kids.filter((k) => !k.adult).map((k) => k.id);
-  const ids = [...new Set([...kidsIds, ...playerIds])];
+  const ids = [...new Set([...cfg.kids.map((k) => k.id), ...playerIds])];
   const snaps = await db.getAll(...ids.flatMap((id) => [mon, addDays(mon, 7)].map((wk) => db.doc(`weeks/${wk}_${id}`))));
-  const doneBy = {}, weekBy = {};
+  const doneBy = {};
+  let fam = 0, week = 0;
   for (const s of snaps) {
     if (!s.exists) continue;
-    const id = s.data().kidId;
-    const mine = (s.data().entries || []).filter((e) => e.choreId === ch.id && e.status !== "reversed");
-    doneBy[id] = (doneBy[id] || 0) + mine.filter((e) => e.date === L.date).length;
-    weekBy[id] = (weekBy[id] || 0) + mine.filter((e) => e.date >= mon && e.date <= sun).length;
+    const id = s.id.slice(s.id.indexOf("_") + 1);
+    for (const e of s.data().entries || []) {
+      if (e.choreId !== ch.id || e.status === "reversed") continue;
+      if (e.date === L.date) { fam++; doneBy[id] = (doneBy[id] || 0) + 1; }
+      if (e.date >= mon && e.date <= sun) week++;
+    }
   }
-  const lim = ch.limit || 1, wlim = ch.weekLimit > 0 ? ch.weekLimit : Infinity;
-  const shared = kidsIds.reduce((s, id) => s + (doneBy[id] || 0), 0);
-  const sharedWeek = kidsIds.reduce((s, id) => s + (weekBy[id] || 0), 0);
-  const room = {};
-  for (const id of playerIds) {
-    const pool = ch.assign === "pool" && !kidOf(cfg, id).adult;
-    room[id] = Math.min(pool ? lim - shared : lim - (doneBy[id] || 0), pool ? wlim - sharedWeek : wlim - (weekBy[id] || 0));
-  }
-  return room;
+  const own = {};
+  for (const id of playerIds) own[id] = (ch.limit || 1) - (doneBy[id] || 0);
+  const shared = Math.min(ch.familyLimit > 0 ? ch.familyLimit - fam : Infinity, ch.weekLimit > 0 ? ch.weekLimit - week : Infinity);
+  return { own, shared };
 }
-// A shared chore that every player can still do today (kids share one daily limit).
+// Every player can still do the chore today, and the family's limits leave room for all of them.
 async function checkChoreFor(cfg, ch, players) {
   const room = await choreRoom(cfg, ch, players);
-  const kidsIn = players.filter((id) => ch.assign === "pool" && !kidOf(cfg, id).adult).length;
-  return players.every((id) => room[id] >= (kidOf(cfg, id).adult ? 1 : Math.max(1, kidsIn)));
+  return players.every((id) => room.own[id] >= 1) && room.shared >= players.length;
 }
 
 async function pushParents(title, body) {
@@ -1170,9 +1176,8 @@ async function evalQuests(cfg, personId) {
   const mon = mondayOf(L.date, L.dow), sun = addDays(mon, 6), fri = addDays(mon, 4);
   const [w1, w2, p] = await db.getAll(db.doc(`weeks/${mon}_${personId}`), db.doc(`weeks/${addDays(mon, 7)}_${personId}`), db.doc(`prefs/${personId}`));
   const tz = tzOf(cfg);
-  const hourOf = (t) => Number(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hourCycle: "h23" }).format(new Date(t)));
   const all = [w1, w2].flatMap((s) => (s.exists ? s.data().entries || [] : []));
-  const entries = all.filter((e) => e.status !== "reversed" && e.date >= mon && e.date <= sun).map((e) => ({ ...e, hour: hourOf(e.t) }));
+  const entries = all.filter((e) => e.status !== "reversed" && e.date >= mon && e.date <= sun).map((e) => ({ ...e, hour: hourIn(tz, e.t) }));
   const week = w1.exists ? w1.data() : {};
   const prefs = p.exists ? p.data() : {};
   const prIds = prIdsOf(cfg);

@@ -86,12 +86,12 @@ function weekNet(w){let n=0;for(const e of w.entries||[])if(e.status!=="reversed
 const choreCount=w=>(w.entries||[]).filter(e=>e.status!=="reversed").length;
 function countBetween(kidId,choreId,from,to){let n=0;for(const w of Object.values(S.weeks)){if(w.kidId!==kidId)continue;for(const e of w.entries||[])if(e.choreId===choreId&&e.date>=from&&e.date<=to&&e.status!=="reversed")n++;}return n;}
 const countOnDate=(kidId,choreId,date)=>countBetween(kidId,choreId,date,date);
-// Who shares a chore's limits: kids share an Anyone chore, while an assigned chore or a grown-up's chore counts alone.
-function limitGroup(kidId,ch){const me=kidCfg(kidId);return ch.assign==="pool"&&!(me&&me.adult)?cfg().kids.filter(k=>!k.adult).map(k=>k.id):[kidId];}
-function choreCountToday(kidId,ch,date){return limitGroup(kidId,ch).reduce((s,id)=>s+countOnDate(id,ch.id,date),0);}
-// Times done in the Monday-to-Sunday week that holds `date`, for the weekly max.
-function choreCountWeek(kidId,ch,date){const mon=mondayOf(parseYmd(date));return limitGroup(kidId,ch).reduce((s,id)=>s+countBetween(id,ch.id,mon,addDays(mon,6)),0);}
-const weekFull=(kidId,ch,date)=>ch.weekLimit>0&&choreCountWeek(kidId,ch,date)>=ch.weekLimit;
+// A chore's limits: each person a day (`limit`), the whole family a day (`familyLimit`), and the whole family a week (`weekLimit`, Monday to Sunday). Grown-ups count in the family totals.
+function limitState(kidId,ch,date){const mon=mondayOf(parseYmd(date)),ids=cfg().kids.map(k=>k.id);
+  const me=countOnDate(kidId,ch.id,date),fam=ids.reduce((s,id)=>s+countOnDate(id,ch.id,date),0),wk=ids.reduce((s,id)=>s+countBetween(id,ch.id,mon,addDays(mon,6)),0);
+  const lim=ch.limit||1,flim=ch.familyLimit>0?ch.familyLimit:0,wlim=ch.weekLimit>0?ch.weekLimit:0;
+  return {me,fam,wk,lim,flim,wlim,reason:wlim&&wk>=wlim?"week":flim&&fam>=flim?"family":me>=lim?"person":null};}
+const LIMIT_MSG={week:"That one's done for this week.",family:"That one's done for today.",person:"That one's at its max per person for today."};
 const openWeeks=kidId=>Object.values(S.weeks).filter(w=>w.kidId===kidId&&!w.closed).map(w=>getWeek(w.kidId,w.week));
 function prComplete(ks,date,frozen){if(ks.prDone&&ks.prDone[date])return true;if(frozen&&frozen.includes(date))return true;const ids=prChores().map(c=>c.id);if(!ids.length)return false;const d=ks.prLog[date]||[];return ids.every(i=>d.includes(i));}
 function streak(kidId){const ks=kidState(kidId),fz=xpState(kidId).frozen;let d=ymd();if(!prComplete(ks,d,fz))d=addDays(d,-1);let n=0;while(prComplete(ks,d,fz)&&n<400){n++;d=addDays(d,-1);}return n;}
@@ -276,11 +276,11 @@ function pushControl(){
 function reminderBanner(k,ks,today){
   const times=(k.remind||[]).filter(Boolean).sort();if(!times.some(t=>t<=nowHM()))return "";
   const done=ks.prLog[today]||[];
-  const todo=[...prChores().filter(c=>!done.includes(c.id)).map(c=>c.name),...famChoresFor(k.id).filter(c=>c.assign===k.id&&countOnDate(k.id,c.id,today)===0&&!weekFull(k.id,c,today)).map(c=>c.name)];
+  const todo=[...prChores().filter(c=>!done.includes(c.id)).map(c=>c.name),...famChoresFor(k.id).filter(c=>c.assign===k.id&&countOnDate(k.id,c.id,today)===0&&!limitState(k.id,c,today).reason).map(c=>c.name)];
   return todo.length?`<div class="banner" role="status">Still to do today: ${todo.map(esc).join(", ")}</div>`:"";
 }
 function goalSetter(k,wk){
-  const last=weekNet(getWeek(k.id,addDays(wk,-7)));const dl=daysLeft(wk);const max=r2(famChoresFor(k.id).reduce((s,c)=>{const room=c.weekLimit>0?Math.max(0,c.weekLimit-choreCountWeek(k.id,c,wk)):Infinity;return s+choreValue(k,c)*Math.min((c.limit||1)*dl,room);},0));
+  const last=weekNet(getWeek(k.id,addDays(wk,-7)));const dl=daysLeft(wk);const max=r2(famChoresFor(k.id).reduce((s,c)=>{const L=limitState(k.id,c,wk),perDay=Math.min(L.lim,L.flim||Infinity),room=L.wlim?Math.max(0,L.wlim-L.wk):Infinity;return s+choreValue(k,c)*Math.min(perDay*dl,room);},0));
   const v=Number(S.ui.goalInput)||0;const chips=last>0?[q(last),q(last*1.25),q(last*1.5)]:[1,2.5,5];
   return `<section class="card goal goal-set"><h2>What do you want to earn this week?</h2>
     <p class="sub">${last>0?`Last week you earned ${money(last)}. `:""}Doing every chore every day would earn about ${money(max)}.</p>
@@ -309,8 +309,8 @@ function prSection(k,ks,today){const prs=prChores();if(!prs.length)return "";con
     return `<button class="check ${on?"on":""}" data-act="toggle-pr" data-id="${c.id}" aria-pressed="${on}" ${asking?"disabled":""}><span class="box">${on?"✓":""}</span><span><b>${esc(c.name)}</b>${sub?`<small>${esc(sub)}</small>`:""}</span></button>${asking?`<div class="confirm"><label>What was it?<input data-bind="prNote.text" maxlength="120" placeholder="Say what you did" value="${esc(pn.text)}"></label><div class="row"><button class="btn small" data-act="save-pr-note" ${String(pn.text||"").trim()?"":"disabled"}>Check it off</button><button class="btn ghost small" data-act="cancel-pr-note">Cancel</button></div></div>`:""}`;}).join("")}</div>
     <p class="hint">These don't pay money. They're part of taking care of yourself. Finish all of them for +${G.XP.checklist} XP and to keep your streak going.${game().streakMultiplier.enabled?` A ${game().streakMultiplier.minStreak}-day streak makes all your XP count ×${game().streakMultiplier.mult}.`:""}</p></section>`;}
 function choreSection(k,today){const list=famChoresFor(k.id).sort((a,b)=>(a.assign==="pool")-(b.assign==="pool")),cc=S.ui.confirmChore,cot=cotdId();
-  return `<section class="card"><div class="sec-head"><h2>Family chores</h2></div>${list.length?list.map(c=>{const n=choreCountToday(k.id,c,today),lim=c.limit||1,wl=c.weekLimit>0?c.weekLimit:0,wn=wl?choreCountWeek(k.id,c,today):0,wfull=wl&&wn>=wl,full=n>=lim||wfull,busy=S.busy["c:"+c.id],asking=cc&&cc.choreId===c.id,ask=needsNote(c);
-    return `<div class="chore ${c.id===cot?"cotd":""}"><div><b>${esc(c.name)}</b><small><span class="tag ${c.assign===k.id?"mine":""}">${c.assign===k.id?"Yours":"Anyone"}</span>${c.id===cot?`<span class="tag star">⭐ Double XP today</span>`:""}${n} of ${lim} done today${wl?`, ${wn} of ${wl} this week`:""}</small></div><div class="c-val">+${money(choreValue(k,c))}<small>+${choreXpFor(k.id,c)} XP</small></div><button class="btn small" data-act="do-chore" data-id="${c.id}" ${full||busy||asking?"disabled":""}>${busy?"Saving…":wfull?"Done this week":full?"All done":"I did it"}</button>
+  return `<section class="card"><div class="sec-head"><h2>Family chores</h2></div>${list.length?list.map(c=>{const L=limitState(k.id,c,today),full=!!L.reason,mine=c.assign===k.id,busy=S.busy["c:"+c.id],asking=cc&&cc.choreId===c.id,ask=needsNote(c);
+    return `<div class="chore ${c.id===cot?"cotd":""}"><div><b>${esc(c.name)}</b><small><span class="tag ${c.assign===k.id?"mine":""}">${c.assign===k.id?"Yours":"Anyone"}</span>${c.id===cot?`<span class="tag star">⭐ Double XP today</span>`:""}</small></div><div class="c-val">+${money(choreValue(k,c))}<small>+${choreXpFor(k.id,c)} XP</small></div><button class="btn small" data-act="do-chore" data-id="${c.id}" ${full||busy||asking?"disabled":""}>${busy?"Saving…":L.reason==="week"?"Done this week":L.reason==="family"?"All done today":L.reason==="person"?(mine?"All done":"Your max today"):"I did it"}</button><small class="c-count">${mine?"":"you "}${L.me} of ${L.lim} today${L.flim?`, family ${L.fam} of ${L.flim} today`:""}${L.wlim?`, family ${L.wk} of ${L.wlim} this week`:""}</small>
       ${asking?`<div class="confirm"><b>Did you do "${esc(c.name)}"?</b>${ask?`<label>What was it?<input data-bind="confirmChore.note" maxlength="120" placeholder="Say what you did" value="${esc(cc.note)}"></label>`:""}<div class="row"><button class="btn small" data-act="confirm-chore" ${ask&&!String(cc.note||"").trim()?"disabled":""}>Yes, I did it</button><button class="btn ghost small" data-act="cancel-chore">Not yet</button></div></div>`:""}</div>`;}).join(""):`<p class="empty">No chores set up yet.</p>`}</section>`;}
 function splitEditor(k,ks,w,goals,weekSave){
   if(goals.length<2)return "";
@@ -345,7 +345,8 @@ function moneySection(k,ks,w,net){const sp=splitAmt(Math.max(0,net)),goals=ks.go
 function badgeList(kidId){const ks=kidState(kidId),st=ks.stats,x=xpState(kidId),c=x.counts;const live=openWeeks(kidId).reduce((s,w)=>s+choreCount(w),0);const chores=(st.chores||0)+live;
   const saved=ks.goals.reduce((s,g)=>s+g.balance,0)+ks.archived.reduce((s,g)=>s+(g.bought||0),0);
   return G.badgeList({chores,goalHits:st.goalHits||0,bestStreak:bestStreak(kidId),redemptions:st.redemptions||0,saved,invest:ks.invest,give:ks.give,bought:ks.archived.length,
-    wins:c.win||0,giant:c.giant||0,level:x.level,quests:c.quest||0,bounties:c.bounty||0,checklistDays:c.pr||0});}
+    wins:c.win||0,giant:c.giant||0,level:x.level,quests:c.quest||0,bounties:c.bounty||0,checklistDays:c.pr||0,
+    early:c.early||0,earlyBest:Math.max((S.xp[kidId]||{}).earlyBest||0,G.bestMorning(entriesFor(kidId).map(e=>({...e,hour:hourIn(e.t)}))))});}
 // Earned badges, then the next one of each kind to go for. "Show all" lists every badge.
 const badgeKind=id=>({first:"chores",fifty:"chores",bought:"bought",comeback:"comeback"}[id]||id.replace(/\d+$/,""));
 function badgeSection(kidId){const b=badgeList(kidId),got=b.filter(x=>x[3]),open=S.ui.allBadges,kinds=new Set();
@@ -411,6 +412,8 @@ function bingoGrid(b,me){const p=b.params;const list=G.battleEntries(entriesFor(
   return `<div class="bingo" role="grid" aria-label="Your bingo card">${p.card.map((c,i)=>`<div class="sq ${marks[i]?"on":""}" role="gridcell">${marks[i]&&((p.free||{})[me]||[]).includes(i)?"FREE":esc((p.cardNames||[])[i]||c)}</div>`).join("")}</div>`;}
 // This person's chore entries from the weeks on screen.
 function entriesFor(id){return Object.values(S.weeks).filter(w=>w.kidId===id).flatMap(w=>w.entries||[]);}
+// Hour of the day in the family's time zone, as the server counts it (24 when an entry has no time).
+function hourIn(t){if(!Number.isFinite(t))return 24;try{return Number(new Intl.DateTimeFormat("en-US",{timeZone:cfg().timezone||undefined,hour:"numeric",hourCycle:"h23"}).format(new Date(t)));}catch(e){return new Date(t).getHours();}}
 function battleCard(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Battle"};const other=b.players.find(p=>p!==me);const dis=S.busy.b?"disabled":"";
   let vs;
   if(G.isRaid(b.mode)){const ts=(b.teamScores||{}).a,dmg=ts?ts.raw:0,hp=b.params.hp||1;
@@ -483,7 +486,7 @@ function battleSection(k){const bc=game().battles;const mine=battleList().filter
 
 /* ---------- game: quests, rewards, bounties, family goal ---------- */
 function questCtx(id){const mon=mondayOf(new Date()),sun=addDays(mon,6),fri=addDays(mon,4),ks=kidState(id),fz=xpState(id).frozen;
-  const entries=entriesFor(id).filter(e=>e.status!=="reversed"&&e.date>=mon&&e.date<=sun).map(e=>({...e,hour:new Date(e.t).getHours()}));
+  const entries=entriesFor(id).filter(e=>e.status!=="reversed"&&e.date>=mon&&e.date<=sun).map(e=>({...e,hour:hourIn(e.t)}));
   let checklistDays=0;for(let i=0;i<7;i++)if(prComplete(ks,addDays(mon,i)))checklistDays++;
   const w=getWeek(id,mon);const ded=(w.deductions||[]).filter(d=>d.status==="active"||d.status==="final").reduce((s,d)=>s+d.amount,0);
   const wins=battleList().filter(b=>b.status==="done"&&b.day>=mon&&b.day<=sun&&b.players.includes(id)&&G.isWinner(b,b.result,id)).length;
@@ -612,7 +615,7 @@ function pActions(){return `<h2 class="tab-h">Deductions</h2>${pDeductions()}<h2
 function pActivity(){
   const y=addDays(ymd(),-1);let flags="";
   for(const k of kidsSorted().filter(k=>!k.adult)){const ksy=kidState(k.id),done=ksy.prLog[y]||[];
-    const miss=[...(ksy.prDone[y]?[]:prChores().filter(c=>!done.includes(c.id)).map(c=>c.name)),...famChoresFor(k.id).filter(c=>c.assign===k.id&&countOnDate(k.id,c.id,y)===0&&!weekFull(k.id,c,y)).map(c=>c.name)];
+    const miss=[...(ksy.prDone[y]?[]:prChores().filter(c=>!done.includes(c.id)).map(c=>c.name)),...famChoresFor(k.id).filter(c=>c.assign===k.id&&countOnDate(k.id,c.id,y)===0&&!limitState(k.id,c,y).reason).map(c=>c.name)];
     for(const m of miss)flags+=`<div class="flag-row"><span><b>${esc(k.name)}</b> didn't check off ${esc(m)}</span><span class="row" style="flex:0 0 auto;gap:6px"><button class="btn ghost small" data-act="prefill-warn" data-kid="${k.id}" data-reason="${esc("Missed: "+m)}">Warn</button><button class="btn ghost small" data-act="prefill-ded" data-kid="${k.id}" data-reason="${esc("Missed: "+m)}">Deduct</button></span></div>`;}
   const L=S.ui.log;if(!L.kid)L.kid=kidsSorted()[0].id;const lk=kidCfg(L.kid)||kidsSorted()[0];const lchores=famChoresFor(lk.id);if(!lchores.some(c=>c.id===L.chore))L.chore=lchores[0]?lchores[0].id:"";
   const all=[];for(const w0 of Object.values(S.weeks)){if(w0.closed)continue;const w=getWeek(w0.kidId,w0.week);for(const e of w.entries)all.push({e,w});}
@@ -712,7 +715,7 @@ function pDevices(){
   <section class="card"><div class="sec-head"><h2>Paired devices</h2></div>${S.devices.length?S.devices.map(d=>`<div class="flag-row"><span><b>${esc(d.name)}</b><br><small>${esc(roleLabel(d))}</small> ${d.role==="kid"?`<span class="pill ${d.fcmToken?"on":""}">${d.fcmToken?"Reminders on":"Reminders off"}</span>`:""}</span><button class="btn ghost small" data-act="unpair" data-id="${d.id}">Unpair</button></div>`).join(""):`<p class="empty">No devices paired yet.</p>`}
   <p class="hint">Unpairing locks a device out right away. Use it for a lost tablet or to switch a tablet to someone else.</p></section>`;
 }
-function startDraft(from){const c=clone(from||cfg());c.kids.forEach(k=>k.remindStr=(k.remind||[]).join(", "));c.chores.forEach(ch=>{ch.ask=needsNote(ch);if(ch.kind==="family")ch.weekLimit=ch.weekLimit>0?ch.weekLimit:0;});c.game=clone(G.gameCfg(c));S.ui.draft=c;S.ui.draftClean=JSON.stringify(c);}
+function startDraft(from){const c=clone(from||cfg());c.kids.forEach(k=>k.remindStr=(k.remind||[]).join(", "));c.chores.forEach(ch=>{ch.ask=needsNote(ch);if(ch.kind==="family"){ch.familyLimit=ch.familyLimit>0?ch.familyLimit:0;ch.weekLimit=ch.weekLimit>0?ch.weekLimit:0;}});c.game=clone(G.gameCfg(c));S.ui.draft=c;S.ui.draftClean=JSON.stringify(c);}
 const draftDirty=()=>!!S.ui.draft&&JSON.stringify(S.ui.draft)!==S.ui.draftClean;
 // When the config changes underneath an untouched settings form, show the new values instead of stale ones.
 function refreshCleanDraft(){if(S.role==="parent"&&S.ptab==="settings"&&S.ui.draft&&S.config&&!draftDirty()){startDraft();render();}}
@@ -742,19 +745,19 @@ function pSettings(){
   if(!S.ui.draft)startDraft();const d=S.ui.draft;
   // One compact row per chore; tap it to open the full editor underneath (one at a time).
   const who=id=>id==="pool"?"Anyone":((d.kids.find(k=>k.id===id)||{}).name||"Someone");
-  const facts=c=>(c.kind==="pr"?[c.note||"",c.ask?"asks what it was":""]:[`pays ×${c.mult||1}`,`${c.limit||1} a day`,c.weekLimit>0?`${c.weekLimit} a week`:"",who(c.assign),c.ask?"asks what it was":""]).filter(Boolean).map(esc).join(" · ");
+  const facts=c=>(c.kind==="pr"?[c.note||"",c.ask?"asks what it was":""]:[`pays ×${c.mult||1}`,`each ${c.limit||1} a day`,c.familyLimit>0?`family ${c.familyLimit} a day`:"",c.weekLimit>0?`family ${c.weekLimit} a week`:"",who(c.assign),c.ask?"asks what it was":""]).filter(Boolean).map(esc).join(" · ");
   const choreRow=(c,i)=>{const ed=S.ui.editChore===c.id;return `<div class="set-row ${ed?"editing":""}" data-drag="chore" data-kind="${c.kind}" data-i="${i}"><div class="set-head"><span class="drag-handle" data-handle role="button" aria-label="Drag to reorder" title="Drag to reorder">⠿</span><button type="button" class="set-open" data-act="edit-chore" data-id="${c.id}" aria-expanded="${ed}"><span><b>${esc(String(c.name||"").trim())||"(no name)"}</b><small>${facts(c)}</small></span><span class="chev" aria-hidden="true">›</span></button></div>
     ${ed?`<div class="set-edit"><div class="row"><label>${c.kind==="pr"?"Item":"Chore"}<input data-bind="draft.chores.${i}.name" value="${esc(c.name)}"></label><label class="chk"><input type="checkbox" data-bind="draft.chores.${i}.ask" ${c.ask?"checked":""}>Ask what it was</label>
     ${c.kind==="pr"?`<label>Details<input data-bind="draft.chores.${i}.note" value="${esc(c.note||"")}"></label>`:`<label>Pays (× base rate)<input type="number" step="0.5" min="0" data-type="num" data-bind="draft.chores.${i}.mult" value="${esc(c.mult)}"></label>
-    <label>Max per day<input type="number" step="1" min="1" data-type="num" data-bind="draft.chores.${i}.limit" value="${esc(c.limit)}"></label>
-    <label>Max per week<input type="number" step="1" min="0" data-type="num" data-bind="draft.chores.${i}.weekLimit" value="${c.weekLimit>0?esc(c.weekLimit):""}" placeholder="No limit"></label>
+    <label>Max per person per day<input type="number" step="1" min="1" data-type="num" data-bind="draft.chores.${i}.limit" value="${esc(c.limit)}"></label>
+    <label>Max per family per day<input type="number" step="1" min="0" data-type="num" data-bind="draft.chores.${i}.familyLimit" value="${c.familyLimit>0?esc(c.familyLimit):""}" placeholder="No limit"></label>
+    <label>Max per family per week<input type="number" step="1" min="0" data-type="num" data-bind="draft.chores.${i}.weekLimit" value="${c.weekLimit>0?esc(c.weekLimit):""}" placeholder="No limit"></label>
     <label>Who<select data-bind="draft.chores.${i}.assign"><option value="pool" ${c.assign==="pool"?"selected":""}>Anyone</option>${d.kids.map(k=>`<option value="${k.id}" ${c.assign===k.id?"selected":""}>${esc(k.name)}</option>`).join("")}</select></label>`}</div>
     <div class="row set-foot"><button class="btn small" data-act="edit-chore" data-id="${c.id}">Done</button><button class="btn ghost small" data-act="rm-chore" data-i="${i}">Remove</button></div></div>`:""}</div>`;};
   return pDevices()+`<section class="card"><div class="sec-head"><h2>People</h2><button class="btn ghost small" data-act="add-kid">Add person</button></div>
-    ${d.kids.map((k,i)=>`<div class="set-block"><div class="row"><label>Name<input data-bind="draft.kids.${i}.name" value="${esc(k.name)}"></label><label class="chk" title="A grown-up gets their own lane and tab instead of a place in the kid list"><input type="checkbox" data-bind="draft.kids.${i}.adult" ${k.adult?"checked":""}>Adult</label>${k.adult?`<label>Google email<input type="email" data-bind="draft.kids.${i}.email" value="${esc(k.email||"")}" placeholder="Their parent sign-in"></label>`:`<label>Age<input type="number" data-type="num" data-bind="draft.kids.${i}.age" value="${esc(k.age)}"></label>`}
-    <label>Base rate per chore<input type="number" step="0.05" data-type="num" data-bind="draft.kids.${i}.rate" value="${esc(k.rate)}"></label>
-    <label>Reminder times<input data-bind="draft.kids.${i}.remindStr" value="${esc(k.remindStr)}" placeholder="15:30, 19:30"></label>
-    <button class="btn ghost small" style="flex:0 0 auto" data-act="rm-kid" data-i="${i}">Remove</button></div></div>`).join("")}</section>
+    <div class="people"><div class="p-head"><span>Name</span><span title="A grown-up gets their own lane and tab instead of a place in the kid list">Adult</span><span>Age</span><span title="What one chore pays before its multiplier">Rate $</span><span>Reminders</span><span></span></div>
+    ${d.kids.map((k,i)=>`<div class="p-row"><input data-bind="draft.kids.${i}.name" value="${esc(k.name)}" aria-label="Name"><input type="checkbox" data-bind="draft.kids.${i}.adult" ${k.adult?"checked":""} aria-label="Adult" title="A grown-up gets their own lane and tab instead of a place in the kid list">${k.adult?`<span class="p-na" aria-hidden="true">–</span>`:`<input type="number" data-type="num" data-bind="draft.kids.${i}.age" value="${esc(k.age)}" aria-label="Age">`}<input type="number" step="0.05" data-type="num" data-bind="draft.kids.${i}.rate" value="${esc(k.rate)}" aria-label="Base rate per chore"><input data-bind="draft.kids.${i}.remindStr" value="${esc(k.remindStr)}" placeholder="15:30, 19:30" aria-label="Reminder times"><button class="btn ghost small p-rm" data-act="rm-kid" data-i="${i}" aria-label="Remove ${esc(k.name)}" title="Remove">×</button>${k.adult?`<label class="p-email">Google email<input type="email" data-bind="draft.kids.${i}.email" value="${esc(k.email||"")}" placeholder="Their parent sign-in"></label>`:""}</div>`).join("")}</div>
+    <p class="hint">Rate is what one chore pays before its multiplier. Reminders are times like 15:30, 19:30.</p></section>
   <section class="card"><div class="sec-head"><h2>Family chores (paid)</h2><button class="btn ghost small" data-act="add-chore" data-kind="family">Add chore</button></div><p class="hint drag-hint">Tap a chore to edit it. Drag the ⠿ handle to change the order kids see.</p>${d.chores.map((c,i)=>c.kind==="family"?choreRow(c,i):"").join("")}</section>
   <section class="card"><div class="sec-head"><h2>Personal responsibility (unpaid)</h2><button class="btn ghost small" data-act="add-chore" data-kind="pr">Add item</button></div><p class="hint drag-hint">Tap an item to edit it. Drag the ⠿ handle to change the order kids see.</p>${d.chores.map((c,i)=>c.kind==="pr"?choreRow(c,i):"").join("")}</section>
   ${gameSettings(d)}
@@ -782,8 +785,7 @@ function setPr(kid,id,on,note){const today=ymd(),ks=kidState(kid),done=ks.prLog[
   if(complete){confetti(90);chime(true);toast(ks.prDone[today]?"All done for today.":`All done for today! Streak +1 and +${G.XP.checklist} XP.`);}}
 async function doChore(kidId,choreId,note){
   const k=kidCfg(kidId),ch=choreById(choreId),today=ymd();if(!k||!ch)return;
-  if(weekFull(k.id,ch,today)){toast("That one's done for this week.");return;}
-  if(choreCountToday(k.id,ch,today)>=(ch.limit||1)){toast("That one's done for today.");return;}
+  {const r=limitState(k.id,ch,today).reason;if(r){toast(LIMIT_MSG[r]);return;}}
   const wk=activeWeek(k.id),w=getWeek(k.id,wk),before=weekNet(w),amt=choreValue(k,ch);
   S.busy["c:"+choreId]=true;render();
   try{await call("completeChore")({kidId,choreId,note:note||""});
@@ -946,7 +948,7 @@ async function handleAct(act,ds){
   case "unpair": if(!confirm("Unpair this device? It will need a new code to reconnect."))return;guard(deleteDoc(doc(db,"devices",ds.id)),"Device unpaired.");return;
   case "add-kid": S.ui.draft.kids.push({id:uid(),name:"New person",age:8,rate:0.25,remind:[],remindStr:"15:30, 19:30"});break;
   case "rm-kid": if(!confirm("Remove this person from the app? Their saved money records stay in the database."))return;S.ui.draft.kids.splice(Number(ds.i),1);break;
-  case "add-chore":{const id=uid();S.ui.draft.chores.push(ds.kind==="pr"?{id,kind:"pr",name:"New item",note:"",ask:false}:{id,kind:"family",name:"New chore",mult:1,limit:1,weekLimit:0,assign:"pool",ask:false});S.ui.editChore=id;break;}
+  case "add-chore":{const id=uid();S.ui.draft.chores.push(ds.kind==="pr"?{id,kind:"pr",name:"New item",note:"",ask:false}:{id,kind:"family",name:"New chore",mult:1,limit:1,familyLimit:0,weekLimit:0,assign:"pool",ask:false});S.ui.editChore=id;break;}
   case "rm-chore":{const i=Number(ds.i),c=S.ui.draft.chores[i];if(c&&c.id===S.ui.editChore)S.ui.editChore=null;S.ui.draft.chores.splice(i,1);break;}
   case "edit-chore": S.ui.editChore=S.ui.editChore===ds.id?null:ds.id;break;
   case "discard-settings": S.ui.draft=null;S.ui.editChore=null;break;
@@ -958,7 +960,7 @@ async function handleAct(act,ds){
     for(const t of ["quietStart","quietEnd"])if(!/^\d{2}:\d{2}$/.test(b[t]||""))b[t]=G.GAME_DEFAULTS.battles[t];
     d.game.rewards=d.game.rewards.map(r=>({id:r.id||uid(),level:Math.min(30,Math.max(1,Math.round(Number(r.level)||1))),name:String(r.name||"").trim(),repeat:Math.max(0,Math.round(Number(r.repeat)||0))})).filter(r=>r.name);
     const mp=d.game.moneyPerks;mp.enabled=!!mp.enabled;mp.everyLevels=Math.max(1,Math.round(Number(mp.everyLevels)||5));mp.amount=Math.max(0,r2(mp.amount));
-    d.chores.forEach(c=>{c.ask=!!c.ask;if(c.kind==="family"){c.mult=Number(c.mult)||1;c.limit=Math.max(1,Math.round(Number(c.limit)||1));c.weekLimit=Math.max(0,Math.round(Number(c.weekLimit)||0));if(c.assign!=="pool"&&!d.kids.some(k=>k.id===c.assign))c.assign="pool";}});
+    d.chores.forEach(c=>{c.ask=!!c.ask;if(c.kind==="family"){c.mult=Number(c.mult)||1;c.limit=Math.max(1,Math.round(Number(c.limit)||1));c.familyLimit=Math.max(0,Math.round(Number(c.familyLimit)||0));c.weekLimit=Math.max(0,Math.round(Number(c.weekLimit)||0));if(c.assign!=="pool"&&!d.kids.some(k=>k.id===c.assign))c.assign="pool";}});
     startDraft(d);guard(setDoc(doc(db,"app/config"),d),"Settings saved.");break;}
   }
   render();
