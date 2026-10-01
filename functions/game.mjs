@@ -100,6 +100,7 @@ export const MODES = [
   { id: "timetrial", emoji: "⏱️", name: "Time Trial", level: 1, desc: "Same chore. Fastest time done well wins." },
   { id: "ghost", emoji: "👻", name: "Ghost Race", level: 1, solo: true, desc: "Beat your own best time, done well." },
   { id: "roomrush", emoji: "🌪️", name: "Room Rush", level: 2, desc: "1 to 3 minutes. Clean up the most things in a room." },
+  { id: "doom", emoji: "🎡", name: "Wheel of Doom", level: 4, desc: "Spin for a silly handicap, then race the same chore." },
   { id: "blitz", emoji: "⚡", name: "Blitz", level: 3, desc: "Most chore XP before time runs out." },
   { id: "bingo", emoji: "🎱", name: "Chore Bingo", level: 5, desc: "First to finish a row of chores wins." },
   { id: "territory", emoji: "🚩", name: "Territory", level: 6, kidsOnly: true, desc: "Conquer a map. Each country hides a chore." },
@@ -112,10 +113,10 @@ export const MODES = [
   { id: "wildcard", emoji: "🃏", name: "Wildcard", level: 20, desc: "A random mode with a twist." },
 ];
 export const modeById = (id) => MODES.find((m) => m.id === id);
-export const TIMED = ["timetrial", "ghost"];
+export const TIMED = ["timetrial", "ghost", "doom"];
 export const isRaid = (mode) => mode === "raid" || mode === "babyraid";
 // Same-day modes a challenger can put a time limit on (minutes; 0 = until midnight).
-export const TIMEBOX_MODES = ["race", "blitz", "territory", "bingo", "babyraid", "grownups", "timetrial", "ghost", "judge", "roomrush"];
+export const TIMEBOX_MODES = ["race", "blitz", "territory", "bingo", "babyraid", "grownups", "timetrial", "ghost", "judge", "roomrush", "doom"];
 // Room Rush: the room to clean, how long each player's run lasts, and the most items a count can be.
 export const ROOMS = ["Living room", "Kitchen", "Bedroom", "Bathroom", "Playroom", "Family room", "Garage", "Backyard"];
 export const RUSH_MINUTES = [1, 2, 3];
@@ -479,6 +480,38 @@ export const babyBossFor = (beaten) => {
 };
 export const babyRaidHp = (members) => 15 * Math.max(1, members || 1); // about a chore and a half per person
 
+/* ---------- Wheel of Doom ---------- */
+// 12 slots. Before a Wheel of Doom run, each player spins and must do the chore with what it lands on.
+// [id, emoji, name, rule]
+export const DOOMS = [
+  ["onehand", "🤚", "One hand only", "Keep one hand behind your back the whole time."],
+  ["trex", "🦖", "T-rex arms", "Keep your elbows glued to your sides."],
+  ["wronghand", "🔄", "Wrong hand", "Only use the hand you don't write with."],
+  ["hop", "🐸", "Hop it", "No walking. Hop everywhere you go."],
+  ["sing", "🎤", "Nonstop singing", "Sing the whole time. No breaks!"],
+  ["robot", "🤖", "Robot mode", "Robot voice and robot moves the whole time."],
+  ["socks", "🧦", "Sock hands", "Wear socks on your hands."],
+  ["silent", "🤫", "Silent mode", "Not one word, not one sound."],
+  ["slowmo", "🐌", "Slow-mo start", "Move in slow motion for the first 30 seconds."],
+  ["jacks", "🏋️", "Warm-up", "Do 10 jumping jacks after you tap Start, before you touch anything."],
+  ["mercy", "😇", "Mercy!", "No doom. Lucky you!"],
+  ["double", "💀", "Double doom", "Spin twice more and do both."],
+];
+export const DOOM_DOUBLE = DOOMS.findIndex((d) => d[0] === "double");
+export const DOOM_MERCY = DOOMS.findIndex((d) => d[0] === "mercy");
+// What a spin lands on, from random numbers in [0, 1): one slot, or Double doom followed by
+// two different real dooms (never Mercy or Double again).
+export function doomSpin(rand) {
+  const first = Math.floor(rand() * DOOMS.length);
+  if (first !== DOOM_DOUBLE) return [first];
+  const pool = DOOMS.map((_, i) => i).filter((i) => i !== DOOM_DOUBLE && i !== DOOM_MERCY);
+  const a = pool.splice(Math.floor(rand() * pool.length), 1)[0];
+  const b = pool[Math.floor(rand() * pool.length)];
+  return [first, a, b];
+}
+// The dooms a player actually has to follow (Double doom itself is just the trigger).
+export const doomsOf = (spins) => (spins || []).filter((i) => i !== DOOM_DOUBLE).map((i) => DOOMS[i]).filter(Boolean);
+
 /* ---------- Territory map ---------- */
 // A made-up map of countries on a hex grid. Each country hides an Anyone chore, picked when a player
 // reveals it. Players start in home countries with neutral land between them and grow outward:
@@ -683,7 +716,7 @@ export function decide(b, entriesBy, chores, final) {
     if (freeOnly(a) && freeOnly(c)) return { noContest: true, reason: "Nobody did a chore" };
     return compareScores(s, a, c, "Most squares when time ran out");
   }
-  if (b.mode === "timetrial") {
+  if (b.mode === "timetrial" || b.mode === "doom") {
     const at = b.attempts || {};
     const fin = (p) => at[p] && at[p].ms != null && !at[p].void;
     const over = (p) => fin(p) || (at[p] && at[p].void);

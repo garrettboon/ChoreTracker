@@ -164,6 +164,39 @@ test("room rush: start the countdown, turn in a count after it, most items wins"
   await quiet("xp/k2");
 });
 
+test("wheel of doom: spin once, then race the chore; a parent checks the work and the doom", async () => {
+  await reset();
+  await level("k1", 4);
+  const k1 = await kidClient("k1"), k2 = await kidClient("k2"), parent = await parentClient();
+  await rejects(k2.call("createBattle", { mode: "doom", opponent: "k1", choreId: "c1" }), /Reach level 4/);
+  await rejects(k1.call("createBattle", { mode: "doom", opponent: "k2", choreId: "mine" }), /Anyone chore/);
+  const { id } = await k1.call("createBattle", { mode: "doom", opponent: "k2", choreId: "c1" });
+  await rejects(k1.call("spinDoom", { id }), /isn't running/);
+  await k2.call("respondBattle", { id, accept: true });
+  await rejects(k1.call("startAttempt", { id }), /Spin the wheel first/);
+  const { spins } = await k1.call("spinDoom", { id });
+  assert.ok(spins.length === 1 || spins.length === 3);
+  await rejects(k1.call("spinDoom", { id }), /No re-spins/);
+  assert.deepEqual((await battle(id)).dooms.k1, spins);
+  await k2.call("spinDoom", { id });
+  await k1.call("startAttempt", { id });
+  await k2.call("startAttempt", { id });
+  await k1.call("finishAttempt", { id });
+  await k2.call("finishAttempt", { id });
+  let b = await battle(id);
+  assert.equal(b.status, "confirming");
+  assert.equal(b.result.qualityCheck, true);
+  // k1 didn't follow the doom; k2 did.
+  await parent.call("checkRun", { id, player: "k1", ok: false });
+  await parent.call("checkRun", { id, player: "k2", ok: true });
+  b = await waitFor(async () => { const b = await battle(id); return !b.live && b; }, { msg: "doom settled" });
+  assert.equal(b.result.winner, "k2");
+  assert.deepEqual(b.xp, { k1: 0, k2: G.XP.win });
+  await waitFor(async () => (await eventKeys("k2")).includes(`battle:${id}`), { msg: "battle XP" });
+  await quiet("xp/k1");
+  await quiet("xp/k2");
+});
+
 test("chore bingo: first to finish a line wins", async () => {
   await reset();
   await level("k3", 5);

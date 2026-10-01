@@ -125,6 +125,7 @@ What levels unlock: new creatures (the first 13 stay free), accessories, screen 
 | Time Trial | level 1 | Same chore, fastest time done well. The timer's Done button logs the chore, and a parent checks the work |
 | Ghost Race | level 1 | Beat your own best time, done well (a parent checks) |
 | Room Rush | level 2 | Pick a room and 1, 2, or 3 minutes. Clean up as many things as you can, counting in your head, then type in your total. Most things wins |
+| Wheel of Doom | level 4 | Same chore, timed. Each player first spins a wheel for a silly handicap (one hand only, T-rex arms, nonstop singing…) and has to follow it. Fastest run done well wins |
 | Blitz | level 3 | Most chore XP in a time window |
 | Chore Bingo | level 5 | First to finish a row, column, or diagonal on a 3×3 card of chores |
 | Territory | level 6 | Kids only. Conquer a map: tap a country next to yours to reveal its chore, do it, and the country turns your color. Most countries wins |
@@ -136,11 +137,13 @@ What levels unlock: new creatures (the first 13 stay free), accessories, screen 
 | Kids vs. Grown-ups | level 15 | Team battle; the kids' team gets a handicap |
 | Wildcard | level 20 | A random mode, often with a twist like "Clean bathroom counts double" |
 
+**Wheel of Doom:** pick an Anyone chore. Before starting the timer, each player spins the wheel once (no re-spins), and the server decides where it lands. The 12 slots are: 🤚 One hand only, 🦖 T-rex arms, 🔄 Wrong hand, 🐸 Hop it, 🎤 Nonstop singing, 🤖 Robot mode, 🧦 Sock hands, 🤫 Silent mode, 🐌 Slow-mo start, 🏋️ Warm-up (10 jumping jacks first), 😇 Mercy (no doom), and 💀 Double doom (two dooms at once). The doom shows on the full-screen timer. Like Time Trial, a parent checks each run in the Game tab, doom included, and the fastest run done well wins.
+
 **Room Rush:** pick a room and how long each run lasts (1, 2, or 3 minutes). Each player taps **Start** when they're in the room, cleans up as many things as they can before the countdown runs out, then types in how many. The handicap multiplies the count, and the other player confirms the result (or asks a parent). It pays the normal battle XP plus 1 XP per thing cleaned up (up to 30), and doesn't log a chore or earn money.
 
 **Territory map:** the battle opens a full-screen map of 13 made-up countries (tap **Open the map**). Each player starts with a castle, with neutral countries in between. Tap a glowing country that borders yours, then **Reveal the chore** to see which Anyone chore it hides. You must finish that chore (checking off any steps) before revealing another, and nobody else can take the country meanwhile. **Give up** leaves it neutral but locks it for you. Only chores done from the map claim countries, and a chore a parent reverses gives its country back. The most countries when time runs out wins (handicap applies), or sooner once the other side can't catch up.
 
-**Time limits:** when starting a same-day battle (Race, Blitz, Territory, Bingo, Baby Boss Raid, Kids vs. Grown-ups, Time Trial, Ghost Race, Judge's Pick, Room Rush), pick how long it runs: until midnight, 15 minutes to 2 hours, or a custom number of minutes (5 to 240). Parents set each mode's default under Settings > Game.
+**Time limits:** when starting a same-day battle (Race, Blitz, Territory, Bingo, Baby Boss Raid, Kids vs. Grown-ups, Time Trial, Ghost Race, Judge's Pick, Room Rush, Wheel of Doom), pick how long it runs: until midnight, 15 minutes to 2 hours, or a custom number of minutes (5 to 240). Parents set each mode's default under Settings > Game.
 
 Younger players get an automatic handicap: their score is multiplied by 8% per year of age difference, up to ×1.5. Adults count as 18. In Bingo the younger player gets free squares instead.
 

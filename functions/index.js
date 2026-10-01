@@ -573,7 +573,7 @@ const MS_PENDING = 2 * 3600 * 1000;       // unanswered challenges expire
 const MS_AUTOCONFIRM = 12 * 3600 * 1000;  // unconfirmed results confirm themselves
 const MS_PARENT_WAIT = 48 * 3600 * 1000;  // flagged results nobody checked become no contest
 const MS_COOLDOWN = 3600 * 1000;          // after a decline
-const SPEED = ["race", "blitz", "timetrial", "ghost", "territory", "bingo", "grownups", "roomrush"]; // results someone confirms
+const SPEED = ["race", "blitz", "timetrial", "ghost", "territory", "bingo", "grownups", "roomrush", "doom"]; // results someone confirms
 const LIVE_SCORED = ["race", "blitz", "territory", "bingo", "raid", "babyraid", "grownups"];         // scored from chores as they happen
 
 const dowOf = (date) => { const [y, m, d] = date.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d)).getUTCDay(); };
@@ -857,6 +857,7 @@ exports.startAttempt = onCall(async (req) => {
     if (!b || !b.players.includes(me.id) || !(G.TIMED.includes(b.mode) || b.mode === "roomrush")) throw new HttpsError("not-found", "No timed battle here.");
     if (b.status !== "active") throw new HttpsError("failed-precondition", "That battle isn't running.");
     if ((b.attempts || {})[me.id]) throw new HttpsError("failed-precondition", "You already started.");
+    if (b.mode === "doom" && !(b.dooms || {})[me.id]) throw new HttpsError("failed-precondition", "Spin the wheel first.");
     t.update(ref, { [`attempts.${me.id}`]: { startAt: Date.now() } });
   });
   return { ok: true };
@@ -986,6 +987,23 @@ exports.territoryGiveUp = onCall(async (req) => {
   });
   await refreshBattle(cfg, id, Date.now());
   return { ok: true };
+});
+
+// Wheel of Doom: spin once before your run. The server picks, so nobody can re-spin for a better one.
+exports.spinDoom = onCall(async (req) => {
+  const cfg = await getConfig();
+  const me = await actor(req, cfg);
+  const ref = db.doc(`battles/${String((req.data && req.data.id) || "")}`);
+  return db.runTransaction(async (t) => {
+    const s = await t.get(ref);
+    const b = s.exists ? s.data() : null;
+    if (!b || b.mode !== "doom" || !b.players.includes(me.id)) throw new HttpsError("not-found", "No Wheel of Doom here.");
+    if (b.status !== "active") throw new HttpsError("failed-precondition", "That battle isn't running.");
+    if ((b.dooms || {})[me.id]) throw new HttpsError("failed-precondition", "You already spun. No re-spins!");
+    const spins = G.doomSpin(Math.random);
+    t.update(ref, { [`dooms.${me.id}`]: spins });
+    return { spins };
+  });
 });
 
 // Room Rush: after the countdown, a player turns in how many things they cleaned up.

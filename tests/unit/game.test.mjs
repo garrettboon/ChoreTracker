@@ -502,3 +502,25 @@ test("room rush: most items wins (with the handicap), XP adds a little per item"
   assert.equal(G.battleXp(b, G.decide(b, {}, [], false)).a, 0, "nothing cleaned up, no XP");
   assert.ok(G.TIMEBOX_MODES.includes("roomrush"));
 });
+
+test("wheel of doom: 12 slots, Double doom adds two different real dooms, scored like Time Trial", () => {
+  assert.equal(G.DOOMS.length, 12);
+  assert.equal(new Set(G.DOOMS.map((d) => d[0])).size, 12);
+  const seq = (...xs) => () => xs.shift();
+  const slot = (i) => (i + 0.5) / G.DOOMS.length;
+  assert.deepEqual(G.doomSpin(seq(slot(1))), [1]);
+  assert.deepEqual(G.doomSpin(seq(slot(G.DOOM_MERCY))), [G.DOOM_MERCY]);
+  assert.deepEqual(G.doomsOf([G.DOOM_MERCY]).map((d) => d[0]), ["mercy"]);
+  for (let k = 0; k < 200; k++) {
+    const spins = G.doomSpin(seq(slot(G.DOOM_DOUBLE), Math.random(), Math.random()));
+    assert.equal(spins.length, 3);
+    assert.equal(spins[0], G.DOOM_DOUBLE);
+    assert.notEqual(spins[1], spins[2]);
+    for (const i of spins.slice(1)) assert.ok(![G.DOOM_DOUBLE, G.DOOM_MERCY].includes(i));
+    assert.equal(G.doomsOf(spins).length, 2);
+  }
+  assert.ok(G.TIMED.includes("doom"));
+  const b = { mode: "doom", players: ["a", "c"], handicap: { a: 1, c: 1 }, attempts: { a: { ms: 50000 }, c: { ms: 40000 } } };
+  assert.equal(G.decide(b, {}, [], false).winner, "c");
+  assert.deepEqual(G.battleXp({ ...b, quality: { c: false } }, { winner: "a" }), { a: G.XP.win, c: 0 }, "a run that failed the check earns nothing");
+});

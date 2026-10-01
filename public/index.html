@@ -395,6 +395,19 @@ body[data-kidtheme="gold"]{--bg:#FAF2DA;--surface-2:#FDF8EA;--pine:#8A5F04;--tra
 .focus > *{width:min(560px,100%)}
 .fx-top{display:flex;justify-content:space-between;align-items:center}
 .tmap{gap:8px}
+.wd-svg{width:min(340px,82vw);height:auto;display:block;margin:4px auto}
+.wd-rot{transform-origin:110px 110px}
+.wd-emo{font-size:20px;text-anchor:middle;dominant-baseline:central}
+@keyframes wdspin{from{transform:rotate(var(--from))}to{transform:rotate(var(--to))}}
+.wd-spin{animation:wdspin 3.6s cubic-bezier(.12,.7,.18,1) both}
+@media (prefers-reduced-motion:reduce){.wd-spin{animation-duration:.01s}}
+.wd-now{font-size:1.3rem;font-weight:800}
+.wd-cards{display:flex;flex-direction:column;gap:8px}
+.wd-card{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;align-items:center;text-align:left;background:var(--card);border:2px solid var(--line);border-radius:16px;padding:10px 14px}
+.wd-card span{grid-row:span 2;font-size:2.4rem}
+.wd-card b{font-size:1.2rem}
+.wd-line{margin:4px 0 8px}
+.fx-doom{background:var(--card);border:2px dashed var(--line);border-radius:14px;padding:8px 12px;font-size:1.05rem}
 .rush h2{font-size:1.8rem}
 .rr-clock{font-size:clamp(4.5rem,22vw,8rem)}
 .rr-up{font-size:1.6rem;font-weight:800}
