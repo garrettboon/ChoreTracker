@@ -100,10 +100,9 @@ export const stageFor = (level) => { let s = 1; STAGES.forEach(([l], i) => { if 
 
 /* ---------- battle modes ---------- */
 export const MODES = [
-  { id: "race", emoji: "🏁", name: "Race", level: 1, desc: "First to finish the chores wins." },
+  { id: "roomrush", emoji: "🌪️", name: "Room Rush", level: 1, desc: "1 to 3 minutes. Clean up the most things in a room." },
   { id: "timetrial", emoji: "⏱️", name: "Time Trial", level: 1, desc: "Same chore. Fastest time done well wins." },
   { id: "ghost", emoji: "👻", name: "Ghost Race", level: 1, solo: true, desc: "Beat your own best time, done well." },
-  { id: "roomrush", emoji: "🌪️", name: "Room Rush", level: 2, desc: "1 to 3 minutes. Clean up the most things in a room." },
   { id: "doom", emoji: "🎡", name: "Wheel of Doom", level: 3, desc: "Spin for a silly handicap, then race the same chore." },
   { id: "blitz", emoji: "⚡", name: "Blitz", level: 3, desc: "Most chore XP before time runs out." },
   { id: "bingo", emoji: "🎱", name: "Chore Bingo", level: 5, desc: "First to finish a row of chores wins." },
@@ -115,7 +114,11 @@ export const MODES = [
   { id: "babyraid", emoji: "🐣", name: "Baby Boss Raid", level: 1, team: true, baby: true, desc: "A tiny boss for today. Go solo or team up. Easy to beat." },
   { id: "grownups", emoji: "👨‍👧", name: "Kids vs. Grown-ups", level: 15, team: true, desc: "Kids team against the adults." },
   { id: "wildcard", emoji: "🃏", name: "Wildcard", level: 20, desc: "A random mode with a twist." },
+  // Retired: can't be started any more. Kept so battles from before still finish and show up in history.
+  { id: "race", emoji: "🏁", name: "Race", level: 1, retired: true, desc: "First to finish the chores wins." },
 ];
+// Modes people can pick and unlock.
+export const ACTIVE_MODES = MODES.filter((m) => !m.soon && !m.retired);
 export const modeById = (id) => MODES.find((m) => m.id === id);
 export const TIMED = ["timetrial", "ghost", "doom"];
 export const isRaid = (mode) => mode === "raid" || mode === "babyraid";
@@ -152,14 +155,14 @@ export function unlockedIds(level, xpDoc) {
   for (const t of TRAILS) if (t[2] <= level) ids.push("r:" + t[0]);
   for (const t of CONFETTI) if (t[2] <= level) ids.push("f:" + t[0]);
   for (const t of TITLES) if (t[3] ? t[3](x) : t[2] <= level) ids.push("ti:" + t[0]);
-  for (const m of MODES) if (!m.soon && m.level <= level) ids.push("m:" + m.id);
+  for (const m of ACTIVE_MODES) if (m.level <= level) ids.push("m:" + m.id);
   return ids;
 }
 // Every unlock id there is, achievement titles included.
 export function allUnlockIds() {
   return [...CREATURES.map((c) => "c:" + c[0]), ...HATS.map((h) => "h:" + h[0]), ...THEMES.map((t) => "t:" + t[0]),
     ...TRAILS.map((t) => "r:" + t[0]), ...CONFETTI.map((t) => "f:" + t[0]), ...TITLES.map((t) => "ti:" + t[0]),
-    ...MODES.filter((m) => !m.soon).map((m) => "m:" + m.id)];
+    ...ACTIVE_MODES.map((m) => "m:" + m.id)];
 }
 // True when this person skips level locks: a grown-up, with the parents' "unlock everything for grown-ups" setting on.
 export const skipsLevels = (config, person) => !!(person && person.adult && gameCfg(config).adultsUnlockAll);
@@ -167,7 +170,7 @@ export const skipsLevels = (config, person) => !!(person && person.adult && game
 // with the parents' setting on, grown-ups can play any mode solo (except Kids vs. Grown-ups).
 export function canSolo(config, person, modeId) {
   const m = modeById(modeId);
-  if (!m || m.solo || modeId === "grownups") return false;
+  if (!m || m.solo || m.retired || modeId === "grownups") return false;
   if (modeId === "roomrush" || modeId === "babyraid") return true;
   return !!(person && person.adult && gameCfg(config).adultsSoloAll);
 }
@@ -337,7 +340,7 @@ export function badgeList(s) {
     b("win25", "🥊", "Battle master", n(s.wins) >= 25, "Win 25 battles"),
     b("giant", "🗡️", "Giant slayer", n(s.giant) >= 1, "Beat someone older in a battle"),
     // One per battle mode: win it once. modeWins: { modeId: wins }
-    ...MODE_BADGES.filter(([m]) => modeById(m) && !modeById(m).soon)
+    ...MODE_BADGES.filter(([m]) => ACTIVE_MODES.some((x) => x.id === m))
       .map(([m, emoji, name, how]) => b("mode_" + m, emoji, name, n((s.modeWins || {})[m]) >= 1, how)),
   ];
 }
@@ -724,7 +727,7 @@ function decideMap(b, s, final) {
 }
 
 /* ---------- Wildcard ---------- */
-export const WILDCARD_MODES = ["race", "blitz", "territory", "bingo"];
+export const WILDCARD_MODES = ["blitz", "territory", "bingo"];
 
 // Decide a battle. `final` means time is up. Returns null while still undecided, else
 // { winner, tie, noContest, reason } (team modes use winnerSide instead of winner).

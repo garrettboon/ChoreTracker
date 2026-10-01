@@ -662,6 +662,7 @@ exports.createBattle = onCall(async (req) => {
   if (!bc.enabled) throw new HttpsError("failed-precondition", "Battles are turned off right now.");
   const picked = G.modeById(String(data.mode || ""));
   if (!picked || picked.soon) throw new HttpsError("invalid-argument", "That battle mode isn't ready yet.");
+  if (picked.retired) throw new HttpsError("invalid-argument", `${picked.name} isn't a battle mode any more.`);
   if ((bc.modesOff || []).includes(picked.id)) throw new HttpsError("failed-precondition", `A parent turned off ${picked.name}.`);
   const xs = await db.doc(`xp/${me.id}`).get();
   const xd = xs.exists ? xs.data() : {};

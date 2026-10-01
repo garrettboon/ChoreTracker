@@ -8,10 +8,11 @@ import {
 after(closeAll);
 const H = 3600 * 1000;
 
-test("race: challenge, accept, first to finish wins, loser confirms, XP and badge paid", async () => {
+test("challenge, accept, play, loser confirms, XP and badges paid (Room Rush); Race is retired", async () => {
   await reset();
   const k1 = await kidClient("k1"), k2 = await kidClient("k2");
-  const { id } = await k1.call("createBattle", { mode: "race", opponent: "k2", n: 2 });
+  await rejects(k1.call("createBattle", { mode: "race", opponent: "k2", n: 2 }), /isn't a battle mode any more/);
+  const { id } = await k1.call("createBattle", { mode: "roomrush", opponent: "k2", room: "Kitchen", minutes: 1 });
   let b = await battle(id);
   assert.equal(b.status, "pending");
   assert.deepEqual(b.handicap, { k1: 1, k2: 1.16 });
@@ -19,24 +20,29 @@ test("race: challenge, accept, first to finish wins, loser confirms, XP and badg
   await k2.call("respondBattle", { id, accept: true });
   assert.equal((await battle(id)).status, "active");
 
-  await k1.call("completeChore", { kidId: "k1", choreId: "c1" });
-  await waitFor(async () => (await battle(id)).scores?.k1?.raw === 1, { msg: "live score" });
-  await k1.call("completeChore", { kidId: "k1", choreId: "c2" });
-  b = await waitFor(async () => { const b = await battle(id); return b.status === "confirming" && b; }, { msg: "race decided" });
+  for (const [c, n] of [[k1, 15], [k2, 4]]) {
+    const me = c === k1 ? "k1" : "k2";
+    await c.call("startAttempt", { id });
+    await db.doc(`battles/${id}`).update({ [`attempts.${me}.startAt`]: Date.now() - 60000 });
+    await c.call("rushCount", { id, count: n });
+  }
+  b = await battle(id);
+  assert.equal(b.status, "confirming");
   assert.equal(b.result.winner, "k1");
 
   await rejects(k1.call("confirmResult", { id }), /other player or a parent/);
   await k2.call("confirmResult", { id });
   b = await waitFor(async () => { const b = await battle(id); return b.live === false && b; }, { msg: "battle closed" });
   assert.equal(b.status, "done");
-  assert.deepEqual(b.xp, { k1: G.XP.win, k2: 0 });
+  assert.deepEqual(b.xp, { k1: G.XP.win + G.rushXp(15), k2: G.XP.loss + G.rushXp(4) });
+  await waitFor(async () => (await eventKeys("k1")).includes("badge:mode_roomrush"), { msg: "mode badge" });
   await quiet("xp/k1");
+  await quiet("xp/k2");
   const keys = await eventKeys("k1");
   assert.ok(keys.includes("battle:" + id));
   assert.ok(keys.includes("badge:win1"));
-  assert.ok(keys.includes("badge:mode_race"), "first Race win earns the Race badge");
   assert.equal((await xpOf("k1")).counts.win, 1);
-  assert.equal((await xpOf("k1")).counts.win_race, 1);
+  assert.equal((await xpOf("k1")).counts.win_roomrush, 1);
 });
 
 test("mode badges: wins from before per-mode counting are recounted once", async () => {
@@ -62,34 +68,34 @@ test("mode badges: wins from before per-mode counting are recounted once", async
 test("guardrails: one battle per pair, locked modes, decline cooldown, daily cap", async () => {
   await reset({ ...CONFIG, game: { ...CONFIG.game, battles: { ...CONFIG.game.battles, dailyCap: 2 } } });
   const k1 = await kidClient("k1"), k2 = await kidClient("k2"), k3 = await kidClient("k3");
-  const { id } = await k1.call("createBattle", { mode: "race", opponent: "k2" });
-  await rejects(k2.call("createBattle", { mode: "race", opponent: "k1" }), /already have a battle/);
+  const { id } = await k1.call("createBattle", { mode: "roomrush", opponent: "k2" });
+  await rejects(k2.call("createBattle", { mode: "roomrush", opponent: "k1" }), /already have a battle/);
   await rejects(k3.call("createBattle", { mode: "blitz", opponent: "k1" }), /Reach level 3/);
   await rejects(k3.call("createBattle", { mode: "bingo", opponent: "k1" }), /Reach level 5/);
   await rejects(k3.call("createBattle", { mode: "nonsense", opponent: "k1" }), /isn't ready/);
-  await rejects(k3.call("createBattle", { mode: "race", opponent: "k3" }), /Pick someone/);
+  await rejects(k3.call("createBattle", { mode: "roomrush", opponent: "k3" }), /Pick someone/);
   await k2.call("respondBattle", { id, accept: false });
   assert.equal((await battle(id)).status, "declined");
-  await rejects(k1.call("createBattle", { mode: "race", opponent: "k2" }), /said not now/);
+  await rejects(k1.call("createBattle", { mode: "roomrush", opponent: "k2" }), /said not now/);
   // Declines don't count toward the cap; two real battles do.
-  const a = await k1.call("createBattle", { mode: "race", opponent: "k3" });
+  const a = await k1.call("createBattle", { mode: "roomrush", opponent: "k3" });
   await k1.call("cancelBattle", { id: a.id });
   await k1.call("createBattle", { mode: "timetrial", opponent: "k3", choreId: "c1" });
   await k3.call("createBattle", { mode: "ghost", choreId: "c1" });
-  await rejects(k2.call("createBattle", { mode: "race", opponent: "k3" }), /Maggie has done 2 battles today/);
+  await rejects(k2.call("createBattle", { mode: "roomrush", opponent: "k3" }), /Maggie has done 2 battles today/);
 });
 
 test("battles respect quiet hours and the parent's off switches", async () => {
   const battles = (b) => ({ ...CONFIG, game: { ...CONFIG.game, battles: { ...CONFIG.game.battles, ...b } } });
   await reset(battles({ quietStart: "00:00", quietEnd: "23:59" }));
   let k1 = await kidClient("k1");
-  await rejects(k1.call("createBattle", { mode: "race", opponent: "k2" }), /asleep/);
-  await reset(battles({ modesOff: ["race"] }));
+  await rejects(k1.call("createBattle", { mode: "roomrush", opponent: "k2" }), /asleep/);
+  await reset(battles({ modesOff: ["roomrush"] }));
   k1 = await kidClient("k1");
-  await rejects(k1.call("createBattle", { mode: "race", opponent: "k2" }), /turned off Race/);
+  await rejects(k1.call("createBattle", { mode: "roomrush", opponent: "k2" }), /turned off Room Rush/);
   await reset(battles({ enabled: false }));
   k1 = await kidClient("k1");
-  await rejects(k1.call("createBattle", { mode: "race", opponent: "k2" }), /turned off/);
+  await rejects(k1.call("createBattle", { mode: "roomrush", opponent: "k2" }), /turned off/);
 });
 
 test("time trial: the result stays pending until a parent checks each run was done well", async () => {
@@ -164,7 +170,7 @@ test("scheduled tick: challenges expire, timed-out battles finish, results auto-
   await reset();
   const k1 = await kidClient("k1"), k2 = await kidClient("k2"), k3 = await kidClient("k3");
   const parent = await parentClient();
-  const p = await k1.call("createBattle", { mode: "race", opponent: "k2" });
+  const p = await k1.call("createBattle", { mode: "roomrush", opponent: "k2" });
   await parent.call("testHooks", { run: "tick", now: Date.now() + 3 * H });
   assert.equal((await battle(p.id)).status, "expired");
 
@@ -185,7 +191,7 @@ test("scheduled tick: challenges expire, timed-out battles finish, results auto-
   assert.deepEqual(b.xp, { k3: 0, k2: G.XP.win });
 
   // A parent can call off a live battle.
-  const c = await k1.call("createBattle", { mode: "race", opponent: "k3" });
+  const c = await k1.call("createBattle", { mode: "roomrush", opponent: "k3" });
   await k3.call("respondBattle", { id: c.id, accept: true });
   await rejects(k1.call("cancelBattle", { id: c.id }), /Only a parent/);
   await parent.call("cancelBattle", { id: c.id });
@@ -193,14 +199,14 @@ test("scheduled tick: challenges expire, timed-out battles finish, results auto-
 });
 
 test("per-mode and weekly battle limits", async () => {
-  const cfg = { ...CONFIG, game: { ...CONFIG.game, battles: { ...CONFIG.game.battles, dailyCap: 10, weeklyCap: 3, modeLimits: { race: { day: 1 } } } } };
+  const cfg = { ...CONFIG, game: { ...CONFIG.game, battles: { ...CONFIG.game.battles, dailyCap: 10, weeklyCap: 3, modeLimits: { roomrush: { day: 1 } } } } };
   await reset(cfg);
   const k1 = await kidClient("k1"), k2 = await kidClient("k2"), k3 = await kidClient("k3");
   const done = (mode, extra = {}) => db.collection("battles").add({ mode, status: "done", live: false, players: ["k1", "k2"], challenger: "k1", day: today(), createdAt: Date.now(), ...extra });
-  await done("race");
-  await done("race", { status: "cancelled" }); // called off: doesn't count
-  await rejects(k1.call("createBattle", { mode: "race", opponent: "k3" }), /done 1 Race battle today/);
-  await rejects(k3.call("createBattle", { mode: "race", opponent: "k1" }), /Teslyn has done 1 Race battle today/);
+  await done("roomrush");
+  await done("roomrush", { status: "cancelled" }); // called off: doesn't count
+  await rejects(k1.call("createBattle", { mode: "roomrush", opponent: "k3" }), /done 1 Room Rush battle today/);
+  await rejects(k3.call("createBattle", { mode: "roomrush", opponent: "k1" }), /Teslyn has done 1 Room Rush battle today/);
   await done("blitz");
   await k1.call("createBattle", { mode: "timetrial", opponent: "k3", choreId: "c1" }); // third this week
   await rejects(k1.call("createBattle", { mode: "ghost", choreId: "c2" }), /done 3 battles this week/);
@@ -208,18 +214,19 @@ test("per-mode and weekly battle limits", async () => {
 });
 
 test("a custom time limit ends the battle early", async () => {
-  await reset({ ...CONFIG, game: { ...CONFIG.game, battles: { ...CONFIG.game.battles, modeTimes: { race: 20 } } } });
+  await reset({ ...CONFIG, game: { ...CONFIG.game, battles: { ...CONFIG.game.battles, modeTimes: { blitz: 20 } } } });
+  await db.doc("xp/k1").set({ total: G.levelStart(3), maxLevel: 3, unlocked: [] });
   const k1 = await kidClient("k1"), k2 = await kidClient("k2"), parent = await parentClient();
-  const d = await k1.call("createBattle", { mode: "race", opponent: "k2" });
+  const d = await k1.call("createBattle", { mode: "blitz", opponent: "k2" });
   assert.equal((await battle(d.id)).params.windowMin, 20, "parent's default for the mode");
   await k1.call("cancelBattle", { id: d.id });
-  const { id } = await k1.call("createBattle", { mode: "race", opponent: "k2", n: 5, windowMin: 30 });
+  const { id } = await k1.call("createBattle", { mode: "blitz", opponent: "k2", windowMin: 30 });
   await k2.call("respondBattle", { id, accept: true });
   let b = await battle(id);
   assert.equal(b.params.windowMin, 30);
   assert.ok(Math.abs(b.endAt - b.startAt - Math.min(30 * 60000, b.endAt - b.startAt)) < 1000 && b.endAt - b.startAt <= 30 * 60000 + 1000, "ends within 30 minutes");
   await k1.call("completeChore", { kidId: "k1", choreId: "c1" });
-  await waitFor(async () => (await battle(id)).scores?.k1?.raw === 1, { msg: "score" });
+  await waitFor(async () => (await battle(id)).scores?.k1?.raw === G.XP.chore, { msg: "score" });
   await parent.call("testHooks", { run: "tick", now: b.endAt + 1000 });
   b = await battle(id);
   assert.equal(b.status, "confirming");

@@ -39,7 +39,7 @@ test("unlocks: starters free, new creatures and modes by level", () => {
   assert.equal(G.STARTERS.length, 13);
   assert.ok(!l1.includes("c:hedgehog"));
   assert.ok(G.unlockedIds(2, {}).includes("c:hedgehog"));
-  assert.ok(l1.includes("m:race") && l1.includes("m:timetrial") && l1.includes("m:ghost"));
+  assert.ok(l1.includes("m:roomrush") && l1.includes("m:timetrial") && l1.includes("m:ghost"));
   assert.ok(!l1.includes("m:blitz"));
   assert.ok(G.unlockedIds(3, {}).includes("m:blitz"));
   assert.ok(!G.unlockedIds(4, {}).includes("m:bingo"));
@@ -135,7 +135,8 @@ test("badges", () => {
   assert.deepEqual(some.filter((b) => b[3]).map((b) => b[0]),
     ["first", "chores10", "fifty", "streak3", "streak7", "goal1", "level5", "quest1", "win1"]);
   // One badge per battle mode, for the first win; a Wildcard win counts for Wildcard and the mode it became.
-  for (const m of G.MODES) assert.ok(none.some((b) => b[0] === "mode_" + m.id), `badge for ${m.id}`);
+  for (const m of G.ACTIVE_MODES) assert.ok(none.some((b) => b[0] === "mode_" + m.id), `badge for ${m.id}`);
+  assert.ok(!none.some((b) => b[0] === "mode_race"), "no badge for a retired mode");
   const counts = {};
   for (const k of G.modeWinKeys({ mode: "bingo", wildcard: true })) counts[k] = 1;
   assert.deepEqual(G.badgeList({ modeWins: G.modeWinsOf(counts) }).filter((b) => b[3]).map((b) => b[0]), ["mode_bingo", "mode_wildcard"]);
@@ -545,12 +546,13 @@ test("grown-ups skip level locks only when the setting is on", () => {
 test("solo play: who can, how it ends, and what it pays (never a win)", () => {
   const kid = { id: "k", age: 9 }, dad = { id: "d", adult: true }, on = { game: { adultsSoloAll: true } };
   assert.equal(G.canSolo({}, kid, "roomrush"), true, "anyone can Room Rush solo");
-  assert.equal(G.canSolo({}, kid, "race"), false);
-  assert.equal(G.canSolo({}, dad, "race"), false, "grown-ups need the setting");
-  assert.equal(G.canSolo(on, dad, "race"), true);
+  assert.equal(G.canSolo({}, kid, "blitz"), false);
+  assert.equal(G.canSolo({}, dad, "blitz"), false, "grown-ups need the setting");
+  assert.equal(G.canSolo(on, dad, "blitz"), true);
+  assert.equal(G.canSolo(on, dad, "race"), false, "not a retired mode");
   assert.equal(G.canSolo(on, dad, "territory"), true);
   assert.equal(G.canSolo(on, dad, "grownups"), false, "Kids vs. Grown-ups needs both sides");
-  assert.equal(G.canSolo(on, kid, "race"), false, "the setting is for grown-ups");
+  assert.equal(G.canSolo(on, kid, "blitz"), false, "the setting is for grown-ups");
   assert.equal(G.canSolo(on, dad, "ghost"), false, "already solo");
   // Race: done when the finish line is crossed; short when time runs out partway.
   const race = { mode: "race", players: ["d"], handicap: { d: 1 }, params: { n: 2 }, startAt: 0, endAt: 100 };
@@ -573,4 +575,15 @@ test("solo play: who can, how it ends, and what it pays (never a win)", () => {
   const tt = { mode: "timetrial", players: ["d"], attempts: { d: { ms: 1000 } }, quality: { d: false } };
   assert.deepEqual(G.battleXp(tt, { solo: true, done: true }), {});
   assert.deepEqual(G.bingoFree({ id: "d", adult: true }, null, {}, "s"), {}, "no free squares without an opponent");
+});
+
+test("Race is retired; Room Rush takes its place as the first level-1 mode", () => {
+  assert.equal(G.ACTIVE_MODES[0].id, "roomrush");
+  assert.equal(G.modeById("roomrush").level, 1);
+  assert.ok(!G.ACTIVE_MODES.some((m) => m.id === "race"));
+  assert.equal(G.modeById("race").retired, true, "still known, so old Race battles show and finish");
+  assert.ok(!G.unlockedIds(G.MAX_LEVEL, {}).includes("m:race"));
+  assert.ok(G.unlockedIds(1, {}).includes("m:roomrush"));
+  assert.ok(!G.allUnlockIds().includes("m:race"));
+  assert.ok(!G.WILDCARD_MODES.includes("race"));
 });
