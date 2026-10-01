@@ -200,6 +200,9 @@ function render(){
   else if(S.role==="kid")h=kidCfg(S.viewKid)?viewKid(S.viewKid):`<div class="center"><p class="sub">This tablet's person was removed. Ask a parent to pair it again.</p></div>`;
   else if(S.role==="display")h=viewDisplay();
   else h=viewParent();
+  // A full-screen run closes if its battle was called off.
+  for(const [k,close] of [["tm",closeMap],["rush",closeRush],["wheel",closeWheel]]){const u=S.ui[k],b=u&&S.battles[u.id];if(u&&b&&b.status==="cancelled")close();}
+  if(S.ui.focus&&S.ui.focus.battleId){const b=S.battles[S.ui.focus.battleId];if(b&&b.status==="cancelled"){closeFocus();toast("That battle was called off.");}}
   if(S.ui.focus&&S.phase==="ready"&&S.config)h+=focusOverlay();
   else if(S.ui.tm&&S.phase==="ready"&&S.config&&onKidScreen())h+=mapOverlay();
   else if(S.ui.rush&&S.phase==="ready"&&S.config&&onKidScreen())h+=rushOverlay();
@@ -443,7 +446,7 @@ function battleCard(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Batt
       body=`<p class="sub">Spin the wheel to get your doom, then do "${esc(b.params.choreName)}" with it. Fastest run done well (doom included) wins.${od?` ${bName(b,other)} got ${doomText(od)}!`:""}</p><button class="btn block" data-act="wd-open" data-id="${b.id}">🎡 Spin the Wheel of Doom</button>`;}
     else if(G.TIMED.includes(b.mode)){const a=(b.attempts||{})[me];
       if(b.mode==="doom")dl=`<p class="wd-line">Your doom: <b>${doomText(b.dooms[me])}</b>${other&&(b.dooms||{})[other]?`<br>${bName(b,other)}: ${doomText(b.dooms[other])}`:""}</p>`;
-      body=!a?`<p class="sub">Tap Start, do "${esc(b.params.choreName)}", then tap Done. The chore is logged when you finish.</p><button class="btn block" data-act="b-start" data-id="${b.id}" ${dis}>▶ Start timer</button>${b.mode==="ghost"?`<button class="btn ghost small" style="margin-top:8px" data-act="b-cancel" data-id="${b.id}" ${dis}>Cancel</button>`:""}`
+      body=!a?`<p class="sub">Tap Start, do "${esc(b.params.choreName)}", then tap Done. The chore is logged when you finish.</p><button class="btn block" data-act="b-start" data-id="${b.id}" ${dis}>▶ Start timer</button>`
         :a.ms==null&&!a.void?`<div class="tt-big"><span class="tt-clock" data-start="${a.startAt}"></span></div>${stepsOf(choreById(b.params.choreId)).length?`<button class="btn block" data-act="fx-battle" data-id="${b.id}">⤢ Open the checklist</button>`:`<button class="btn block" data-act="b-finish" data-id="${b.id}" ${dis}>✓ Done!</button><button class="btn ghost small" style="margin-top:8px" data-act="fx-battle" data-id="${b.id}">⤢ Full screen</button>`}`
         :`<p class="sub">${a.void?"Your run didn't count: "+esc(a.void):"Your time: <b>"+fmtMs(a.ms)+"</b>. A parent will check that it was done well"}.${other?` Waiting for ${bName(b,other)}.`:""}</p>`;}
     else if(b.mode==="judge"){const a=(b.attempts||{})[me];
@@ -470,7 +473,14 @@ function battleCard(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Batt
     else if(other&&!G.isWinner(b,r,me))act=`<div class="row"><button class="btn" data-act="b-confirm" data-id="${b.id}" ${dis}>Looks good</button><button class="btn ghost" data-act="b-dispute" data-id="${b.id}" ${dis}>Ask a parent</button></div>`;
     else act=`<p class="hint">Waiting for ${other?"the other side or ":""}a parent to confirm.</p>`;
     body=`<p class="b-result">${resultText(b,me)}</p>${act}`;}
-  return `<div class="bcard ${b.status}"><div class="b-head"><b>${b.wildcard?"🃏 Wildcard: ":""}${m.emoji} ${esc(m.name)}</b><span class="sub">${modeParams(b)}</span></div>${vs}${dl}${body}</div>`;}
+  return `<div class="bcard ${b.status}"><div class="b-head"><b>${b.wildcard?"🃏 Wildcard: ":""}${m.emoji} ${esc(m.name)}</b><span class="sub">${modeParams(b)}</span></div>${vs}${dl}${body}${b.status==="active"?cancelRow(b,me):""}</div>`;}
+// Calling off a running battle: a solo player just cancels; with others, everyone has to agree.
+function cancelRow(b,me){const dis=S.busy.b?"disabled":"";
+  if(b.players.length===1)return `<button class="btn ghost small b-off" data-act="b-cancel" data-id="${b.id}" ${dis}>Cancel this battle</button>`;
+  const ask=b.cancelAsk||{},askers=b.players.filter(p=>ask[p]),waiting=b.players.filter(p=>!ask[p]&&p!==me);
+  if(ask[me])return `<p class="hint b-off">You asked to call it off. Waiting for ${waiting.map(p=>bName(b,p)).join(" and ")} to agree.</p>`;
+  if(askers.length)return `<div class="banner b-off"><span>🤝 ${askers.map(p=>bName(b,p)).join(" and ")} want${askers.length>1?"":"s"} to call it off.</span><button class="btn small" data-act="b-cancel" data-id="${b.id}" ${dis}>Agree</button></div>`;
+  return `<button class="btn ghost small b-off" data-act="b-cancel" data-id="${b.id}" ${dis}>Call it off</button>`;}
 function recentLine(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Battle"};const others=b.players.filter(p=>p!==me);const xp=(b.xp||{})[me]||0;
   return `<li><span>${m.emoji} ${esc(m.name)}${others.length?` ${G.isRaid(b.mode)?"with":"vs"} ${others.map(p=>bName(b,p)).join(", ")}`:""}<br><small>${resultText(b,me)}</small></span><span class="amt pos">${xp?"+"+xp+" XP":""}</span></li>`;}
 const bbChores=(kidId,mode)=>cfg().chores.filter(c=>c.kind==="family"&&!needsNote(c)&&(c.assign==="pool"||(mode==="ghost"&&c.assign===kidId)));
@@ -1078,7 +1088,9 @@ async function handleAct(act,ds){
     if(r){S.ui.bb=null;const got=G.modeById(r.mode)||m;toast(m.solo?"Ghost race is on. Start when you're ready!":solo&&!G.isRaid(m.id)?`Solo ${got.name} is on!`:m.id==="wildcard"?`🃏 It's ${got.name}!${r.twist?" "+r.twist.text+".":""} Challenge sent.`:G.isRaid(m.id)?((bb.team||[]).length?"Team invite sent!":"Baby boss raid is on. Go do chores!"):"Challenge sent!");}break;}
   case "b-accept":{const r=await bcall("respondBattle",{id:ds.id,accept:true});if(r){confetti(60);chime(false);toast(r.started?"Battle on! Go go go!":"You're in! Waiting for the others.");}break;}
   case "b-decline": await bcall("respondBattle",{id:ds.id,accept:false});break;
-  case "b-cancel": await bcall("cancelBattle",{id:ds.id},"Called off.");break;
+  case "b-cancel":{const b=S.battles[ds.id],solo=b&&b.players.length===1,running=b&&b.status==="active";
+    if(running&&!confirm(solo?"Cancel this battle? Nobody gets XP for it.":"Call off this battle? Everyone has to agree, and nobody gets XP for it."))return;
+    const r=await bcall("cancelBattle",{id:ds.id});if(r)toast(r.waiting?"Asked to call it off. Waiting for the others to agree.":"Called off.");break;}
   case "b-start":{const b=S.battles[ds.id];if(S.ui.wheel)closeWheel();if(await bcall("startAttempt",{id:ds.id},"Timer started. Go!")&&b)openFocus({kid,id:b.params.choreId,battleId:ds.id});break;}
   case "fx-battle":{const b=S.battles[ds.id];if(!b)return;const a=(b.attempts||{})[kid];openFocus({kid,id:b.params.choreId,battleId:ds.id,startAt:a&&a.startAt?a.startAt:Date.now()});break;}
   case "focus":{const ch=choreById(ds.id);if(!ch)return;S.ui.confirmChore=null;openFocus({kid,id:ch.id});break;}

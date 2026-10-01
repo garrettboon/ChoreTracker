@@ -858,21 +858,39 @@ exports.respondBattle = onCall(async (req) => {
   return { ok: true, started: b.status === "active" };
 });
 
+// Calls off a battle. A parent can call off any battle that hasn't finished. A challenger can take back
+// a challenge nobody has answered. Once a battle is running, a solo player can cancel it any time;
+// with others, everyone has to agree, so nobody can bail out just because they're behind.
 exports.cancelBattle = onCall(async (req) => {
   const cfg = await getConfig();
   const id = String((req.data && req.data.id) || "");
   const ref = db.doc(`battles/${id}`);
   const parent = isParentAuth(req.auth) && !(req.data && req.data.as);
   const me = parent ? null : await actor(req, cfg);
+  let asked = null;
   await db.runTransaction(async (t) => {
     const s = await t.get(ref);
     if (!s.exists) throw new HttpsError("not-found", "That battle is gone.");
     const b = s.data();
     if (!b.live || b.status === "done") throw new HttpsError("failed-precondition", "That battle already ended.");
-    const own = me && b.challenger === me.id && (b.status === "pending" || (b.mode === "ghost" && b.status === "active"));
-    if (!parent && !own) throw new HttpsError("permission-denied", "Only a parent can call off a battle that started.");
-    t.update(ref, { status: "cancelled", live: false, cancelledAt: Date.now(), cancelledBy: parent ? (req.auth.token.name || req.auth.token.email) : me.id });
+    const off = { status: "cancelled", live: false, cancelledAt: Date.now(), cancelledBy: parent ? (req.auth.token.name || req.auth.token.email) : me.id };
+    if (parent) { t.update(ref, off); return; }
+    if (!b.players.includes(me.id)) throw new HttpsError("permission-denied", "That battle isn't yours.");
+    if (b.status === "pending") {
+      if (b.challenger !== me.id) throw new HttpsError("permission-denied", "Tap Not now instead.");
+      t.update(ref, off);
+      return;
+    }
+    if (b.status !== "active") throw new HttpsError("failed-precondition", "It's already over. A parent can still call it off.");
+    const agreed = { ...(b.cancelAsk || {}), [me.id]: true };
+    if (b.players.every((p) => agreed[p])) { t.update(ref, { ...off, cancelAsk: agreed }); return; }
+    t.update(ref, { cancelAsk: agreed });
+    asked = b;
   });
+  if (asked) {
+    await pushTo(asked.players.filter((p) => p !== me.id), "🤝 Call it off?", `${personName(cfg, me.id)} wants to call off your battle. Open Boon Chores to agree.`);
+    return { ok: true, waiting: true };
+  }
   return { ok: true };
 });
 

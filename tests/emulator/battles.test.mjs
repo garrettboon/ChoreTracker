@@ -190,12 +190,24 @@ test("scheduled tick: challenges expire, timed-out battles finish, results auto-
   assert.equal(b.live, false);
   assert.deepEqual(b.xp, { k3: 0, k2: G.XP.win });
 
-  // A parent can call off a live battle.
+  // Mid-battle, players can call it off only if everyone agrees.
   const c = await k1.call("createBattle", { mode: "roomrush", opponent: "k3" });
+  await rejects(k3.call("cancelBattle", { id: c.id }), /Not now/);
   await k3.call("respondBattle", { id: c.id, accept: true });
-  await rejects(k1.call("cancelBattle", { id: c.id }), /Only a parent/);
-  await parent.call("cancelBattle", { id: c.id });
+  assert.equal((await k1.call("cancelBattle", { id: c.id })).waiting, true);
+  assert.equal((await battle(c.id)).status, "active", "one player alone can't call it off");
+  await rejects(k2.call("cancelBattle", { id: c.id }), /isn't yours/);
+  await k3.call("cancelBattle", { id: c.id });
   assert.equal((await battle(c.id)).status, "cancelled");
+  // A parent can call off a live battle on their own; a solo player can cancel theirs any time.
+  const e = await k1.call("createBattle", { mode: "roomrush", opponent: "k3" });
+  await k3.call("respondBattle", { id: e.id, accept: true });
+  await parent.call("cancelBattle", { id: e.id });
+  assert.equal((await battle(e.id)).status, "cancelled");
+  const solo = await k3.call("createBattle", { mode: "roomrush", solo: true });
+  await k3.call("startAttempt", { id: solo.id });
+  await k3.call("cancelBattle", { id: solo.id });
+  assert.equal((await battle(solo.id)).status, "cancelled");
 });
 
 test("per-mode and weekly battle limits", async () => {
