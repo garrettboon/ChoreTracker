@@ -32,7 +32,7 @@ export function levelProgress(total) {
 export const XP = {
   chore: 10, checklist: 5, goal: 50, redeem: 20, savingsGoal: 50, badge: 10,
   win: 15, tie: 10, loss: 5, ghostRecord: 10, raidWin: 25, babyRaidWin: 10,
-  rushItem: 1, // Room Rush: per item cleaned up, on top of the battle XP, up to RUSH_XP_CAP
+  rushItem: 1, // Room Rush and Dish Duel: per thing cleaned up or dish washed, on top of the battle XP, up to RUSH_XP_CAP
 };
 export const STREAK_MILESTONES = { 3: 25, 7: 50, 14: 75, 30: 150, 60: 250, 100: 400 };
 export const FREEZE_CAP = 2;
@@ -106,6 +106,7 @@ export const stageFor = (level) => { let s = 1; STAGES.forEach(([l], i) => { if 
 /* ---------- battle modes ---------- */
 export const MODES = [
   { id: "roomrush", emoji: "🌪️", name: "Room Rush", level: 1, desc: "1 to 3 minutes. Clean up the most things in a room." },
+  { id: "dishduel", emoji: "🍽️", name: "Dish Duel", level: 1, desc: "Wash dishes together. Whoever washes the most wins." },
   { id: "timetrial", emoji: "⏱️", name: "Time Trial", level: 1, desc: "Same chore. Fastest time done well wins." },
   { id: "ghost", emoji: "👻", name: "Ghost Race", level: 1, solo: true, desc: "Beat your own best time, done well." },
   { id: "doom", emoji: "🎡", name: "Wheel of Doom", level: 3, desc: "Spin for a silly handicap, then race the same chore." },
@@ -128,7 +129,9 @@ export const modeById = (id) => MODES.find((m) => m.id === id);
 export const TIMED = ["timetrial", "ghost", "doom"];
 export const isRaid = (mode) => mode === "raid" || mode === "babyraid";
 // Same-day modes a challenger can put a time limit on (minutes; 0 = until midnight).
-export const TIMEBOX_MODES = ["race", "blitz", "territory", "bingo", "babyraid", "grownups", "timetrial", "ghost", "judge", "roomrush", "doom"];
+export const TIMEBOX_MODES = ["race", "blitz", "territory", "bingo", "babyraid", "grownups", "timetrial", "ghost", "judge", "roomrush", "doom", "dishduel"];
+// Modes where each player counts what they did and types in the total.
+export const COUNT_MODES = ["roomrush", "dishduel"];
 // Room Rush: the room to clean, how long each player's run lasts, and the most items a count can be.
 export const ROOMS = ["Living room", "Kitchen", "Bedroom", "Bathroom", "Playroom", "Family room", "Garage", "Backyard"];
 export const RUSH_MINUTES = [1, 2, 3];
@@ -355,6 +358,7 @@ export const MODE_BADGES = [
   ["timetrial", "⏱️", "Speed demon", "Win a Time Trial"],
   ["ghost", "👻", "Ghostbuster", "Beat your own best in a Ghost Race"],
   ["roomrush", "🌪️", "Human tornado", "Win a Room Rush"],
+  ["dishduel", "🫧", "Dish champ", "Win a Dish Duel"],
   ["doom", "🎡", "Doom survivor", "Win a Wheel of Doom"],
   ["blitz", "🌩️", "Lightning", "Win a Blitz"],
   ["bingo", "🎱", "Bingo!", "Win Chore Bingo"],
@@ -792,8 +796,8 @@ export function decide(b, entriesBy, chores, final) {
     if (b.pb == null) return { winner: a, record: true, reason: "First record set" };
     return at.ms < b.pb ? { winner: a, reason: "New personal best" } : { winner: null, lost: true, reason: "Didn't beat your best" };
   }
-  if (b.mode === "roomrush") {
-    // Each player counts what they cleaned up and turns it in. Most items (with the handicap) wins.
+  if (COUNT_MODES.includes(b.mode)) {
+    // Each player counts what they did (things put away, dishes washed) and turns it in. Most (with the handicap) wins.
     const at = b.attempts || {};
     const done = (p) => !!(at[p] && at[p].count != null);
     if (!final && !(done(a) && done(c))) return null;
@@ -801,9 +805,10 @@ export function decide(b, entriesBy, chores, final) {
     if (!done(a) || !done(c)) return { winner: done(a) ? a : c, tie: false, reason: "Only one turned in a count" };
     const h = (p) => (b.handicap && b.handicap[p]) || 1;
     const sa = round2(at[a].count * h(a)), sc = round2(at[c].count * h(c));
-    if (!at[a].count && !at[c].count) return { noContest: true, reason: "Nothing got cleaned up" };
-    if (sa === sc) return { tie: true, reason: "Cleaned up the same amount" };
-    return { winner: sa > sc ? a : c, tie: false, reason: "Cleaned up the most" };
+    const dish = b.mode === "dishduel";
+    if (!at[a].count && !at[c].count) return { noContest: true, reason: dish ? "No dishes got washed" : "Nothing got cleaned up" };
+    if (sa === sc) return { tie: true, reason: dish ? "Washed the same number of dishes" : "Cleaned up the same amount" };
+    return { winner: sa > sc ? a : c, tie: false, reason: dish ? "Washed the most dishes" : "Cleaned up the most" };
   }
   if (b.mode === "judge") {
     // Decided by a parent; time running out with work undone ends it.
@@ -861,8 +866,9 @@ function decideSolo(b, entriesBy, chores, final) {
     if (at && at.void) return none(at.void);
     return final ? none("Didn't finish") : null;
   }
-  if (b.mode === "roomrush") {
-    if (at && at.count != null) return at.count > 0 ? done(`Cleaned up ${at.count} thing${at.count === 1 ? "" : "s"}`) : none();
+  if (COUNT_MODES.includes(b.mode)) {
+    const what = b.mode === "dishduel" ? ["Washed", "dish", "dishes"] : ["Cleaned up", "thing", "things"];
+    if (at && at.count != null) return at.count > 0 ? done(`${what[0]} ${at.count} ${at.count === 1 ? what[1] : what[2]}`) : none();
     return final ? none("Didn't turn in a count") : null;
   }
   if (b.mode === "judge") return final && !(at && at.entryId) ? none("Didn't do the chore") : null; // a parent decides
@@ -892,7 +898,7 @@ export function battleXp(b, result) {
     // Solo play pays for taking part, more for reaching the goal. Room Rush pays per item instead.
     const p = b.players[0], at = (b.attempts || {})[p] || {};
     if ((b.quality || {})[p] === false) return out;
-    out[p] = b.mode === "roomrush" ? XP.loss + rushXp(at.count) : result.done ? XP.tie : XP.loss;
+    out[p] = COUNT_MODES.includes(b.mode) ? XP.loss + rushXp(at.count) : result.done ? XP.tie : XP.loss;
     return out;
   }
   const tried = (p) => {
@@ -902,7 +908,7 @@ export function battleXp(b, result) {
       return !!(at && (at.ms != null || at.entryId) && !at.void) && (b.quality || {})[p] !== false;
     }
     if (b.mode === "streakduel" || b.mode === "showdown") return true;
-    if (b.mode === "roomrush") return ((b.attempts || {})[p] || {}).count > 0;
+    if (COUNT_MODES.includes(b.mode)) return ((b.attempts || {})[p] || {}).count > 0;
     return ((b.scores && b.scores[p] && b.scores[p].raw) || 0) > 0;
   };
   const k = ["streakduel", "showdown"].includes(b.mode) ? 2 : 1; // multi-day modes pay double
@@ -912,7 +918,7 @@ export function battleXp(b, result) {
     else if (isWinner(b, result, p)) out[p] = !b.teams || tried(p) ? XP.win * k : 0; // teammates who did nothing get nothing
     else out[p] = tried(p) ? XP.loss * k : 0;
     // Room Rush also pays for each item cleaned up.
-    if (b.mode === "roomrush" && tried(p)) out[p] += rushXp(b.attempts[p].count);
+    if (COUNT_MODES.includes(b.mode) && tried(p)) out[p] += rushXp(b.attempts[p].count);
   }
   return out;
 }

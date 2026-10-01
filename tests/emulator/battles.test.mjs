@@ -45,6 +45,35 @@ test("challenge, accept, play, loser confirms, XP and badges paid (Room Rush); R
   assert.equal((await xpOf("k1")).counts.win_roomrush, 1);
 });
 
+test("when a grown-up plays, the result is final right away: no parent check or confirming", async () => {
+  await reset();
+  const dad = await parentClient("dad@test.com"), k2 = await kidClient("k2");
+  const { id } = await dad.call("createBattle", { mode: "timetrial", opponent: "k2", choreId: "c1", as: "dad" });
+  await k2.call("respondBattle", { id, accept: true });
+  await dad.call("startAttempt", { id, as: "dad" });
+  await k2.call("startAttempt", { id });
+  await k2.call("finishAttempt", { id });
+  await dad.call("finishAttempt", { id, as: "dad" });
+  const b = await waitFor(async () => { const b = await battle(id); return !b.live && b; }, { msg: "settled without a check" });
+  assert.equal(b.status, "done");
+  assert.equal(b.result.qualityCheck, undefined);
+  assert.equal(b.result.confirmedBy, "a grown-up played");
+  assert.ok(["dad", "k2"].includes(b.result.winner) || b.result.tie);
+  // A result already waiting for a check when a grown-up played is released by the next tick.
+  const now = Date.now();
+  await db.doc("battles/stuck").set({ mode: "doom", status: "confirming", live: true, players: ["dad", "k2"], challenger: "dad", createdAt: now, day: today(),
+    params: { choreId: "c1", choreName: "Sweep" }, handicap: { dad: 1, k2: 1 }, attempts: { dad: { startAt: now - 9e4, ms: 9e4 }, k2: { startAt: now - 6e4, ms: 6e4 } },
+    result: { winner: "k2", reason: "Faster time", decidedAt: now, needsParent: true, qualityCheck: true }, names: {} });
+  const parent = await parentClient();
+  await parent.call("testHooks", { run: "tick", now: now + 1000 });
+  const s = await waitFor(async () => { const s = await battle("stuck"); return !s.live && s; }, { msg: "stuck battle released" });
+  assert.deepEqual([s.status, s.result.winner, s.result.needsParent], ["done", "k2", false]);
+  assert.equal(s.xp.k2, G.XP.win);
+  await waitFor(async () => (await eventKeys("k2")).includes("battle:stuck"), { msg: "XP for the released battle" });
+  await quiet("xp/k2");
+  await quiet("xp/dad");
+});
+
 test("mode badges: wins from before per-mode counting are recounted once", async () => {
   await reset();
   // Two battles k3 already won (one a Wildcard that became Bingo) and one k3 lost.
@@ -156,11 +185,10 @@ test("ghost race and adults: a parent acts as their own adult profile only", asy
   assert.equal((await battle(id)).status, "active");
   await dad.call("startAttempt", { id, as: "dad" });
   await dad.call("finishAttempt", { id, as: "dad" });
-  let b = await battle(id);
-  assert.equal(b.status, "confirming");
+  // Dad is a grown-up, so his run is final right away: no parent check.
+  const b = await waitFor(async () => { const b = await battle(id); return b.live === false && b; }, { msg: "closed" });
+  assert.equal(b.status, "done");
   assert.equal(b.result.record, true);
-  await dad.call("checkRun", { id, player: "dad", ok: true }); // a parent may check a battle they're in
-  b = await waitFor(async () => { const b = await battle(id); return b.live === false && b; }, { msg: "closed" });
   assert.deepEqual(b.xp, { dad: G.XP.ghostRecord });
   const x = await quiet("xp/dad");
   assert.ok(x.pb.c1 >= 0, "personal best saved");

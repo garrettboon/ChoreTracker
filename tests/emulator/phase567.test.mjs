@@ -258,6 +258,27 @@ test("solo play: anyone can Room Rush solo; grown-ups can play any mode solo whe
   await quiet("xp/k2");
 });
 
+test("dish duel: each player types their dish count; the winner is final as soon as both are in", async () => {
+  await reset();
+  const k1 = await kidClient("k1"), k3 = await kidClient("k3");
+  const { id } = await k1.call("createBattle", { mode: "dishduel", opponent: "k3" });
+  await rejects(k1.call("rushCount", { id, count: 5 }), /isn't running/);
+  await k3.call("respondBattle", { id, accept: true });
+  await k1.call("rushCount", { id, count: 14 });
+  await rejects(k1.call("rushCount", { id, count: 30 }), /already turned in/);
+  let b = await battle(id);
+  assert.equal(b.status, "active", "waits for Maggie");
+  await k3.call("rushCount", { id, count: 12 });
+  b = await waitFor(async () => { const b = await battle(id); return !b.live && b; }, { msg: "dish duel settled" });
+  assert.equal(b.status, "done", "no confirming step");
+  assert.equal(b.result.winner, G.decide(b, {}, [], false).winner);
+  const w = b.result.winner, l = w === "k1" ? "k3" : "k1";
+  assert.deepEqual(b.xp, { [w]: G.XP.win + G.rushXp(b.attempts[w].count), [l]: G.XP.loss + G.rushXp(b.attempts[l].count) });
+  await waitFor(async () => (await eventKeys(w)).includes("badge:mode_dishduel"), { msg: "dish badge" });
+  await quiet("xp/k1");
+  await quiet("xp/k3");
+});
+
 test("chore bingo: first to finish a line wins", async () => {
   await reset();
   await level("k3", 5);
@@ -397,12 +418,10 @@ test("kids vs grown-ups: every invitee accepts, kids get a team handicap", async
   await k3.call("completeChore", { kidId: "k3", choreId: "c1" });
   await waitFor(async () => (await battle(id)).teamScores?.a?.raw === 10, { msg: "team score" });
   await parent.call("testHooks", { run: "tick", now: (await battle(id)).endAt + 1000 });
-  b = await battle(id);
-  assert.equal(b.status, "confirming");
-  assert.equal(b.result.winnerSide, "a");
-  await rejects(k3.call("confirmResult", { id }), /other player or a parent/);
-  await dad.call("confirmResult", { id, as: "dad" });
+  // A grown-up played, so the result is final right away (nobody needs to confirm it).
   b = await waitFor(async () => { const b = await battle(id); return !b.live && b; }, { msg: "closed" });
+  assert.equal(b.status, "done");
+  assert.equal(b.result.winnerSide, "a");
   assert.deepEqual(b.xp, { k1: 0, k3: G.XP.win, dad: 0 });
 });
 

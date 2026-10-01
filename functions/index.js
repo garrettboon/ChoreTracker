@@ -948,7 +948,7 @@ exports.finishAttempt = onCall(async (req) => {
       }
     } else {
       const result = G.decide(b2, {}, cfg.chores, false);
-      if (result) Object.assign(u, settle(b2, result));
+      if (result) Object.assign(u, settle(b2, result, cfg));
     }
     t.update(ref, u);
   });
@@ -1054,6 +1054,7 @@ exports.spinDoom = onCall(async (req) => {
 });
 
 // Room Rush: after the countdown, a player turns in how many things they cleaned up.
+// Dish Duel: whenever they're done, a player turns in how many dishes they washed (no timer).
 exports.rushCount = onCall(async (req) => {
   const cfg = await getConfig();
   const me = await actor(req, cfg);
@@ -1064,17 +1065,18 @@ exports.rushCount = onCall(async (req) => {
   await db.runTransaction(async (t) => {
     const s = await t.get(ref);
     const b = s.exists ? s.data() : null;
-    if (!b || b.mode !== "roomrush" || !b.players.includes(me.id)) throw new HttpsError("not-found", "No Room Rush here.");
+    if (!b || !G.COUNT_MODES.includes(b.mode) || !b.players.includes(me.id)) throw new HttpsError("not-found", "No counting battle here.");
     if (b.status !== "active") throw new HttpsError("failed-precondition", "That battle isn't running.");
-    const at = (b.attempts || {})[me.id];
+    const rush = b.mode === "roomrush";
+    const at = (b.attempts || {})[me.id] || (rush ? null : { startAt: Date.now() });
     if (!at) throw new HttpsError("failed-precondition", "Start your timer first.");
     if (at.count != null) throw new HttpsError("failed-precondition", "You already turned in your count.");
-    if (Date.now() < at.startAt + b.params.minutes * 60000 - 3000) throw new HttpsError("failed-precondition", "Keep going! Time isn't up yet.");
+    if (rush && Date.now() < at.startAt + b.params.minutes * 60000 - 3000) throw new HttpsError("failed-precondition", "Keep going! Time isn't up yet.");
     const h = (b.handicap || {})[me.id] || 1;
     b.attempts = { ...b.attempts, [me.id]: { ...at, count, doneAt: Date.now() } };
     const u = { [`attempts.${me.id}`]: b.attempts[me.id], [`scores.${me.id}`]: { raw: count, adj: Math.round(count * h * 100) / 100 } };
     const result = G.decide(b, {}, cfg.chores, false);
-    if (result) Object.assign(u, settle(b, result));
+    if (result) Object.assign(u, settle(b, result, cfg));
     t.update(ref, u);
   });
   await afterSettle(cfg, id);
@@ -1139,9 +1141,12 @@ exports.judgeBattle = onCall(async (req) => {
 
 // Status changes once a result is decided. No-contest battles, co-op raids, and
 // daily-checked modes end right away; speed results wait for a confirmation.
-function settle(b, result) {
+// True when a grown-up is one of the players: they were there, so no parent needs to confirm or check.
+const adultPlaying = (cfg, b) => !!cfg && b.players.some((p) => (kidOf(cfg, p) || {}).adult);
+function settle(b, result, cfg) {
   const now = Date.now();
   if (result.noContest || !SPEED.includes(b.mode) || (G.isSoloPlay(b) && !G.TIMED.includes(b.mode))) return { status: "done", result: { ...result, decidedAt: now } };
+  if (adultPlaying(cfg, b)) return { status: "done", result: { ...result, decidedAt: now, needsParent: false, confirmedBy: "a grown-up played", confirmedAt: now } };
   // Timed runs are only a pending result until a parent checks the work was done well.
   if (G.TIMED.includes(b.mode)) {
     const done = qualityResult(b);
@@ -1257,7 +1262,7 @@ async function refreshBattle(cfg, id, now) {
         u.result = { decidedAt: now, needsParent: true, reason: "Waiting for a parent to judge" };
       }
     }
-    if (result) Object.assign(u, settle(b, result));
+    if (result) Object.assign(u, settle(b, result, cfg));
     if (Object.keys(u).length) t.update(ref, u);
   });
   await afterSettle(cfg, id);
@@ -1394,7 +1399,10 @@ async function runBattleTick(now = Date.now()) {
       } else if (b.status === "confirming" || b.status === "judging") {
         const age = now - ((b.result && b.result.decidedAt) || b.createdAt);
         const r = b.result || {};
-        if (b.status === "confirming" && !r.needsParent && age >= MS_AUTOCONFIRM) {
+        if (b.status === "confirming" && adultPlaying(cfg, b)) {
+          // Waiting on a check or a confirm, but a grown-up played: it's final.
+          await d.ref.update({ status: "done", result: { ...r, needsParent: false, confirmedBy: "a grown-up played", confirmedAt: now } });
+        } else if (b.status === "confirming" && !r.needsParent && age >= MS_AUTOCONFIRM) {
           await d.ref.update({ status: "done", result: { ...r, confirmedBy: "auto", confirmedAt: now } });
         } else if (r.needsParent && age >= MS_PARENT_WAIT) {
           await d.ref.update({ status: "done", result: { ...r, winner: null, winnerSide: null, tie: false, noContest: true, reason: "No parent checked it in time" } });

@@ -221,7 +221,7 @@ function afterRender(){
     if(!S.xpLoaded)continue;const lv=xpState(k.id).level,pl=S.ui.prevLvl[k.id];if(pl!=null&&lv>pl){confetti(260,equipped(k.id).confetti);chime(true);const el=document.querySelector(`.lane[data-kid="${k.id}"] .lane-cr`);if(el)el.classList.add("cheer");}S.ui.prevLvl[k.id]=lv;}}
   if(S.role==="display"&&S.config&&S.xpLoaded){const fp=G.familyProgress(famTotal(),S.game.familyGoal);const done=!!(fp&&fp.done);
     if(S.ui.prevFam===false&&done){confetti(400);chime(true);}S.ui.prevFam=fp?done:null;}
-  restoreFocus();checkLevelUp();tickClocks();
+  restoreFocus();checkLevelUp();tickClocks();if(!wdRaf&&document.querySelector(".wd-spin"))wdRaf=requestAnimationFrame(wdWatch);
 }
 // True when the screen shows one person's own view: their tablet, a parent's own tab, or a parent's "see a kid's screen".
 function onKidScreen(){return S.role==="kid"||(S.role==="parent"&&(S.ptab.startsWith("me:")||(S.ptab==="views"&&!!S.ui.kidView)));}
@@ -399,7 +399,7 @@ const bName=(b,id)=>esc((kidCfg(id)||{}).name||(b.names||{})[id]||"Someone");
 const TEAM=["raid","babyraid","grownups"];
 function modeParams(b){const p=b.params||{};const tw=b.twist?`. ${esc(b.twist.text)}`:"";
   const t={race:`First to ${p.n} chores`,blitz:p.windowMin?`${G.timeText(p.windowMin)} blitz`:"Until midnight",grownups:p.windowMin?G.timeText(p.windowMin):"Until midnight",
-    territory:p.map?"Conquer the map":"Most Anyone chores by midnight",roomrush:`${esc(p.room||"")}, ${p.minutes} minute${p.minutes>1?"s":""} each`,bingo:"First to a line",streakduel:"Don't miss a day",showdown:"Best share of weekly goal",
+    territory:p.map?"Conquer the map":"Most Anyone chores by midnight",roomrush:`${esc(p.room||"")}, ${p.minutes} minute${p.minutes>1?"s":""} each`,dishduel:"Most dishes washed",bingo:"First to a line",streakduel:"Don't miss a day",showdown:"Best share of weekly goal",
     raid:`${p.bossEmoji||"🐉"} ${esc(p.bossName||"Boss")}, ${p.days||1} day${(p.days||1)>1?"s":""}`,babyraid:`${p.bossEmoji||"🐣"} ${esc(p.bossName||"Baby boss")}, today`}[b.mode];
   const time=p.windowMin&&!["blitz","grownups"].includes(b.mode)?`, ${G.timeText(p.windowMin)}`:"";
   return (t||(p.choreName?`${esc(G.choreIcon(choreById(p.choreId)||{name:p.choreName}))} ${esc(p.choreName)}`:""))+time+tw;}
@@ -407,7 +407,11 @@ function fmtEnd(t){const d=new Date(t);return d.getHours()===0&&d.getMinutes()==
 function scoreHtml(b,id){
   if(G.TIMED.includes(b.mode)){const a=(b.attempts||{})[id],q=(b.quality||{})[id];return !a?"–":a.void?"✗":a.ms!=null?fmtMs(a.ms)+(q===true?` <small title="A parent checked it">✓</small>`:q===false?` <small title="Didn't pass the parent's check">✗</small>`:""):`<span class="tt-clock" data-start="${a.startAt}"></span>`;}
   if(b.mode==="judge"){const a=(b.attempts||{})[id];return a&&a.entryId?"✓ Done":"–";}
-  if(b.mode==="roomrush"){const a=(b.attempts||{})[id],h=(b.handicap||{})[id]||1;return !a?"–":a.count==null?"⏱":`${a.count}<small> item${a.count===1?"":"s"}${h>1?` (×${h})`:""}</small>`;}
+  if(G.COUNT_MODES.includes(b.mode)){const a=(b.attempts||{})[id],h=(b.handicap||{})[id]||1,unit=b.mode==="dishduel"?["dish","dishes"]:["item","items"];
+    if(!a)return "–";if(a.count==null)return "⏱";
+    // Nobody sees the other side's count until everyone's is in.
+    if(b.status==="active"&&id!==S.viewKid)return `✓<small> in</small>`;
+    return `${a.count}<small> ${a.count===1?unit[0]:unit[1]}${h>1?` (×${h})`:""}</small>`;}
   if(b.mode==="streakduel"){const days=Object.values(b.duelDays||{});const ok=days.filter(d=>d[id]).length;return days.length?`${ok} day${ok===1?"":"s"}`:"–";}
   if(b.mode==="showdown"){const s=(b.scores||{})[id];return s?s.adj+"%":`${showdownLive(b,id)}%<small> so far</small>`;}
   const s=(b.scores||{})[id],h=(b.handicap||{})[id]||1;return `${s?s.adj:0}${h>1?`<small> (×${h})</small>`:""}`;}
@@ -456,6 +460,12 @@ function battleCard(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Batt
       body=!a?`<p class="sub">Go to the <b>${esc(p.room)}</b> and tap Start. You get ${mins} to put away as many things as you can. Count them in your head! Ends ${fmtEnd(b.endAt)}.</p><button class="btn block" data-act="rr-start" data-id="${b.id}" ${dis}>▶ Start (${mins})</button>`
         :a.count==null?`<button class="btn block" data-act="rr-open" data-id="${b.id}">⤢ Back to the timer</button>`
         :`<p class="sub">You cleaned up <b>${a.count}</b> thing${a.count===1?"":"s"}!${other&&((b.attempts||{})[other]||{}).count==null?` Waiting for ${bName(b,other)}.`:""}</p>`;}
+    else if(b.mode==="dishduel"){const a=(b.attempts||{})[me],v=(S.ui.dishes||{})[b.id];
+      const waiting=b.players.filter(p=>p!==me&&((b.attempts||{})[p]||{}).count==null);
+      body=a&&a.count!=null?`<p class="sub">You washed <b>${a.count}</b> dish${a.count===1?"":"es"}!${waiting.length?` Waiting for ${waiting.map(p=>bName(b,p)).join(" and ")}. The winner shows as soon as everyone's count is in.`:""}</p>`
+        :`<p class="sub">Wash dishes together and count the ones you wash. When you're done, type your count here. Nobody sees it until everyone's in. Ends ${fmtEnd(b.endAt)}.</p>
+        <div class="row dd-row"><label class="rr-count">How many dishes did you wash?<input type="number" inputmode="numeric" min="0" max="${G.MAX_RUSH_ITEMS}" step="1" data-bind="dishes.${b.id}" data-type="num" value="${esc(v??"")}"></label></div>
+        <button class="btn block" data-act="dd-submit" data-id="${b.id}" ${dis||!(v!==""&&v!=null&&Number.isInteger(Number(v)))?"disabled":""}>Turn in my count</button>`;}
     else if(G.isMapTerritory(b)){const o=(b.open||{})[me];
       body=`<button class="tm-mini" data-act="tm-open" data-id="${b.id}" aria-label="Open the map">${mapSvg(b,me,false)}</button><p class="sub">${o?`You're conquering <b>${esc(b.params.map.names[o.c])}</b>: ${esc(G.choreIcon(choreById(o.choreId)||{name:o.name}))} ${esc(o.name)}.`:"Reveal a country next to yours, do its chore, and it's yours. Most countries wins."} Ends ${fmtEnd(b.endAt)}.</p><button class="btn block" data-act="tm-open" data-id="${b.id}">🗺️ Open the map</button>`;}
     else if(b.mode==="bingo")body=`${bingoGrid(b,me)}<p class="sub">Do the chores on your card. First to finish a row, column, or diagonal wins. Ends ${fmtEnd(b.endAt)}.</p>`;
@@ -467,7 +477,9 @@ function battleCard(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Batt
   else if(b.status==="confirming"&&G.TIMED.includes(b.mode)){const r=b.result||{};const q=b.quality||{};
     const lead=b.mode==="ghost"?(r.record?"First record":r.winner?"New best":"Not faster this time"):r.tie?"A tie":r.winner?(r.winner===me?"You":bName(b,r.winner)):"";
     const runs=b.players.filter(p=>((b.attempts||{})[p]||{}).ms!=null).map(p=>`${p===me?"You":bName(b,p)}: ${q[p]===true?"✓ done well":q[p]===false?"✗ didn't pass":"waiting for a check"}`).join(". ");
-    body=`<p class="b-result">⏳ Pending: ${lead}</p><p class="hint">Fast only counts if it's done right. A parent is checking the work. ${runs}.</p>`;}
+    body=S.role==="parent"
+      ?`<p class="b-result">⏳ Pending: ${lead}</p><p class="hint">Fast only counts if it's done right. You're a parent, so check each run here (or in the Game tab). The winner shows once every run is checked.</p>${qcRows(b)}`
+      :`<p class="b-result">⏳ Pending: ${lead}</p><p class="hint">Fast only counts if it's done right. A parent is checking the work in the Game tab. ${runs}.</p>`;}
   else if(b.status==="confirming"){const r=b.result||{};let act;
     if(r.needsParent)act=`<p class="hint">${r.disputedBy?"Someone asked a parent to check.":"That was super fast!"} A parent needs to check this one.</p>`;
     else if(other&&!G.isWinner(b,r,me))act=`<div class="row"><button class="btn" data-act="b-confirm" data-id="${b.id}" ${dis}>Looks good</button><button class="btn ghost" data-act="b-dispute" data-id="${b.id}" ${dis}>Ask a parent</button></div>`;
@@ -632,11 +644,18 @@ function mapOverlay(){const t=S.ui.tm,b=S.battles[t.id],me=S.viewKid;if(!b||!G.i
     ${mapChips(b,me)}${mapSvg(b,me,true)}<div class="tm-panel">${panel}</div></div>`;}
 /* ---------- Wheel of Doom ---------- */
 const WD_COLORS=["#e4572e","#f3a712","#29bf12","#00a5cf","#7e52a0","#ff6f91","#4e8d7c","#f9c80e","#3d5a80","#ee6c4d","#98c1d9","#2b2d42"];
-const WD_PHASE=4200,WD_SPIN=3600;
+const WD_PHASE=9500,WD_SPIN=8500; // each spin: a fast whirl, a long glide, then a slow crawl into the slot
 const doomText=spins=>G.doomsOf(spins).map(d=>`${d[1]} ${esc(d[2])}`).join(" + ");
 function doomCards(spins){return `<div class="wd-cards">${G.doomsOf(spins).map(d=>`<div class="wd-card"><span>${d[1]}</span><b>${esc(d[2])}</b><small>${esc(d[3])}</small></div>`).join("")}</div>`;}
 // Where the wheel stops for spin j: a few full turns, then the slot under the pointer (with a little wobble).
-function wdLand(spins,j){const i=spins[j];return 1800*(j+1)-i*30+(((i*7+j*3)%11)-5);}
+function wdLand(spins,j){const i=spins[j];return 2520*(j+1)-i*30+(((i*7+j*3)%17)-8);}
+// A click each time a slot passes the pointer, so you can hear it slow down.
+let wdRaf=null,wdLast=null;
+function wdTick(){try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();const t=actx.currentTime,o=actx.createOscillator(),g=actx.createGain();o.type="square";o.frequency.value=1400;
+  g.gain.setValueAtTime(.06,t);g.gain.exponentialRampToValueAtTime(.0001,t+.03);o.connect(g).connect(actx.destination);o.start(t);o.stop(t+.04);}catch(e){}}
+function wdWatch(){const el=document.querySelector(".wd-rot.wd-spin");if(!el){wdRaf=null;wdLast=null;return;}
+  const m=getComputedStyle(el).transform;if(m&&m!=="none"){const v=m.match(/-?[\d.e]+/g).map(Number),deg=Math.atan2(v[1],v[0])*180/Math.PI;const slot=Math.floor(((deg%360)+375)/30);if(wdLast!=null&&slot!==wdLast)wdTick();wdLast=slot;}
+  wdRaf=requestAnimationFrame(wdWatch);}
 function wheelSvg(style,cls){const C=110,R=100,pt=(a,r)=>{const t=(a-90)*Math.PI/180;return [(C+r*Math.cos(t)).toFixed(1),(C+r*Math.sin(t)).toFixed(1)];};
   const wedges=G.DOOMS.map((d,i)=>{const [x1,y1]=pt(i*30-15,R),[x2,y2]=pt(i*30+15,R),[ex,ey]=pt(i*30,70);
     return `<path d="M${C} ${C}L${x1} ${y1}A${R} ${R} 0 0 1 ${x2} ${y2}Z" fill="${WD_COLORS[i]}"/><text x="${ex}" y="${ey}" class="wd-emo" transform="rotate(${i*30} ${ex} ${ey})">${d[1]}</text>`;}).join("");
@@ -712,13 +731,16 @@ function viewParent(){
 const needsCheck=b=>G.TIMED.includes(b.mode)&&b.players.some(p=>{const a=(b.attempts||{})[p];return a&&a.ms!=null&&!a.void&&(b.quality||{})[p]==null;});
 const gameAlerts=()=>battleList().filter(b=>b.live&&(b.status==="judging"||needsCheck(b)||(b.status==="confirming"&&b.result&&b.result.needsParent))).length
   +Object.values(S.claims).filter(c=>c.status==="pending").length+Object.values(S.bounties).filter(b=>b.status==="claimed").length;
+// A parent's check of each finished timed run: done well (it counts) or not good enough.
+function qcRows(b){const qc=b.players.filter(p=>{const a=(b.attempts||{})[p];return a&&a.ms!=null&&!a.void;});if(!G.TIMED.includes(b.mode)||!qc.length)return "";
+  return `<div class="qc">${qc.map(p=>{const v=(b.quality||{})[p];return `<div class="qc-row"><span><b>${bName(b,p)}</b> ${fmtMs(b.attempts[p].ms)}${b.mode==="doom"&&(b.dooms||{})[p]?`<br><small>Doom: ${doomText(b.dooms[p])}</small>`:""}</span><button class="btn small ${v===true?"":"ghost"}" data-act="p-check" data-id="${b.id}" data-player="${p}" data-ok="1" aria-pressed="${v===true}">✓ Done well</button><button class="btn small ${v===false?"warn":"ghost"}" data-act="p-check" data-id="${b.id}" data-player="${p}" data-ok="" aria-pressed="${v===false}">✗ Not good enough</button></div>`;}).join("")}</div>`;}
 function pGame(){
   const live=battleList().filter(b=>b.live),cot=cotdId(),fam=cfg().chores.filter(c=>c.kind==="family"),g=game();
   const line=b=>{const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Battle"};const r=b.result||{};const names=b.teams?Object.values(b.teams).map(t=>t.map(p=>bName(b,p)).join(" & ")).join(" vs "):b.players.map(p=>bName(b,p)).join(" vs ");
     const times=G.TIMED.includes(b.mode)?" Times: "+b.players.map(p=>`${bName(b,p)} ${scoreHtml(b,p)}`).join(", ")+".":b.scores?" Score: "+b.players.map(p=>`${bName(b,p)} ${scoreHtml(b,p)}`).join(", ")+".":"";
     const qc=G.TIMED.includes(b.mode)?b.players.filter(p=>{const a=(b.attempts||{})[p];return a&&a.ms!=null&&!a.void;}):[];
     const status=qc.length?`Check that the chore was done well${b.mode==="doom"?" and with their doom":""}. Only runs done well count, and the fastest of those wins.`:b.status==="judging"?(G.isSoloPlay(b)?"Done. Go look, then say if it was a great job.":"Both are done. Go look, then pick the better job."):b.status==="confirming"?`${resultText(b,null)}${r.needsParent?(r.disputedBy?` ${bName(b,r.disputedBy)} asked you to check.`:" Flagged: a run under a minute."):" Waiting for the other player (auto-confirms after 12 hours)."}`:b.status==="pending"?"Waiting to be accepted.":"In progress.";
-    const checks=qc.length?`<div class="qc">${qc.map(p=>{const v=(b.quality||{})[p];return `<div class="qc-row"><span><b>${bName(b,p)}</b> ${fmtMs(b.attempts[p].ms)}${b.mode==="doom"&&(b.dooms||{})[p]?`<br><small>Doom: ${doomText(b.dooms[p])}</small>`:""}</span><button class="btn small ${v===true?"":"ghost"}" data-act="p-check" data-id="${b.id}" data-player="${p}" data-ok="1" aria-pressed="${v===true}">✓ Done well</button><button class="btn small ${v===false?"warn":"ghost"}" data-act="p-check" data-id="${b.id}" data-player="${p}" data-ok="" aria-pressed="${v===false}">✗ Not good enough</button></div>`;}).join("")}</div>`:"";
+    const checks=qcRows(b);
     const btns=G.TIMED.includes(b.mode)&&b.status==="confirming"?`<button class="btn ghost small" data-act="p-bvoid" data-id="${b.id}">No contest</button>`:b.status==="judging"&&G.isSoloPlay(b)?`<span class="row" style="flex:0 1 auto;gap:6px"><button class="btn small" data-act="p-judge" data-id="${b.id}" data-winner="${b.players[0]}">✓ Great job</button><button class="btn ghost small" data-act="p-judge" data-id="${b.id}" data-winner="tie">✗ Not this time</button></span>`
       :b.status==="judging"?`<span class="row" style="flex:0 1 auto;gap:6px">${b.players.map(p=>`<button class="btn small" data-act="p-judge" data-id="${b.id}" data-winner="${p}">${bName(b,p)}</button>`).join("")}<button class="btn ghost small" data-act="p-judge" data-id="${b.id}" data-winner="tie">Tie</button></span>`
       :b.status==="confirming"?`<button class="btn small" data-act="p-bconfirm" data-id="${b.id}">Confirm</button><button class="btn ghost small" data-act="p-bvoid" data-id="${b.id}">No contest</button>`
@@ -922,6 +944,7 @@ function modeGuide(){const X=G.XP,std=`Win ${X.win} XP, tie ${X.tie}, and ${X.lo
   raid:{how:"2 to 4 people team up for 1 to 3 days. The boss has 60 HP per member per day, and every chore deals its XP as damage. Beat the boss before time runs out.",xp:`Win ${X.raidWin} XP each; teammates who did no chore get nothing. If the boss gets away, ${X.loss} XP each.`,notes:`Bosses come in order: ${G.BOSSES.map(b=>b[1]+" "+b[2]).join(", ")}. Each boss beaten makes the next one 25% tougher, and bosses beaten count for the whole family.`},
   babyraid:{how:"A tiny one-day boss. Go solo or bring up to 3 teammates. It has 15 HP per member, about a chore and a half each, and it never gets harder.",xp:`Win ${X.babyRaidWin} XP each, ${X.loss} if it gets away.`,notes:`Bosses: ${G.BABY_BOSSES.map(b=>b[1]+" "+b[2]).join(", ")}. Made for younger kids and quick team-ups.`},
   grownups:{how:"The kids team up against the adults for 30 minutes, an hour, or until midnight. The team with the most chore XP wins.",xp:`Win ${X.win} XP each (teammates who did no chore get nothing), tie ${X.tie}, lose ${X.loss}.`,notes:"The kids' team gets one handicap from the age gap between the teams' averages."},
+  dishduel:{how:"Two (or more) of you wash dishes from the same pile at the same time, each counting the dishes you wash. When you're done, each of you types your count on your own tablet. Nobody sees the other counts until everyone's is in, and then the app names the winner right away.",xp:`${std}, plus ${G.XP.rushItem} XP for each dish (up to ${G.RUSH_XP_CAP})`,notes:"The handicap multiplies the count. It doesn't log a chore or pay money, so log the dishes chore as usual too."},
   doom:{how:"You pick an Anyone chore. Before starting the timer, each player spins the Wheel of Doom once (no re-spins) and has to do the chore with what it lands on, like one hand only, T-rex arms, or nonstop singing. 😇 Mercy means no doom; 💀 Double doom means two. The fastest run done well wins, and a parent checks each run, doom included.",xp:std,notes:"The handicap divides the time, like Time Trial. A run that didn't follow its doom should be marked Not good enough."},
   roomrush:{how:"Pick a room and 1, 2, or 3 minutes. Each player taps Start whenever they're ready, cleans up as many things as they can before the countdown ends, counting in their head, then types in their total. Most things cleaned up wins. The other player confirms the result (or asks a parent).",xp:`${std}, plus ${G.XP.rushItem} XP for each thing cleaned up (up to ${G.RUSH_XP_CAP})`,notes:"The handicap multiplies the count. It doesn't log a chore or earn money. It's just for XP and bragging rights."},
   wildcard:{how:"Picks Blitz, Territory, or Chore Bingo at random and adds a twist: one chore counts double.",xp:"The same as the mode it picks.",notes:"The twist chore is shown when the battle starts."},
@@ -1100,6 +1123,8 @@ async function handleAct(act,ds){
   case "wd-open":openWheel(ds.id);break;
   case "wd-close":closeWheel();break;
   case "wd-spin":{const w=S.ui.wheel;if(!w)return;const r=await bcall("spinDoom",{id:w.id});if(r&&S.ui.wheel){S.ui.wheel.spins=r.spins;S.ui.wheel.at=Date.now();}break;}
+  case "dd-submit":{const n=Number((S.ui.dishes||{})[ds.id]);if(!Number.isInteger(n)||n<0||n>G.MAX_RUSH_ITEMS){toast(`Enter a number from 0 to ${G.MAX_RUSH_ITEMS}.`);return;}
+    const ok=await bcall("rushCount",{id:ds.id,count:n});if(ok){chime(false);toast(`${n} dish${n===1?"":"es"} turned in! 🍽️`);}break;}
   case "rr-start":{const r=await bcall("startAttempt",{id:ds.id});if(r){openRush(ds.id);chime(false);}break;}
   case "rr-open":openRush(ds.id);break;
   case "rr-close":closeRush();break;
@@ -1257,6 +1282,7 @@ document.addEventListener("click",e=>{const el=e.target.closest("[data-act]");if
 document.addEventListener("input",e=>{const el=e.target;if(!el.dataset.bind)return;let v=el.value;if(el.type==="checkbox")v=el.checked;else if(el.dataset.type==="num")v=v===""?"":Number(v);setPath(S.ui,el.dataset.bind,v);
   if(el.type==="checkbox"&&/^draft\.(kids\.\d+\.adult|game\.)/.test(el.dataset.bind)){render();return;}
   if(el.dataset.bind==="focus.note"&&S.ui.focus){saveFocus();const f=S.ui.focus,left=stepsOf(choreById(f.id)).filter((_,i)=>!f.checked.includes(i)).length,b=document.querySelector('[data-act="fx-done"]');if(b)b.disabled=!!left||!String(v).trim();}
+  if(el.dataset.bind.startsWith("dishes.")){const b=document.querySelector(`[data-act="dd-submit"][data-id="${el.dataset.bind.slice(7)}"]`);if(b)b.disabled=!(v!==""&&Number.isInteger(v)&&v>=0&&v<=G.MAX_RUSH_ITEMS)||!!S.busy.b;}
   if(el.dataset.bind==="rush.count"){const b=document.querySelector('[data-act="rr-submit"]');if(b)b.disabled=!(v!==""&&Number.isInteger(v)&&v>=0&&v<=G.MAX_RUSH_ITEMS)||!!S.busy.b;}
   if(el.dataset.bind==="confirmChore.note"||el.dataset.bind==="prNote.text"){const b=document.querySelector(el.dataset.bind==="confirmChore.note"?'[data-act="confirm-chore"]':'[data-act="save-pr-note"]');if(b)b.disabled=!String(v).trim();}
   {const m=/^draft\.chores\.(\d+)\.name$/.exec(el.dataset.bind);if(m){const b=document.querySelector(`[data-drag][data-i="${m[1]}"] .set-open b`);if(b)b.textContent=String(v).trim()||"(no name)";}}

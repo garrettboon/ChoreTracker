@@ -591,3 +591,17 @@ test("Race is retired; Room Rush takes its place as the first level-1 mode", () 
   assert.ok(!G.allUnlockIds().includes("m:race"));
   assert.ok(!G.WILDCARD_MODES.includes("race"));
 });
+
+test("dish duel: most dishes wins (with the handicap), XP per dish like Room Rush", () => {
+  assert.ok(G.COUNT_MODES.includes("dishduel") && G.TIMEBOX_MODES.includes("dishduel"));
+  assert.equal(G.modeById("dishduel").level, 1);
+  const b = { mode: "dishduel", players: ["a", "c"], handicap: { a: 1, c: 1.25 }, params: {}, attempts: { a: { count: 20 } } };
+  assert.equal(G.decide(b, {}, [], false), null, "waits for everyone's count");
+  b.attempts.c = { count: 16 };
+  assert.equal(G.decide(b, {}, [], false).tie, true, "16 × 1.25 ties 20");
+  b.attempts.c.count = 18;
+  const r = G.decide(b, {}, [], false);
+  assert.deepEqual([r.winner, r.reason], ["c", "Washed the most dishes"]);
+  assert.deepEqual(G.battleXp(b, r), { a: G.XP.loss + G.rushXp(20), c: G.XP.win + G.rushXp(18) });
+  assert.ok(G.badgeList({}).some((x) => x[0] === "mode_dishduel"));
+});
