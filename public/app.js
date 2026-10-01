@@ -630,7 +630,7 @@ function wdLand(spins,j){const i=spins[j];return 1800*(j+1)-i*30+(((i*7+j*3)%11)
 function wheelSvg(style,cls){const C=110,R=100,pt=(a,r)=>{const t=(a-90)*Math.PI/180;return [(C+r*Math.cos(t)).toFixed(1),(C+r*Math.sin(t)).toFixed(1)];};
   const wedges=G.DOOMS.map((d,i)=>{const [x1,y1]=pt(i*30-15,R),[x2,y2]=pt(i*30+15,R),[ex,ey]=pt(i*30,70);
     return `<path d="M${C} ${C}L${x1} ${y1}A${R} ${R} 0 0 1 ${x2} ${y2}Z" fill="${WD_COLORS[i]}"/><text x="${ex}" y="${ey}" class="wd-emo" transform="rotate(${i*30} ${ex} ${ey})">${d[1]}</text>`;}).join("");
-  return `<svg class="wd-svg" viewBox="0 0 220 230" role="img" aria-label="The Wheel of Doom"><g class="wd-rot ${cls}" style="${style}">${wedges}<circle cx="${C}" cy="${C}" r="${R}" fill="none" stroke="#fff" stroke-width="4"/></g><circle cx="${C}" cy="${C}" r="14" fill="#2b2d42" stroke="#fff" stroke-width="3"/><path d="M${C-11} 2L${C+11} 2L${C} 26Z" fill="#2b2d42" stroke="#fff" stroke-width="2"/></svg>`;}
+  return `<svg class="wd-svg" viewBox="0 0 220 220" role="img" aria-label="The Wheel of Doom"><g class="wd-rot ${cls}" style="${style}">${wedges}<circle cx="${C}" cy="${C}" r="${R}" fill="none" stroke="#fff" stroke-width="4"/></g><circle cx="${C}" cy="${C}" r="14" fill="#2b2d42" stroke="#fff" stroke-width="3"/><path d="M${C-11} 2L${C+11} 2L${C} 26Z" fill="#2b2d42" stroke="#fff" stroke-width="2"/></svg>`;}
 let wdTimer=null;
 function wheelOverlay(){const w=S.ui.wheel,b=S.battles[w.id],me=S.viewKid;if(!b||b.mode!=="doom"||!b.players.includes(me))return "";
   const spins=(b.dooms||{})[me]||w.spins,busy=S.busy.b;let style="",cls="",shown=0,spinning=false;

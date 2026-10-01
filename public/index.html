@@ -396,9 +396,10 @@ body[data-kidtheme="gold"]{--bg:#FAF2DA;--surface-2:#FDF8EA;--pine:#8A5F04;--tra
 .focus > *{width:min(560px,100%)}
 .fx-top{display:flex;justify-content:space-between;align-items:center}
 .tmap{gap:8px}
-.wd-svg{width:min(340px,82vw);height:auto;display:block;margin:4px auto}
+.wd-svg{height:auto;display:block;margin:4px auto}
+.focus.wd > .wd-svg{width:min(100%,70vh,720px)}
 .wd-rot{transform-origin:110px 110px}
-.wd-emo{font-size:20px;text-anchor:middle;dominant-baseline:central}
+.wd-emo{font-size:22px;text-anchor:middle;dominant-baseline:central}
 @keyframes wdspin{from{transform:rotate(var(--from))}to{transform:rotate(var(--to))}}
 .wd-spin{animation:wdspin 3.6s cubic-bezier(.12,.7,.18,1) both}
 @media (prefers-reduced-motion:reduce){.wd-spin{animation-duration:.01s}}
