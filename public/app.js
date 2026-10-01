@@ -581,8 +581,9 @@ function battleStrip(){const bl=battleList().filter(b=>b.live&&b.status!=="pendi
 
 /* ---------- parent ---------- */
 function viewParent(){
-  const adults=kidsSorted().filter(k=>k.adult);
+  // Each parent sees only their own lane (matched by email). With no match, show every adult so no lane is out of reach.
   const email=String(S.user&&S.user.email||"").toLowerCase();const mine=a=>a.email&&a.email.toLowerCase()===email;
+  const all=kidsSorted().filter(k=>k.adult),adults=all.some(mine)?all.filter(mine):all;
   const tabs=[...adults.map(a=>["me:"+a.id,a.name+(mine(a)?" (you)":"")]),["activity","Activity"],["game","Game"+(gameAlerts()?` (${gameAlerts()})`:"")],["views","Views"],["actions","Actions"],["goals","Savings goals"],["settings","Settings"]];
   if(!tabs.some(t=>t[0]===S.ptab))S.ptab="activity";
   let body;if(S.ptab.startsWith("me:")){S.viewKid=S.ptab.slice(3);body=viewKid(S.viewKid,true);}
