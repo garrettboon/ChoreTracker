@@ -34,7 +34,29 @@ test("race: challenge, accept, first to finish wins, loser confirms, XP and badg
   const keys = await eventKeys("k1");
   assert.ok(keys.includes("battle:" + id));
   assert.ok(keys.includes("badge:win1"));
+  assert.ok(keys.includes("badge:mode_race"), "first Race win earns the Race badge");
   assert.equal((await xpOf("k1")).counts.win, 1);
+  assert.equal((await xpOf("k1")).counts.win_race, 1);
+});
+
+test("mode badges: wins from before per-mode counting are recounted once", async () => {
+  await reset();
+  // Two battles k3 already won (one a Wildcard that became Bingo) and one k3 lost.
+  const old = { status: "done", live: false, challenger: "k1", createdAt: 1, day: today(-3), params: {}, xp: {} };
+  await db.doc("battles/old1").set({ ...old, mode: "bingo", wildcard: true, players: ["k1", "k3"], result: { winner: "k3" } });
+  await db.doc("battles/old2").set({ ...old, mode: "blitz", players: ["k3", "k2"], result: { winner: "k3" } });
+  await db.doc("battles/old3").set({ ...old, mode: "race", players: ["k3", "k2"], result: { winner: "k2" } });
+  await db.doc("xp/k3").set({ total: 0, maxLevel: 1, counts: { win: 2, loss: 1 } });
+  const k3 = await kidClient("k3");
+  await k3.call("completeChore", { kidId: "k3", choreId: "c1" });
+  await waitFor(async () => (await eventKeys("k3")).includes("badge:mode_wildcard"), { msg: "recounted badges" });
+  const keys = await eventKeys("k3");
+  for (const k of ["badge:mode_bingo", "badge:mode_blitz", "badge:mode_wildcard"]) assert.ok(keys.includes(k), k);
+  assert.ok(!keys.includes("badge:mode_race"), "a loss earns nothing");
+  const x = await waitFor(async () => { const x = await xpOf("k3"); return x.total === G.XP.chore + G.XP.badge * 5 && x; }, { msg: "chore + first chore + win1 + 3 mode badges" });
+  assert.equal(x.modeWinsCounted, true);
+  assert.deepEqual([x.counts.win_bingo, x.counts.win_wildcard, x.counts.win_blitz], [1, 1, 1]);
+  await quiet("xp/k3");
 });
 
 test("guardrails: one battle per pair, locked modes, decline cooldown, daily cap", async () => {

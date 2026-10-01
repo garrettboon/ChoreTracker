@@ -210,6 +210,52 @@ test("grown-ups skip level locks when a parent turns it on", async () => {
   await rejects(k2.call("createBattle", { mode: "doom", opponent: "k3", choreId: "c1" }), /Reach level/);
 });
 
+test("solo play: anyone can Room Rush solo; grown-ups can play any mode solo when a parent allows it", async () => {
+  await reset();
+  await level("k2", 2);
+  const k2 = await kidClient("k2"), dad = await parentClient("dad@test.com");
+  // Kid: solo Room Rush starts right away and pays per item, with no win.
+  const rr = await k2.call("createBattle", { mode: "roomrush", solo: true, minutes: 1 });
+  let b = await battle(rr.id);
+  assert.deepEqual([b.status, b.players], ["active", ["k2"]]);
+  await rejects(k2.call("createBattle", { mode: "roomrush", solo: true }), /Finish your solo Room Rush/);
+  await rejects(k2.call("createBattle", { mode: "race", solo: true }), /can't be played solo/);
+  await k2.call("startAttempt", { id: rr.id });
+  await db.doc(`battles/${rr.id}`).update({ "attempts.k2.startAt": Date.now() - 60000 });
+  await k2.call("rushCount", { id: rr.id, count: 8 });
+  b = await waitFor(async () => { const b = await battle(rr.id); return !b.live && b; }, { msg: "solo room rush paid" });
+  assert.equal(b.result.done, true);
+  assert.deepEqual(b.xp, { k2: G.XP.loss + G.rushXp(8) });
+
+  // Dad: not without the setting; with it, a solo Race (done when he crosses the line).
+  await rejects(dad.call("createBattle", { mode: "race", solo: true, n: 2, as: "dad" }), /can't be played solo/);
+  await db.doc("app/config").set(withGame({ adultsSoloAll: true }));
+  const race = await dad.call("createBattle", { mode: "race", solo: true, n: 2, as: "dad" });
+  assert.equal((await battle(race.id)).status, "active");
+  await dad.call("completeChore", { kidId: "dad", choreId: "c1" });
+  await dad.call("completeChore", { kidId: "dad", choreId: "c2" });
+  b = await waitFor(async () => { const b = await battle(race.id); return !b.live && b; }, { msg: "solo race done" });
+  assert.deepEqual([b.status, b.result.solo, b.result.done], ["done", true, true]);
+  assert.deepEqual(b.xp, { dad: G.XP.tie });
+  // A kids-only mode works solo for a grown-up, and Boss Raid needs no teammates (levels skipped too).
+  await rejects(dad.call("createBattle", { mode: "territory", solo: true, as: "dad" }), /Reach level/);
+  await db.doc("app/config").set(withGame({ adultsSoloAll: true, adultsUnlockAll: true }));
+  const terr = await dad.call("createBattle", { mode: "territory", solo: true, as: "dad" });
+  b = await battle(terr.id);
+  assert.deepEqual(Object.keys(b.params.homes), ["dad"]);
+  const k = G.mapAdjacency(b.params.map)[b.params.homes.dad][0];
+  await dad.call("territoryPick", { id: terr.id, country: k, as: "dad" });
+  await dad.call("territoryClaim", { id: terr.id, as: "dad" });
+  await waitFor(async () => (await battle(terr.id)).scores?.dad?.raw === 1, { msg: "solo territory claim" });
+  const raid = await dad.call("createBattle", { mode: "raid", solo: true, as: "dad" });
+  assert.deepEqual((await battle(raid.id)).players, ["dad"]);
+  const parent = await parentClient();
+  for (const id of [terr.id, raid.id]) await parent.call("cancelBattle", { id });
+  await waitFor(async () => (await eventKeys("dad")).includes(`battle:${race.id}`), { msg: "race XP" });
+  await quiet("xp/dad");
+  await quiet("xp/k2");
+});
+
 test("chore bingo: first to finish a line wins", async () => {
   await reset();
   await level("k3", 5);

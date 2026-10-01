@@ -40,6 +40,7 @@ export const GAME_DEFAULTS = {
   moneyPerks: { enabled: false, everyLevels: 5, amount: 0.05 }, // suggested raises, applied by a parent
   quests: { enabled: true },
   adultsUnlockAll: false, // grown-ups get every creature, item, and battle mode no matter their level
+  adultsSoloAll: false,   // grown-ups can play any battle mode by themselves
   streakMultiplier: { enabled: true, minStreak: 7, mult: 1.25 },
   battles: {
     enabled: true, modesOff: [], quietStart: "20:30", quietEnd: "07:00", dailyCap: 3,
@@ -59,6 +60,7 @@ export function gameCfg(config) {
     moneyPerks: { ...GAME_DEFAULTS.moneyPerks, ...(g.moneyPerks || {}) },
     quests: { ...GAME_DEFAULTS.quests, ...(g.quests || {}) },
     adultsUnlockAll: !!g.adultsUnlockAll,
+    adultsSoloAll: !!g.adultsSoloAll,
   };
 }
 
@@ -161,6 +163,16 @@ export function allUnlockIds() {
 }
 // True when this person skips level locks: a grown-up, with the parents' "unlock everything for grown-ups" setting on.
 export const skipsLevels = (config, person) => !!(person && person.adult && gameCfg(config).adultsUnlockAll);
+// Can this person play this mode by themselves? Room Rush is always open to solo play;
+// with the parents' setting on, grown-ups can play any mode solo (except Kids vs. Grown-ups).
+export function canSolo(config, person, modeId) {
+  const m = modeById(modeId);
+  if (!m || m.solo || modeId === "grownups") return false;
+  if (modeId === "roomrush" || modeId === "babyraid") return true;
+  return !!(person && person.adult && gameCfg(config).adultsSoloAll);
+}
+// A one-player battle that isn't a Ghost Race or a raid (those have their own rules).
+export const isSoloPlay = (b) => b.players.length === 1 && b.mode !== "ghost" && !isRaid(b.mode);
 // Human-readable list of what a level-up unlocked.
 export function describeUnlocks(ids) {
   const out = [];
@@ -324,8 +336,33 @@ export function badgeList(s) {
     b("win10", "🥇", "10 wins", n(s.wins) >= 10, "Win 10 battles"),
     b("win25", "🥊", "Battle master", n(s.wins) >= 25, "Win 25 battles"),
     b("giant", "🗡️", "Giant slayer", n(s.giant) >= 1, "Beat someone older in a battle"),
+    // One per battle mode: win it once. modeWins: { modeId: wins }
+    ...MODE_BADGES.filter(([m]) => modeById(m) && !modeById(m).soon)
+      .map(([m, emoji, name, how]) => b("mode_" + m, emoji, name, n((s.modeWins || {})[m]) >= 1, how)),
   ];
 }
+// [mode id, emoji, badge name, how to earn it]
+export const MODE_BADGES = [
+  ["race", "🏁", "Race winner", "Win a Race"],
+  ["timetrial", "⏱️", "Speed demon", "Win a Time Trial"],
+  ["ghost", "👻", "Ghostbuster", "Beat your own best in a Ghost Race"],
+  ["roomrush", "🌪️", "Human tornado", "Win a Room Rush"],
+  ["doom", "🎡", "Doom survivor", "Win a Wheel of Doom"],
+  ["blitz", "🌩️", "Lightning", "Win a Blitz"],
+  ["bingo", "🎱", "Bingo!", "Win Chore Bingo"],
+  ["territory", "🚩", "Conqueror", "Win a Territory battle"],
+  ["judge", "🧑‍⚖️", "Judge's favorite", "Win a Judge's Pick"],
+  ["streakduel", "🛡️", "Unbreakable", "Win a Streak Duel"],
+  ["showdown", "🎳", "Sharpshooter", "Win a Goal Showdown"],
+  ["raid", "🐉", "Dragon slayer", "Beat a Boss Raid"],
+  ["babyraid", "🐣", "Baby boss buster", "Beat a Baby Boss Raid"],
+  ["grownups", "👨‍👧", "Family champs", "Win Kids vs. Grown-ups"],
+  ["wildcard", "🃏", "Wild one", "Win a Wildcard battle"],
+];
+// Wins per battle mode from an xp doc's counts ("win_<mode>"). A Wildcard win counts for Wildcard and for the mode it became.
+export const modeWinsOf = (counts) => Object.fromEntries(Object.entries(counts || {}).filter(([k]) => k.startsWith("win_")).map(([k, v]) => [k.slice(4), v]));
+// The counts a battle win adds, per mode.
+export const modeWinKeys = (b) => ["win_" + b.mode, ...(b.wildcard ? ["win_wildcard"] : [])];
 
 /* ---------- battles ---------- */
 // Battle limits, like chore limits: per person, per day and per week (Monday to Sunday),
@@ -455,6 +492,7 @@ export function bingoMarks(b, list, p) {
 export const bingoHasLine = (marks) => BINGO_LINES.some((l) => l.every((i) => marks[i]));
 // Free squares for the younger player: the center, plus one more with a gap of 4+ years.
 export function bingoFree(a, c, config, seed) {
+  if (!a || !c) return {};
   const bc = gameCfg(config).battles;
   const aa = effAge(a, bc.adultAge), ac = effAge(c, bc.adultAge);
   if (aa === ac) return {};
@@ -691,6 +729,7 @@ export const WILDCARD_MODES = ["race", "blitz", "territory", "bingo"];
 // Decide a battle. `final` means time is up. Returns null while still undecided, else
 // { winner, tie, noContest, reason } (team modes use winnerSide instead of winner).
 export function decide(b, entriesBy, chores, final) {
+  if (isSoloPlay(b)) return decideSolo(b, entriesBy, chores, final);
   const [a, c] = b.players;
   if (b.mode === "race") {
     const f = raceFinish(b, entriesBy);
@@ -783,6 +822,45 @@ export function decide(b, entriesBy, chores, final) {
   if (b.mode === "streakduel" || b.mode === "showdown") return null; // decided by the server's daily check
   return final ? { noContest: true, reason: "Unknown mode" } : null;
 }
+// Solo play: no winner or loser. { solo, done } says whether the player reached the mode's goal.
+function decideSolo(b, entriesBy, chores, final) {
+  const [a] = b.players;
+  const done = (reason) => ({ solo: true, done: true, reason });
+  const short = (reason) => ({ solo: true, done: false, reason });
+  const none = (reason = "Nothing got done") => ({ noContest: true, reason });
+  const at = (b.attempts || {})[a];
+  const s = battleScores(b, entriesBy, chores)[a];
+  if (b.mode === "race") {
+    if (raceFinish(b, entriesBy)[a] != null) return done(`Finished ${b.params.n} chores`);
+    if (!final) return null;
+    return s.raw ? short(`${s.raw} of ${b.params.n} chores when time ran out`) : none();
+  }
+  if (b.mode === "bingo") {
+    const list = battleEntries(entriesBy[a], b.startAt, b.endAt);
+    if (bingoHasLine(bingoMarks(b, list, a))) return done("Bingo!");
+    if (!final) return null;
+    return list.length ? short("No line before time ran out") : none();
+  }
+  if (b.mode === "blitz" || b.mode === "territory") {
+    const map = isMapTerritory(b);
+    if (!final && !(map && !territoryReach(b, a).length)) return null;
+    if (!s.raw) return none();
+    if (map && !territoryReach(b, a).length && Object.keys(b.land || {}).length + 1 >= b.params.map.names.length) return done("Conquered the whole map!");
+    return done(b.mode === "blitz" ? `${s.raw} XP of chores` : `${s.raw} ${map ? "countries" : "chores"} claimed`);
+  }
+  if (TIMED.includes(b.mode)) {
+    if (at && at.ms != null && !at.void) return done("Finished the run");
+    if (at && at.void) return none(at.void);
+    return final ? none("Didn't finish") : null;
+  }
+  if (b.mode === "roomrush") {
+    if (at && at.count != null) return at.count > 0 ? done(`Cleaned up ${at.count} thing${at.count === 1 ? "" : "s"}`) : none();
+    return final ? none("Didn't turn in a count") : null;
+  }
+  if (b.mode === "judge") return final && !(at && at.entryId) ? none("Didn't do the chore") : null; // a parent decides
+  if (b.mode === "streakduel" || b.mode === "showdown") return null; // decided by the server's daily check
+  return final ? none() : null;
+}
 function compareScores(s, a, c, reason) {
   if (!s[a].raw && !s[c].raw) return { noContest: true, reason: "Nobody did a chore" };
   if (s[a].adj === s[c].adj) return { tie: true, reason };
@@ -800,6 +878,13 @@ export function battleXp(b, result) {
   if (b.mode === "ghost") {
     const p = b.players[0];
     out[p] = result.record ? XP.ghostRecord : result.winner ? XP.win : XP.loss;
+    return out;
+  }
+  if (isSoloPlay(b)) {
+    // Solo play pays for taking part, more for reaching the goal. Room Rush pays per item instead.
+    const p = b.players[0], at = (b.attempts || {})[p] || {};
+    if ((b.quality || {})[p] === false) return out;
+    out[p] = b.mode === "roomrush" ? XP.loss + rushXp(at.count) : result.done ? XP.tie : XP.loss;
     return out;
   }
   const tried = (p) => {

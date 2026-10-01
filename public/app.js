@@ -354,7 +354,7 @@ function moneySection(k,ks,w,net){const sp=splitAmt(Math.max(0,net)),goals=ks.go
 function badgeList(kidId){const ks=kidState(kidId),st=ks.stats,x=xpState(kidId),c=x.counts;const live=openWeeks(kidId).reduce((s,w)=>s+choreCount(w),0);const chores=(st.chores||0)+live;
   const saved=ks.goals.reduce((s,g)=>s+g.balance,0)+ks.archived.reduce((s,g)=>s+(g.bought||0),0);
   return G.badgeList({chores,goalHits:st.goalHits||0,bestStreak:bestStreak(kidId),redemptions:st.redemptions||0,saved,invest:ks.invest,give:ks.give,bought:ks.archived.length,
-    wins:c.win||0,giant:c.giant||0,level:x.level,quests:c.quest||0,bounties:c.bounty||0,checklistDays:c.pr||0,
+    wins:c.win||0,giant:c.giant||0,modeWins:G.modeWinsOf(c),level:x.level,quests:c.quest||0,bounties:c.bounty||0,checklistDays:c.pr||0,
     early:c.early||0,earlyBest:Math.max((S.xp[kidId]||{}).earlyBest||0,G.bestMorning(entriesFor(kidId).map(e=>({...e,hour:hourIn(e.t)}))))});}
 // Earned badges, then the next one of each kind to go for. "Show all" lists every badge.
 const badgeKind=id=>({first:"chores",fifty:"chores",bought:"bought",comeback:"comeback"}[id]||id.replace(/\d+$/,""));
@@ -414,6 +414,7 @@ function teamLine(b,side){const ids=b.teams[side],ts=(b.teamScores||{})[side],h=
   return `<div><span class="team-crs">${ids.map(p=>crHtml(p)).join("")}</span><b>${ids.map(p=>bName(b,p)).join(", ")}</b><span class="b-score">${ts?ts.adj:0}${h>1?`<small> (×${h})</small>`:""}</span></div>`;}
 function resultText(b,me){const r=b.result||{};const who=id=>id===me?"You":bName(b,id);
   if(r.noContest)return `No contest. ${esc(r.reason||"")}`;
+  if(r.solo)return r.done?`Challenge complete! 🎉 ${esc(r.reason||"")}`:`${esc(r.reason||"Done")}. Good try!`;
   if(b.mode==="ghost")return r.record?"First record set! ⏱️":r.winner?"New personal best! 🎉":"Not this time. Try again!";
   if(G.isRaid(b.mode))return r.winnerSide?`${esc(b.params.bossEmoji)} Boss beaten! 🎉`:`${esc(r.reason||"The boss got away.")}`;
   if(r.tie)return `It's a tie! ${esc(r.reason||"")}`;
@@ -431,6 +432,7 @@ function battleCard(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Batt
     vs=`<div class="raid"><div class="boss">${esc(b.params.bossEmoji)}<b>${esc(b.params.bossName)}</b></div><div class="hp" role="img" aria-label="${Math.max(0,hp-dmg)} of ${hp} health left"><i style="width:${Math.max(0,100-dmg/hp*100)}%"></i></div><p class="sub">${Math.min(dmg,hp)} / ${hp} damage. Team: ${b.teams.a.map(p=>bName(b,p)).join(", ")}</p></div>`;}
   else if(b.teams)vs=`<div class="vs">${teamLine(b,"a")}<span class="vs-x">VS</span>${teamLine(b,"b")}</div>`;
   else if(b.players.length>1)vs=`<div class="vs">${b.players.map(p=>`<div>${crHtml(p)}<b>${p===me?"You":bName(b,p)}</b><span class="b-score">${scoreHtml(b,p)}</span></div>`).join(`<span class="vs-x">VS</span>`)}</div>`;
+  else if(b.mode!=="ghost")vs=`<div class="vs solo"><div>${crHtml(me)}<b>You <span class="vs-x">· SOLO</span></b><span class="b-score">${scoreHtml(b,me)}</span></div></div>`;
   else vs=`<div class="vs"><div>${crHtml(me)}<b>You</b><span class="b-score">${scoreHtml(b,me)}</span></div><span class="vs-x">VS</span><div><span class="cr">👻</span><b>Your best</b><span class="b-score">${b.pb!=null?fmtMs(b.pb):"None yet"}</span></div></div>`;
   let body="",dl="";
   if(b.status==="pending"){const acc=b.accepted||{},waiting=b.players.filter(p=>!acc[p]);
@@ -473,15 +475,16 @@ function recentLine(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Batt
   return `<li><span>${m.emoji} ${esc(m.name)}${others.length?` ${G.isRaid(b.mode)?"with":"vs"} ${others.map(p=>bName(b,p)).join(", ")}`:""}<br><small>${resultText(b,me)}</small></span><span class="amt pos">${xp?"+"+xp+" XP":""}</span></li>`;}
 const bbChores=(kidId,mode)=>cfg().chores.filter(c=>c.kind==="family"&&!needsNote(c)&&(c.assign==="pool"||(mode==="ghost"&&c.assign===kidId)));
 function battleBuilder(k,bb){const bc=game().battles,lv=xpState(k.id).level,mode=G.modeById(bb.mode);
-  const modeBtn=m=>{const lim=battleLimitFor(k.id,m.id);const why=(bc.modesOff||[]).includes(m.id)?"Turned off":lv<m.level&&!G.skipsLevels(cfg(),k)?`🔒 Level ${m.level}`:m.kidsOnly&&k.adult?"Kids only":lim?(lim.scope==="day"?"Done for today":"Done for this week"):"";
+  const modeBtn=m=>{const lim=battleLimitFor(k.id,m.id);const why=(bc.modesOff||[]).includes(m.id)?"Turned off":lv<m.level&&!G.skipsLevels(cfg(),k)?`🔒 Level ${m.level}`:m.kidsOnly&&k.adult&&!G.canSolo(cfg(),k,m.id)?"Kids only":lim?(lim.scope==="day"?"Done for today":"Done for this week"):"";
     return `<button class="mode ${bb.mode===m.id?"on":""}" data-act="bb-mode" data-id="${m.id}" ${why?"disabled":""} aria-pressed="${bb.mode===m.id}"><span>${m.emoji}</span><b>${esc(m.name)}</b><small>${esc(why||m.desc)}</small></button>`;};
-  const pick=(list,key,multi,label)=>`<h3>${label}</h3><div class="seg" style="justify-content:flex-start">${list.map(p=>{const on=multi?(bb[key]||[]).includes(p.id):bb[key]===p.id;
+  const soloOk=!!mode&&G.canSolo(cfg(),k,mode.id),solo=soloOk&&bb.opponent==="__solo";
+  const pick=(list,key,multi,label,me)=>`<h3>${label}</h3><div class="seg" style="justify-content:flex-start">${me?`<button class="${solo?"on":""}" data-act="bb-pick" data-key="opponent" data-id="__solo" aria-pressed="${solo}">🙋 Just me</button>`:""}${list.map(p=>{const on=multi?(bb[key]||[]).includes(p.id):bb[key]===p.id;
     return `<button class="${on?"on":""}" data-act="bb-pick" data-key="${key}" data-multi="${multi?1:""}" data-id="${p.id}" aria-pressed="${on}">${creatureFor(p.id)[1]} ${esc(p.name)}</button>`;}).join("")}</div>`;
   const others=kidsSorted().filter(p=>p.id!==k.id);let who="";
-  if(mode&&G.isRaid(mode.id))who=pick(others,"team",true,mode.id==="babyraid"?"Who's on your team? (optional, up to 3)":"Who's on your team? (up to 3)");
+  if(mode&&G.isRaid(mode.id))who=pick(others,"team",true,mode.id==="babyraid"||soloOk?"Who's on your team? (optional, up to 3)":"Who's on your team? (up to 3)");
   else if(mode&&mode.id==="grownups"){const mine=others.filter(p=>!!p.adult===!!k.adult),theirs=others.filter(p=>!!p.adult!==!!k.adult);
     who=(mine.length?pick(mine,"team",true,"Your team (optional)"):"")+pick(theirs,"opponents",true,k.adult?"Kids to battle":"Grown-ups to battle");}
-  else if(mode&&!mode.solo)who=pick(mode.kidsOnly?others.filter(p=>!p.adult):others,"opponent",false,"Who do you challenge?");
+  else if(mode&&!mode.solo)who=pick(mode.kidsOnly&&k.adult?[]:mode.kidsOnly?others.filter(p=>!p.adult):others,"opponent",false,soloOk?"Who do you challenge? Or play solo.":"Who do you challenge?",soloOk);
   let params="";
   if(bb.mode==="race")params+=`<label>First to<select data-bind="bb.n">${[2,3,4,5,6].map(n=>`<option value="${n}" ${Number(bb.n)===n?"selected":""}>${n} chores</option>`).join("")}</select></label>`;
   if(G.TIMEBOX_MODES.includes(bb.mode)){const cur=String(bb.windowMin),custom=cur==="custom"||!G.TIME_CHOICES.map(String).includes(cur);
@@ -496,10 +499,10 @@ function battleBuilder(k,bb){const bc=game().battles,lv=xpState(k.id).level,mode
     params+=`<label>Chore<select data-bind="bb.choreId">${bbChores(k.id,mode.id).map(c=>`<option value="${c.id}" ${bb.choreId===c.id?"selected":""}>${esc(c.name)}${mode.id==="ghost"&&pb[c.id]!=null?` (your best ${fmtMs(pb[c.id])})`:""}</option>`).join("")}</select></label>`;}
   const opp=mode&&!mode.solo&&!mode.team?kidCfg(bb.opponent):null;let hc="";
   if(opp&&mode.id!=="wildcard"){const h=G.handicaps(k,opp,cfg());const y=h[k.id]>1?k:h[opp.id]>1?opp:null;if(y)hc=`<p class="hint">${y.id===k.id?"You're":esc(y.name)+" is"} younger, so ${y.id===k.id?"your":"their"} score counts ×${h[y.id]}${mode.id==="bingo"?" (in Bingo: free squares instead)":""}.</p>`;}
-  const ready=mode&&(mode.solo||(mode.id==="raid"?(bb.team||[]).length>0&&(bb.team||[]).length<=3:mode.id==="babyraid"?(bb.team||[]).length<=3:mode.id==="grownups"?(bb.opponents||[]).length>0:!!opp));
+  const ready=mode&&(mode.solo||solo||(mode.id==="raid"?(bb.team||[]).length>(soloOk?-1:0)&&(bb.team||[]).length<=3:mode.id==="babyraid"?(bb.team||[]).length<=3:mode.id==="grownups"?(bb.opponents||[]).length>0:!!opp));
   return `<div class="builder"><h3>Pick a mode</h3><div class="modes">${G.MODES.map(modeBtn).join("")}</div>${who}
     ${params?`<div class="row" style="margin-top:10px">${params}</div>`:""}${hc}
-    <div class="row" style="margin-top:12px"><button class="btn" data-act="bb-send" ${!ready||S.busy.b?"disabled":""}>${S.busy.b?"Sending…":mode&&mode.solo?"Start":"Send challenge"}</button><button class="btn ghost" data-act="bb-close">Cancel</button></div></div>`;}
+    <div class="row" style="margin-top:12px"><button class="btn" data-act="bb-send" ${!ready||S.busy.b?"disabled":""}>${S.busy.b?"Sending…":mode&&(mode.solo||solo)?"Start":"Send challenge"}</button><button class="btn ghost" data-act="bb-close">Cancel</button></div></div>`;}
 // This person's battle limits, counted the same way the server does (null mode: overall limits only).
 const battleLimitFor=(id,modeId)=>G.battleLimit(cfg(),modeId||"-",battleList(),id,ymd(),mondayOf(new Date()));
 function battleUse(id){const mon=mondayOf(new Date()),n=b=>!["declined","expired","cancelled"].includes(b.status)&&b.players.includes(id);
@@ -704,9 +707,10 @@ function pGame(){
   const line=b=>{const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Battle"};const r=b.result||{};const names=b.teams?Object.values(b.teams).map(t=>t.map(p=>bName(b,p)).join(" & ")).join(" vs "):b.players.map(p=>bName(b,p)).join(" vs ");
     const times=G.TIMED.includes(b.mode)?" Times: "+b.players.map(p=>`${bName(b,p)} ${scoreHtml(b,p)}`).join(", ")+".":b.scores?" Score: "+b.players.map(p=>`${bName(b,p)} ${scoreHtml(b,p)}`).join(", ")+".":"";
     const qc=G.TIMED.includes(b.mode)?b.players.filter(p=>{const a=(b.attempts||{})[p];return a&&a.ms!=null&&!a.void;}):[];
-    const status=qc.length?`Check that the chore was done well${b.mode==="doom"?" and with their doom":""}. Only runs done well count, and the fastest of those wins.`:b.status==="judging"?"Both are done. Go look, then pick the better job.":b.status==="confirming"?`${resultText(b,null)}${r.needsParent?(r.disputedBy?` ${bName(b,r.disputedBy)} asked you to check.`:" Flagged: a run under a minute."):" Waiting for the other player (auto-confirms after 12 hours)."}`:b.status==="pending"?"Waiting to be accepted.":"In progress.";
+    const status=qc.length?`Check that the chore was done well${b.mode==="doom"?" and with their doom":""}. Only runs done well count, and the fastest of those wins.`:b.status==="judging"?(G.isSoloPlay(b)?"Done. Go look, then say if it was a great job.":"Both are done. Go look, then pick the better job."):b.status==="confirming"?`${resultText(b,null)}${r.needsParent?(r.disputedBy?` ${bName(b,r.disputedBy)} asked you to check.`:" Flagged: a run under a minute."):" Waiting for the other player (auto-confirms after 12 hours)."}`:b.status==="pending"?"Waiting to be accepted.":"In progress.";
     const checks=qc.length?`<div class="qc">${qc.map(p=>{const v=(b.quality||{})[p];return `<div class="qc-row"><span><b>${bName(b,p)}</b> ${fmtMs(b.attempts[p].ms)}${b.mode==="doom"&&(b.dooms||{})[p]?`<br><small>Doom: ${doomText(b.dooms[p])}</small>`:""}</span><button class="btn small ${v===true?"":"ghost"}" data-act="p-check" data-id="${b.id}" data-player="${p}" data-ok="1" aria-pressed="${v===true}">✓ Done well</button><button class="btn small ${v===false?"warn":"ghost"}" data-act="p-check" data-id="${b.id}" data-player="${p}" data-ok="" aria-pressed="${v===false}">✗ Not good enough</button></div>`;}).join("")}</div>`:"";
-    const btns=G.TIMED.includes(b.mode)&&b.status==="confirming"?`<button class="btn ghost small" data-act="p-bvoid" data-id="${b.id}">No contest</button>`:b.status==="judging"?`<span class="row" style="flex:0 1 auto;gap:6px">${b.players.map(p=>`<button class="btn small" data-act="p-judge" data-id="${b.id}" data-winner="${p}">${bName(b,p)}</button>`).join("")}<button class="btn ghost small" data-act="p-judge" data-id="${b.id}" data-winner="tie">Tie</button></span>`
+    const btns=G.TIMED.includes(b.mode)&&b.status==="confirming"?`<button class="btn ghost small" data-act="p-bvoid" data-id="${b.id}">No contest</button>`:b.status==="judging"&&G.isSoloPlay(b)?`<span class="row" style="flex:0 1 auto;gap:6px"><button class="btn small" data-act="p-judge" data-id="${b.id}" data-winner="${b.players[0]}">✓ Great job</button><button class="btn ghost small" data-act="p-judge" data-id="${b.id}" data-winner="tie">✗ Not this time</button></span>`
+      :b.status==="judging"?`<span class="row" style="flex:0 1 auto;gap:6px">${b.players.map(p=>`<button class="btn small" data-act="p-judge" data-id="${b.id}" data-winner="${p}">${bName(b,p)}</button>`).join("")}<button class="btn ghost small" data-act="p-judge" data-id="${b.id}" data-winner="tie">Tie</button></span>`
       :b.status==="confirming"?`<button class="btn small" data-act="p-bconfirm" data-id="${b.id}">Confirm</button><button class="btn ghost small" data-act="p-bvoid" data-id="${b.id}">No contest</button>`
       :`<button class="btn ghost small" data-act="p-bcancel" data-id="${b.id}">Call off</button>`;
     return `<li class="${qc.length?"has-qc":""}"><span style="flex:1"><b>${m.emoji} ${esc(m.name)}</b>: ${names}<br><small>${modeParams(b)}. ${status}${qc.length?"":times}</small>${checks}</span>${btns}</li>`;};
@@ -932,7 +936,7 @@ function levelsCard(d){const g=d.game,mp=g.moneyPerks,X=G.XP,rows=[];const qx=G.
     <div class="guide">${rows.join("")}</div></section>`;}
 function gameSettings(d){const g=d.game,b=g.battles;const chk=(path,on,label)=>`<label class="check-label"><input type="checkbox" data-bind="draft.game.${path}" ${on?"checked":""}> ${label}</label>`;
   return `<section class="card"><div class="sec-head"><h2>Game</h2></div>
-    <div class="grid-2">${chk("quests.enabled",g.quests.enabled,"Weekly quests")}${chk("choreOfDay.enabled",g.choreOfDay.enabled,"Chore of the Day (double XP)")}${chk("streakMultiplier.enabled",g.streakMultiplier.enabled,`Streak bonus (×${g.streakMultiplier.mult} XP at ${g.streakMultiplier.minStreak}+ days)`)}${chk("battles.enabled",b.enabled,"Battles")}${chk("adultsUnlockAll",g.adultsUnlockAll,"Grown-ups skip level locks (every creature, item, and battle mode)")}</div>
+    <div class="grid-2">${chk("quests.enabled",g.quests.enabled,"Weekly quests")}${chk("choreOfDay.enabled",g.choreOfDay.enabled,"Chore of the Day (double XP)")}${chk("streakMultiplier.enabled",g.streakMultiplier.enabled,`Streak bonus (×${g.streakMultiplier.mult} XP at ${g.streakMultiplier.minStreak}+ days)`)}${chk("battles.enabled",b.enabled,"Battles")}${chk("adultsUnlockAll",g.adultsUnlockAll,"Grown-ups skip level locks (every creature, item, and battle mode)")}${chk("adultsSoloAll",g.adultsSoloAll,"Grown-ups can play any battle mode solo")}</div>
     <h3 style="margin-top:14px">Battle modes</h3><p class="hint" style="margin:2px 0 4px">Tick a mode to allow it. Tap one to see how it works.</p>
     <div class="guide">${gRow("m:all","How battles work","Challenges, handicaps, XP, confirming, and what carries over",battlesGeneral(b))}${G.MODES.filter(m=>!m.soon).map(m=>{const t=modeGuide()[m.id]||{};const ml=(b.modeLimits||{})[m.id]||{};const limTxt=[ml.day>0?`${ml.day} a day`:"",ml.week>0?`${ml.week} a week`:""].filter(Boolean).join(", ");
       return gRow("m:"+m.id,`${m.emoji} ${esc(m.name)} <span class="pill">Level ${m.level}</span>${limTxt?` <span class="pill">Max ${limTxt}</span>`:""}`,esc(m.desc),`<p><b>How it works.</b> ${t.how||""}</p><p><b>XP.</b> ${t.xp||""}</p>${t.notes?`<p><b>Good to know.</b> ${t.notes}</p>`:""}
@@ -1068,8 +1072,10 @@ async function handleAct(act,ds){
   case "bb-close": S.ui.bb=null;break;
   case "bb-mode":{const bb=S.ui.bb;bb.mode=ds.id;bb.windowMin=String(G.timeLimit(cfg(),ds.id));bb.customMin="";if((G.TIMED.includes(ds.id)||ds.id==="judge")&&!bbChores(kid,ds.id).some(c=>c.id===bb.choreId)){const c=bbChores(kid,ds.id)[0];bb.choreId=c?c.id:"";}break;}
 
-  case "bb-send":{const bb=S.ui.bb,m=G.modeById(bb.mode);const r=await bcall("createBattle",{mode:bb.mode,opponent:bb.opponent,team:bb.team,opponents:bb.opponents,n:Number(bb.n),windowMin:bb.windowMin==="custom"||!G.TIME_CHOICES.map(String).includes(String(bb.windowMin))?Number(bb.customMin||bb.windowMin):Number(bb.windowMin),days:Number(bb.days),choreId:bb.choreId,room:bb.room==="other"?bb.roomCustom:bb.room,minutes:Number(bb.minutes)});
-    if(r){S.ui.bb=null;const got=G.modeById(r.mode)||m;toast(m.solo?"Ghost race is on. Start when you're ready!":m.id==="wildcard"?`🃏 It's ${got.name}!${r.twist?" "+r.twist.text+".":""} Challenge sent.`:G.isRaid(m.id)?((bb.team||[]).length?"Team invite sent!":"Baby boss raid is on. Go do chores!"):"Challenge sent!");}break;}
+  case "bb-send":{const bb=S.ui.bb,m=G.modeById(bb.mode);const me=kidCfg(kid),soloOk=G.canSolo(cfg(),me,bb.mode);
+    const solo=soloOk&&(bb.opponent==="__solo"||(bb.mode==="raid"&&!(bb.team||[]).length));
+    const r=await bcall("createBattle",{mode:bb.mode,solo,opponent:bb.opponent==="__solo"?"":bb.opponent,team:bb.team,opponents:bb.opponents,n:Number(bb.n),windowMin:bb.windowMin==="custom"||!G.TIME_CHOICES.map(String).includes(String(bb.windowMin))?Number(bb.customMin||bb.windowMin):Number(bb.windowMin),days:Number(bb.days),choreId:bb.choreId,room:bb.room==="other"?bb.roomCustom:bb.room,minutes:Number(bb.minutes)});
+    if(r){S.ui.bb=null;const got=G.modeById(r.mode)||m;toast(m.solo?"Ghost race is on. Start when you're ready!":solo&&!G.isRaid(m.id)?`Solo ${got.name} is on!`:m.id==="wildcard"?`🃏 It's ${got.name}!${r.twist?" "+r.twist.text+".":""} Challenge sent.`:G.isRaid(m.id)?((bb.team||[]).length?"Team invite sent!":"Baby boss raid is on. Go do chores!"):"Challenge sent!");}break;}
   case "b-accept":{const r=await bcall("respondBattle",{id:ds.id,accept:true});if(r){confetti(60);chime(false);toast(r.started?"Battle on! Go go go!":"You're in! Waiting for the others.");}break;}
   case "b-decline": await bcall("respondBattle",{id:ds.id,accept:false});break;
   case "b-cancel": await bcall("cancelBattle",{id:ds.id},"Called off.");break;

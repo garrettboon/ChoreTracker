@@ -304,6 +304,7 @@ function resultPush(cfg, b, p, xp) {
   const r = b.result || {};
   const plus = xp ? ` +${xp} XP.` : "";
   if (r.noContest) return [`${mode.emoji} ${mode.name}: no contest`, `${r.reason || "Nobody earned XP."}`];
+  if (r.solo) return [r.done ? `${mode.emoji} ${mode.name}: you did it!` : `${mode.emoji} ${mode.name} done`, `${r.reason || ""}.${plus}`];
   if (b.mode === "ghost") return [r.winner ? `👻 ${r.record ? "Record set" : "New personal best"}!` : "👻 Not this time", `${r.winner ? "Your time counts." : "Try again to beat your best."}${plus}`];
   if (G.isRaid(b.mode)) return [r.winnerSide ? `${mode.emoji} Boss beaten!` : `${mode.emoji} The boss got away`, `${r.reason || ""}${plus}`];
   if (r.tie) return [`${mode.emoji} ${mode.name}: it's a tie!`, `${r.reason || ""}${plus}`];
@@ -414,7 +415,27 @@ async function weekXp(cfg, personId, before, after, historical) {
 }
 
 // Awards XP for every badge the person has earned (each badge pays once).
+// Wins per battle mode, recounted from every finished battle. Run once per person so wins from
+// before per-mode counting existed still earn their badges; after that, afterSettle keeps the counts.
+async function recountModeWins(personId) {
+  const snap = await db.collection("battles").where("players", "array-contains", personId).get();
+  const wins = {};
+  for (const d of snap.docs) {
+    const b = d.data();
+    if (b.status !== "done" || !G.isWinner(b, b.result, personId)) continue;
+    for (const k of G.modeWinKeys(b)) wins[k] = (wins[k] || 0) + 1;
+  }
+  await applyXp(personId, [], [], (x) => {
+    for (const k of Object.keys(x.counts)) if (k.startsWith("win_")) delete x.counts[k];
+    Object.assign(x.counts, wins);
+    x.modeWinsCounted = true;
+    return true;
+  });
+}
+
 async function syncBadges(cfg, personId) {
+  const pre = await db.doc(`xp/${personId}`).get();
+  if (!pre.exists || !pre.data().modeWinsCounted) await recountModeWins(personId);
   const L = localParts(tzOf(cfg));
   const mon = mondayOf(L.date, L.dow);
   const [b, p, x, ...ws] = await db.getAll(db.doc(`bank/${personId}`), db.doc(`prefs/${personId}`), db.doc(`xp/${personId}`),
@@ -433,7 +454,7 @@ async function syncBadges(cfg, personId) {
     early: counts.early || 0, earlyBest,
     bestStreak: G.bestStreak(prefs.prLog, prIdsOf(cfg), [...(xd.frozenDates || []), ...doneDates(prefs)]),
     saved, invest: bank.invest || 0, give: bank.give || 0, bought: archived.length,
-    wins: counts.win || 0, giant: counts.giant || 0, level: xd.maxLevel || 1,
+    wins: counts.win || 0, giant: counts.giant || 0, level: xd.maxLevel || 1, modeWins: G.modeWinsOf(counts),
     quests: counts.quest || 0, bounties: counts.bounty || 0, checklistDays: counts.pr || 0,
   });
   await applyXp(personId, list.filter((x) => x[3]).map((x) => ({
@@ -650,12 +671,14 @@ exports.createBattle = onCall(async (req) => {
   const meP = kidOf(cfg, me.id);
   const ids = (list) => [...new Set((Array.isArray(list) ? list : []).map(String))].filter((id) => id !== me.id);
 
-  // Who's in it.
+  // Who's in it. A solo request plays the mode alone, where that's allowed.
+  const soloReq = !!data.solo && !picked.solo;
+  if (soloReq && !G.canSolo(cfg, meP, picked.id)) throw new HttpsError("failed-precondition", `${picked.name} can't be played solo.`);
   let players, teams = null, opp = null;
-  if (picked.solo) players = [me.id];
+  if (picked.solo || (soloReq && !G.isRaid(picked.id))) players = [me.id];
   else if (G.isRaid(picked.id)) {
     const mates = ids(data.team).filter((id) => kidOf(cfg, id));
-    if (picked.id === "raid" && !mates.length) throw new HttpsError("invalid-argument", "Pick 1 to 3 teammates.");
+    if (picked.id === "raid" && !mates.length && !G.canSolo(cfg, meP, "raid")) throw new HttpsError("invalid-argument", "Pick 1 to 3 teammates.");
     if (mates.length > 3) throw new HttpsError("invalid-argument", "Pick up to 3 teammates.");
     players = [me.id, ...mates];
     teams = { a: players };
@@ -682,7 +705,7 @@ exports.createBattle = onCall(async (req) => {
     const tw = pool[Math.floor(Math.random() * pool.length)];
     if (tw && mode.id !== "bingo") twist = { choreId: tw.id, text: `${tw.name} counts double` };
   }
-  if (mode.kidsOnly && players.some((id) => kidOf(cfg, id).adult)) throw new HttpsError("invalid-argument", `${mode.name} is for kids only.`);
+  if (mode.kidsOnly && players.length > 1 && players.some((id) => kidOf(cfg, id).adult)) throw new HttpsError("invalid-argument", `${mode.name} is for kids only.`);
 
   const params = {};
   if (mode.id === "race") params.n = Math.min(6, Math.max(2, Math.round(Number(data.n) || 3)));
@@ -715,7 +738,8 @@ exports.createBattle = onCall(async (req) => {
     if (!pool.length) throw new HttpsError("failed-precondition", "Territory needs at least one Anyone chore.");
     const m = G.territoryMap(`${L.date}:${players.join(",")}:${Date.now()}`);
     params.map = { cols: m.cols, rows: m.rows, cells: m.cells, names: m.names };
-    params.homes = { [players[0]]: m.homes[0], [players[1]]: m.homes[1] };
+    params.homes = { [players[0]]: m.homes[0] };
+    if (players[1]) params.homes[players[1]] = m.homes[1];
   }
   if (mode.id === "streakduel") { params.startDate = addDays(L.date, 1); params.endDate = addDays(L.date, 14); }
   if (mode.id === "showdown") params.week = mondayOf(L.date, L.dow);
@@ -733,6 +757,9 @@ exports.createBattle = onCall(async (req) => {
   if (mode.solo && live.some((b) => b.mode === "ghost" && b.players[0] === me.id)) {
     throw new HttpsError("failed-precondition", "Finish your ghost race first.");
   }
+  if (players.length === 1 && !mode.solo && live.some((b) => b.players.length === 1 && b.players[0] === me.id && b.mode === mode.id)) {
+    throw new HttpsError("failed-precondition", `Finish your solo ${mode.name} first.`);
+  }
   const thisWeek = weekSnap.docs.map((d) => d.data());
   for (const p of players) {
     const lim = G.battleLimit(cfg, picked.id, thisWeek, p, L.date, mondayOf(L.date, L.dow));
@@ -746,7 +773,7 @@ exports.createBattle = onCall(async (req) => {
 
   const now = Date.now();
   const b = {
-    mode: mode.id, status: mode.solo ? "active" : "pending", live: true, players, challenger: me.id,
+    mode: mode.id, status: mode.solo || players.length === 1 ? "active" : "pending", live: true, players, challenger: me.id,
     createdAt: now, day: L.date, params, scores: {}, attempts: {}, accepted: { [me.id]: true },
     names: Object.fromEntries(players.map((id) => [id, personName(cfg, id)])),
   };
@@ -769,6 +796,7 @@ exports.createBattle = onCall(async (req) => {
     // A raid with nobody to invite (a solo Baby Boss Raid) starts right away.
     if (players.length === 1) Object.assign(b, { status: "active", acceptedAt: now }, startWindow(cfg, b, now));
   }
+  if (soloReq && !G.isRaid(mode.id)) Object.assign(b, { acceptedAt: now, solo: true }, startWindow(cfg, b, now));
   if (mode.solo) {
     b.acceptedAt = b.startAt = now;
     b.endAt = startWindow(cfg, b, now).endAt;
@@ -1079,6 +1107,11 @@ exports.judgeBattle = onCall(async (req) => {
     if (b.status !== "judging") throw new HttpsError("failed-precondition", "That battle isn't waiting for a judge.");
     if (pick !== "tie" && !b.players.includes(pick)) throw new HttpsError("invalid-argument", "Pick one of the players.");
     const by = req.auth.token.name || req.auth.token.email;
+    if (G.isSoloPlay(b)) {
+      const ok = pick === b.players[0];
+      t.update(ref, { status: "done", result: { ...(b.result || {}), needsParent: false, solo: true, done: ok, reason: ok ? "A parent said great job" : "A parent said not this time", confirmedBy: by, confirmedAt: Date.now() } });
+      return;
+    }
     t.update(ref, { status: "done", result: { ...(b.result || {}), needsParent: false, winner: pick === "tie" ? null : pick, tie: pick === "tie", reason: pick === "tie" ? "The judge called it a tie" : "The judge's pick", confirmedBy: by, confirmedAt: Date.now() } });
   });
   await afterSettle(cfg, id);
@@ -1089,7 +1122,7 @@ exports.judgeBattle = onCall(async (req) => {
 // daily-checked modes end right away; speed results wait for a confirmation.
 function settle(b, result) {
   const now = Date.now();
-  if (result.noContest || !SPEED.includes(b.mode)) return { status: "done", result: { ...result, decidedAt: now } };
+  if (result.noContest || !SPEED.includes(b.mode) || (G.isSoloPlay(b) && !G.TIMED.includes(b.mode))) return { status: "done", result: { ...result, decidedAt: now } };
   // Timed runs are only a pending result until a parent checks the work was done well.
   if (G.TIMED.includes(b.mode)) {
     const done = qualityResult(b);
@@ -1131,12 +1164,12 @@ async function afterSettle(cfg, id) {
   const ages = Object.fromEntries(b.players.map((p) => [p, G.effAge(kidOf(cfg, p) || {}, G.gameCfg(cfg).battles.adultAge)]));
   for (const p of b.players) {
     const won = G.isWinner(b, r, p);
-    const count = [r.tie ? "tie" : won ? "win" : "loss"];
+    const count = [r.tie ? "tie" : won ? "win" : "loss", ...(won ? G.modeWinKeys(b) : [])];
     if (won && !b.teams && b.players.length === 2) {
       const other = b.players.find((o) => o !== p);
       if (ages[p] < ages[other]) count.push("giant");
     }
-    const label = r.record ? "record set" : r.tie ? "tie" : won ? (b.mode === "ghost" ? "new best" : G.isRaid(b.mode) ? "boss beaten" : "won") : "played";
+    const label = r.solo ? (r.done ? "solo, goal reached" : "solo") : r.record ? "record set" : r.tie ? "tie" : won ? (b.mode === "ghost" ? "new best" : G.isRaid(b.mode) ? "boss beaten" : "won") : "played";
     const pbMs = b.mode === "ghost" && won && b.attempts[p] ? b.attempts[p].ms : null;
     await applyXp(p, xp[p] ? [{ key: "battle:" + id, amount: xp[p], reason: `${mode ? mode.name : "Battle"}: ${label}`, count }] : [],
       [], pbMs != null ? (x) => { x.pb = { ...(x.pb || {}), [b.params.choreId]: pbMs }; return true; } : null);
@@ -1221,6 +1254,15 @@ async function duelCheck(cfg, b, now, u) {
   let d = b.checkedThrough ? addDays(b.checkedThrough, 1) : b.params.startDate;
   let last = b.checkedThrough || null;
   const days = { ...(b.duelDays || {}) };
+  while (d < today && d <= b.params.endDate && b.players.length === 1) {
+    const a = b.players[0], oa = ok(a, d);
+    days[d] = { [a]: oa };
+    last = d; u.checkedThrough = last; u.duelDays = days;
+    const n = Object.keys(days).length;
+    if (!oa) return { solo: true, done: false, reason: `Missed day ${n}` };
+    if (d === b.params.endDate) return { solo: true, done: true, reason: "14 days without missing one!" };
+    d = addDays(d, 1);
+  }
   while (d < today && d <= b.params.endDate) {
     const [a, c] = b.players;
     const oa = ok(a, d), oc = ok(c, d);
@@ -1265,6 +1307,11 @@ async function showdownCheck(cfg, b, now, u) {
     scores[p] = { raw: Math.round(sc * 100), adj: Math.round(sc * 100) };
   }
   u.scores = scores;
+  if (b.players.length === 1) {
+    const sc = scores[b.players[0]].adj;
+    if (!scores[b.players[0]].raw) return { noContest: true, reason: "Nothing earned that week" };
+    return { solo: true, done: sc >= 100, reason: `Reached ${sc}% of the weekly goal` };
+  }
   const [a, c] = b.players;
   if (!scores[a].raw && !scores[c].raw) return { noContest: true, reason: "Nobody earned anything that week" };
   if (scores[a].adj === scores[c].adj) return { tie: true, reason: `Both reached ${scores[a].adj}% of their goal` };

@@ -134,6 +134,11 @@ test("badges", () => {
   const some = G.badgeList({ chores: 50, goalHits: 1, bestStreak: 7, wins: 1, level: 5, quests: 1 });
   assert.deepEqual(some.filter((b) => b[3]).map((b) => b[0]),
     ["first", "chores10", "fifty", "streak3", "streak7", "goal1", "level5", "quest1", "win1"]);
+  // One badge per battle mode, for the first win; a Wildcard win counts for Wildcard and the mode it became.
+  for (const m of G.MODES) assert.ok(none.some((b) => b[0] === "mode_" + m.id), `badge for ${m.id}`);
+  const counts = {};
+  for (const k of G.modeWinKeys({ mode: "bingo", wildcard: true })) counts[k] = 1;
+  assert.deepEqual(G.badgeList({ modeWins: G.modeWinsOf(counts) }).filter((b) => b[3]).map((b) => b[0]), ["mode_bingo", "mode_wildcard"]);
   // Morning badges: the most chores before 9 AM in one day, and chores before 9 AM in all.
   assert.deepEqual(G.badgeList({ earlyBest: 3, early: 24 }).filter((b) => b[3]).map((b) => b[0]), ["early3"]);
   assert.deepEqual(G.badgeList({ earlyBest: 5, early: 25 }).filter((b) => b[3]).map((b) => b[0]), ["early3", "early5", "early25"]);
@@ -535,4 +540,37 @@ test("grown-ups skip level locks only when the setting is on", () => {
   const all = G.allUnlockIds();
   for (const id of G.unlockedIds(G.MAX_LEVEL, { counts: { win: 99, giant: 9, redeem: 9, goal: 9, chore: 999 }, bestStreak: 99 })) assert.ok(all.includes(id), id);
   assert.ok(all.includes("c:peacock") && all.includes("m:wildcard") && all.includes("ti:giantslayer"));
+});
+
+test("solo play: who can, how it ends, and what it pays (never a win)", () => {
+  const kid = { id: "k", age: 9 }, dad = { id: "d", adult: true }, on = { game: { adultsSoloAll: true } };
+  assert.equal(G.canSolo({}, kid, "roomrush"), true, "anyone can Room Rush solo");
+  assert.equal(G.canSolo({}, kid, "race"), false);
+  assert.equal(G.canSolo({}, dad, "race"), false, "grown-ups need the setting");
+  assert.equal(G.canSolo(on, dad, "race"), true);
+  assert.equal(G.canSolo(on, dad, "territory"), true);
+  assert.equal(G.canSolo(on, dad, "grownups"), false, "Kids vs. Grown-ups needs both sides");
+  assert.equal(G.canSolo(on, kid, "race"), false, "the setting is for grown-ups");
+  assert.equal(G.canSolo(on, dad, "ghost"), false, "already solo");
+  // Race: done when the finish line is crossed; short when time runs out partway.
+  const race = { mode: "race", players: ["d"], handicap: { d: 1 }, params: { n: 2 }, startAt: 0, endAt: 100 };
+  const e = (t, choreId = "x") => ({ t, choreId, status: "ok" });
+  assert.equal(G.decide(race, { d: [e(1)] }, [], false), null);
+  const short = G.decide(race, { d: [e(1)] }, [], true);
+  assert.deepEqual([short.solo, short.done], [true, false]);
+  const done = G.decide(race, { d: [e(1), e(2)] }, [], false);
+  assert.deepEqual([done.solo, done.done], [true, true]);
+  assert.equal(G.isWinner(race, done, "d"), false, "solo is never a win");
+  assert.deepEqual(G.battleXp(race, done), { d: G.XP.tie });
+  assert.deepEqual(G.battleXp(race, short), { d: G.XP.loss });
+  assert.equal(G.decide(race, {}, [], true).noContest, true);
+  // Room Rush solo pays per item.
+  const rr = { mode: "roomrush", players: ["k"], params: { minutes: 1 }, attempts: { k: { startAt: 1, count: 12 } } };
+  const r = G.decide(rr, {}, [], false);
+  assert.equal(r.done, true);
+  assert.deepEqual(G.battleXp(rr, r), { k: G.XP.loss + G.rushXp(12) });
+  // Timed solo: a run that failed the parent's check earns nothing.
+  const tt = { mode: "timetrial", players: ["d"], attempts: { d: { ms: 1000 } }, quality: { d: false } };
+  assert.deepEqual(G.battleXp(tt, { solo: true, done: true }), {});
+  assert.deepEqual(G.bingoFree({ id: "d", adult: true }, null, {}, "s"), {}, "no free squares without an opponent");
 });
