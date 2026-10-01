@@ -14,7 +14,11 @@ test("level curve matches the plan", () => {
   assert.equal(G.levelStart(3), 208);
   assert.equal(G.levelStart(5), 822);
   assert.equal(G.levelStart(10), 4617);
-  assert.equal(G.levelStart(20), 24172);
+  assert.equal(G.levelStart(20), 23472);
+  // From level 10 on, each level needs the same extra XP over the one before as level 10 did.
+  const step = G.xpToNext(10) - G.xpToNext(9);
+  for (let l = 11; l < G.MAX_LEVEL; l++) assert.equal(G.xpToNext(l) - G.xpToNext(l - 1), step, `level ${l}`);
+  assert.ok(G.xpToNext(9) - G.xpToNext(8) < step, "it still grows faster and faster before level 10");
   assert.equal(G.levelFor(0), 1);
   assert.equal(G.levelFor(59), 1);
   assert.equal(G.levelFor(60), 2);

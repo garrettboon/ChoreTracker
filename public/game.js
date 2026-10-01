@@ -10,7 +10,12 @@ export function addDays(s, n) {
 
 /* ---------- levels ---------- */
 export const MAX_LEVEL = 30;
-export const xpToNext = (level) => Math.round(60 * Math.pow(level, 1.3));
+const curve = (level) => Math.round(60 * Math.pow(level, 1.3));
+// XP to go from `level` to the next one. It grows along a curve up to level 10; after that, each
+// level needs the same extra XP over the one before as level 10 did over level 9.
+export const STEADY_FROM = 10;
+export const xpToNext = (level) => level <= STEADY_FROM ? curve(level)
+  : curve(STEADY_FROM) + (level - STEADY_FROM) * (curve(STEADY_FROM) - curve(STEADY_FROM - 1));
 export function levelStart(level) { let s = 0; for (let i = 1; i < level; i++) s += xpToNext(i); return s; }
 export function levelFor(total) {
   let level = 1, start = 0;
