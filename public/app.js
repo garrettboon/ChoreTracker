@@ -202,6 +202,7 @@ function render(){
   else h=viewParent();
   if(S.ui.focus&&S.phase==="ready"&&S.config)h+=focusOverlay();
   else if(S.ui.tm&&S.phase==="ready"&&S.config&&onKidScreen())h+=mapOverlay();
+  else if(S.ui.rush&&S.phase==="ready"&&S.config&&onKidScreen())h+=rushOverlay();
   if(S.ui.levelUp)h+=levelUpOverlay();
   $("#app").innerHTML=h;document.body.dataset.mode=mode();
   const th=S.phase==="ready"&&S.config&&S.viewKid&&kidCfg(S.viewKid)&&onKidScreen()?equipped(S.viewKid).theme:"";
@@ -235,8 +236,11 @@ function levelUpOverlay(){const lu=S.ui.levelUp;const items=G.describeUnlocks(lu
     <button class="btn block" data-act="lu-ok" autofocus>Awesome!</button></div></div>`;}
 // Keeps Time Trial stopwatches ticking between renders.
 let clockTimer=null;
-function tickClocks(){const els=document.querySelectorAll(".tt-clock[data-start]");if(!els.length){clearInterval(clockTimer);clockTimer=null;return;}
-  const upd=()=>{document.querySelectorAll(".tt-clock[data-start]").forEach(el=>{el.textContent=fmtMs(Date.now()-Number(el.dataset.start));});tickGoal();};upd();if(!clockTimer)clockTimer=setInterval(upd,1000);}
+function tickClocks(){const els=document.querySelectorAll(".tt-clock[data-start],.cd-clock[data-end]");if(!els.length){clearInterval(clockTimer);clockTimer=null;return;}
+  const upd=()=>{document.querySelectorAll(".tt-clock[data-start]").forEach(el=>{el.textContent=fmtMs(Date.now()-Number(el.dataset.start));});tickGoal();
+    // Countdowns: when one runs out, ring and redraw (Room Rush then asks for the count).
+    let done=false;document.querySelectorAll(".cd-clock[data-end]").forEach(el=>{const left=Number(el.dataset.end)-Date.now();el.textContent=fmtMs(Math.max(0,left));if(left<=3000)done=true;});
+    if(done){chime(true);try{navigator.vibrate&&navigator.vibrate([300,100,300]);}catch(e){}render();}};upd();if(!clockTimer)clockTimer=setInterval(upd,1000);}
 function fmtMs(ms){const t=Math.max(0,Math.round(ms/1000));const h=Math.floor(t/3600),m=Math.floor(t%3600/60),sec=t%60;return (h?h+":"+String(m).padStart(2,"0"):m)+":"+String(sec).padStart(2,"0");}
 
 function viewWelcome(){
@@ -391,7 +395,7 @@ const bName=(b,id)=>esc((kidCfg(id)||{}).name||(b.names||{})[id]||"Someone");
 const TEAM=["raid","babyraid","grownups"];
 function modeParams(b){const p=b.params||{};const tw=b.twist?`. ${esc(b.twist.text)}`:"";
   const t={race:`First to ${p.n} chores`,blitz:p.windowMin?`${G.timeText(p.windowMin)} blitz`:"Until midnight",grownups:p.windowMin?G.timeText(p.windowMin):"Until midnight",
-    territory:p.map?"Conquer the map":"Most Anyone chores by midnight",bingo:"First to a line",streakduel:"Don't miss a day",showdown:"Best share of weekly goal",
+    territory:p.map?"Conquer the map":"Most Anyone chores by midnight",roomrush:`${esc(p.room||"")}, ${p.minutes} minute${p.minutes>1?"s":""} each`,bingo:"First to a line",streakduel:"Don't miss a day",showdown:"Best share of weekly goal",
     raid:`${p.bossEmoji||"🐉"} ${esc(p.bossName||"Boss")}, ${p.days||1} day${(p.days||1)>1?"s":""}`,babyraid:`${p.bossEmoji||"🐣"} ${esc(p.bossName||"Baby boss")}, today`}[b.mode];
   const time=p.windowMin&&!["blitz","grownups"].includes(b.mode)?`, ${G.timeText(p.windowMin)}`:"";
   return (t||(p.choreName?`${esc(G.choreIcon(choreById(p.choreId)||{name:p.choreName}))} ${esc(p.choreName)}`:""))+time+tw;}
@@ -399,6 +403,7 @@ function fmtEnd(t){const d=new Date(t);return d.getHours()===0&&d.getMinutes()==
 function scoreHtml(b,id){
   if(G.TIMED.includes(b.mode)){const a=(b.attempts||{})[id],q=(b.quality||{})[id];return !a?"–":a.void?"✗":a.ms!=null?fmtMs(a.ms)+(q===true?` <small title="A parent checked it">✓</small>`:q===false?` <small title="Didn't pass the parent's check">✗</small>`:""):`<span class="tt-clock" data-start="${a.startAt}"></span>`;}
   if(b.mode==="judge"){const a=(b.attempts||{})[id];return a&&a.entryId?"✓ Done":"–";}
+  if(b.mode==="roomrush"){const a=(b.attempts||{})[id],h=(b.handicap||{})[id]||1;return !a?"–":a.count==null?"⏱":`${a.count}<small> item${a.count===1?"":"s"}${h>1?` (×${h})`:""}</small>`;}
   if(b.mode==="streakduel"){const days=Object.values(b.duelDays||{});const ok=days.filter(d=>d[id]).length;return days.length?`${ok} day${ok===1?"":"s"}`:"–";}
   if(b.mode==="showdown"){const s=(b.scores||{})[id];return s?s.adj+"%":`${showdownLive(b,id)}%<small> so far</small>`;}
   const s=(b.scores||{})[id],h=(b.handicap||{})[id]||1;return `${s?s.adj:0}${h>1?`<small> (×${h})</small>`:""}`;}
@@ -438,6 +443,10 @@ function battleCard(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Batt
     else if(b.mode==="judge"){const a=(b.attempts||{})[me];
       body=a&&a.entryId?`<p class="sub">Turned in! ${other&&!((b.attempts||{})[other]||{}).entryId?`Waiting for ${bName(b,other)}.`:""} Then a parent picks the better job.</p>`
         :`<p class="sub">Do your best job on "${esc(b.params.choreName)}", then tap Done. A parent picks the better job.</p>${stepsOf(choreById(b.params.choreId)).length?`<button class="btn block" data-act="fx-battle" data-id="${b.id}">⤢ Open the checklist</button>`:`<button class="btn block" data-act="b-finish" data-id="${b.id}" ${dis}>✓ Done!</button>`}`;}
+    else if(b.mode==="roomrush"){const a=(b.attempts||{})[me],p=b.params,mins=`${p.minutes} minute${p.minutes>1?"s":""}`;
+      body=!a?`<p class="sub">Go to the <b>${esc(p.room)}</b> and tap Start. You get ${mins} to put away as many things as you can. Count them in your head! Ends ${fmtEnd(b.endAt)}.</p><button class="btn block" data-act="rr-start" data-id="${b.id}" ${dis}>▶ Start (${mins})</button>`
+        :a.count==null?`<button class="btn block" data-act="rr-open" data-id="${b.id}">⤢ Back to the timer</button>`
+        :`<p class="sub">You cleaned up <b>${a.count}</b> thing${a.count===1?"":"s"}!${other&&((b.attempts||{})[other]||{}).count==null?` Waiting for ${bName(b,other)}.`:""}</p>`;}
     else if(G.isMapTerritory(b)){const o=(b.open||{})[me];
       body=`<button class="tm-mini" data-act="tm-open" data-id="${b.id}" aria-label="Open the map">${mapSvg(b,me,false)}</button><p class="sub">${o?`You're conquering <b>${esc(b.params.map.names[o.c])}</b>: ${esc(G.choreIcon(choreById(o.choreId)||{name:o.name}))} ${esc(o.name)}.`:"Reveal a country next to yours, do its chore, and it's yours. Most countries wins."} Ends ${fmtEnd(b.endAt)}.</p><button class="btn block" data-act="tm-open" data-id="${b.id}">🗺️ Open the map</button>`;}
     else if(b.mode==="bingo")body=`${bingoGrid(b,me)}<p class="sub">Do the chores on your card. First to finish a row, column, or diagonal wins. Ends ${fmtEnd(b.endAt)}.</p>`;
@@ -472,8 +481,12 @@ function battleBuilder(k,bb){const bc=game().battles,lv=xpState(k.id).level,mode
   let params="";
   if(bb.mode==="race")params+=`<label>First to<select data-bind="bb.n">${[2,3,4,5,6].map(n=>`<option value="${n}" ${Number(bb.n)===n?"selected":""}>${n} chores</option>`).join("")}</select></label>`;
   if(G.TIMEBOX_MODES.includes(bb.mode)){const cur=String(bb.windowMin),custom=cur==="custom"||!G.TIME_CHOICES.map(String).includes(cur);
-    params+=`<label>Time limit<select data-bind="bb.windowMin">${G.TIME_CHOICES.map(v=>`<option value="${v}" ${!custom&&Number(cur)===v?"selected":""}>${v?G.timeText(v):"Until midnight"}</option>`).join("")}<option value="custom" ${custom?"selected":""}>Custom…</option></select></label>
+    params+=`<label>${bb.mode==="roomrush"?"Do it within":"Time limit"}<select data-bind="bb.windowMin">${G.TIME_CHOICES.map(v=>`<option value="${v}" ${!custom&&Number(cur)===v?"selected":""}>${v?G.timeText(v):"Until midnight"}</option>`).join("")}<option value="custom" ${custom?"selected":""}>Custom…</option></select></label>
     ${custom?`<label style="flex:0 1 130px">Minutes<input type="number" min="${G.MIN_TIME}" max="${G.MAX_TIME}" step="5" data-bind="bb.customMin" value="${esc(bb.customMin||(cur!=="custom"?cur:30))}"></label>`:""}`;}
+  if(bb.mode==="roomrush"){const other=bb.room==="other";
+    params+=`<label>Room<select data-bind="bb.room">${G.ROOMS.map(r=>`<option ${bb.room===r?"selected":""}>${esc(r)}</option>`).join("")}<option value="other" ${other?"selected":""}>Somewhere else…</option></select></label>
+    ${other?`<label>Which room?<input data-bind="bb.roomCustom" maxlength="30" placeholder="Like: the stairs" value="${esc(bb.roomCustom||"")}"></label>`:""}
+    <label>Each run<select data-bind="bb.minutes">${G.RUSH_MINUTES.map(n=>`<option value="${n}" ${Number(bb.minutes)===n?"selected":""}>${n} minute${n>1?"s":""}</option>`).join("")}</select></label>`;}
   if(bb.mode==="raid")params+=`<label>How many days<select data-bind="bb.days">${[1,2,3].map(n=>`<option value="${n}" ${Number(bb.days)===n?"selected":""}>${n} day${n>1?"s":""}</option>`).join("")}</select></label>`;
   if(mode&&(G.TIMED.includes(mode.id)||mode.id==="judge")){const pb=xpState(k.id).pb;
     params+=`<label>Chore<select data-bind="bb.choreId">${bbChores(k.id,mode.id).map(c=>`<option value="${c.id}" ${bb.choreId===c.id?"selected":""}>${esc(c.name)}${mode.id==="ghost"&&pb[c.id]!=null?` (your best ${fmtMs(pb[c.id])})`:""}</option>`).join("")}</select></label>`;}
@@ -599,6 +612,18 @@ function mapOverlay(){const t=S.ui.tm,b=S.battles[t.id],me=S.viewKid;if(!b||!G.i
   else panel=`<p class="sub">Tap a glowing country next to yours to reveal its chore. Do the chore and the country is yours.</p>`;
   return `<div class="focus tmap" role="dialog" aria-modal="true" aria-label="Territory map"><div class="fx-top"><button class="btn ghost small" data-act="tm-close">Minimize</button><span class="pill">🚩 Ends ${fmtEnd(b.endAt)}</span></div>
     ${mapChips(b,me)}${mapSvg(b,me,true)}<div class="tm-panel">${panel}</div></div>`;}
+/* ---------- Room Rush: full-screen countdown, then the count ---------- */
+function rushOverlay(){const r=S.ui.rush,b=S.battles[r.id],me=S.viewKid;if(!b||b.mode!=="roomrush")return "";
+  const a=(b.attempts||{})[me];if(!a||a.count!=null)return "";
+  const end=a.startAt+b.params.minutes*60000,over=Date.now()>=end-3000,busy=S.busy.b,n=r.count;
+  const ok=n!==""&&n!=null&&Number.isInteger(Number(n))&&Number(n)>=0&&Number(n)<=G.MAX_RUSH_ITEMS;
+  return `<div class="focus rush" role="dialog" aria-modal="true" aria-labelledby="rr-title"><div class="fx-top"><button class="btn ghost small" data-act="rr-close">Minimize</button><span class="pill">🌪️ Room Rush</span></div>
+    <h2 id="rr-title">${esc(b.params.room)}</h2>
+    ${over?`<p class="rr-up">⏰ Time's up!</p><label class="rr-count">How many things did you clean up?<input type="number" inputmode="numeric" min="0" max="${G.MAX_RUSH_ITEMS}" step="1" data-bind="rush.count" data-type="num" value="${esc(n??"")}" autofocus></label>
+      <button class="btn block" data-act="rr-submit" ${!ok||busy?"disabled":""}>${busy?"Saving…":"Turn in my count"}</button><p class="hint">Be honest! ${b.players.length>1?"The other player confirms the result.":""}</p>`
+      :`<div class="fx-clock rr-clock"><span class="cd-clock" data-end="${end}">${fmtMs(end-Date.now())}</span></div><p class="sub">Put away as many things as you can. Count them in your head!</p>`}</div>`;}
+function openRush(id){S.ui.rush={id,count:""};try{if(document.documentElement.requestFullscreen&&!document.fullscreenElement)document.documentElement.requestFullscreen().catch(()=>{});}catch(e){}wake();}
+function closeRush(){S.ui.rush=null;try{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});}catch(e){}}
 function openMap(id){S.ui.tm={id,sel:null,checked:[]};try{if(document.documentElement.requestFullscreen&&!document.fullscreenElement)document.documentElement.requestFullscreen().catch(()=>{});}catch(e){}wake();}
 function closeMap(){S.ui.tm=null;try{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});}catch(e){}}
 
@@ -851,6 +876,7 @@ function modeGuide(){const X=G.XP,std=`Win ${X.win} XP, tie ${X.tie}, and ${X.lo
   raid:{how:"2 to 4 people team up for 1 to 3 days. The boss has 60 HP per member per day, and every chore deals its XP as damage. Beat the boss before time runs out.",xp:`Win ${X.raidWin} XP each; teammates who did no chore get nothing. If the boss gets away, ${X.loss} XP each.`,notes:`Bosses come in order: ${G.BOSSES.map(b=>b[1]+" "+b[2]).join(", ")}. Each boss beaten makes the next one 25% tougher, and bosses beaten count for the whole family.`},
   babyraid:{how:"A tiny one-day boss. Go solo or bring up to 3 teammates. It has 15 HP per member, about a chore and a half each, and it never gets harder.",xp:`Win ${X.babyRaidWin} XP each, ${X.loss} if it gets away.`,notes:`Bosses: ${G.BABY_BOSSES.map(b=>b[1]+" "+b[2]).join(", ")}. Made for younger kids and quick team-ups.`},
   grownups:{how:"The kids team up against the adults for 30 minutes, an hour, or until midnight. The team with the most chore XP wins.",xp:`Win ${X.win} XP each (teammates who did no chore get nothing), tie ${X.tie}, lose ${X.loss}.`,notes:"The kids' team gets one handicap from the age gap between the teams' averages."},
+  roomrush:{how:"Pick a room and 1, 2, or 3 minutes. Each player taps Start whenever they're ready, cleans up as many things as they can before the countdown ends, counting in their head, then types in their total. Most things cleaned up wins. The other player confirms the result (or asks a parent).",xp:`${std}, plus ${G.XP.rushItem} XP for each thing cleaned up (up to ${G.RUSH_XP_CAP})`,notes:"The handicap multiplies the count. It doesn't log a chore or earn money. It's just for XP and bragging rights."},
   wildcard:{how:"Picks Race, Blitz, Territory, or Chore Bingo at random and adds a twist: one chore counts double.",xp:"The same as the mode it picks.",notes:"The twist chore is shown when the battle starts."},
 };}
 function battlesGeneral(b){const X=G.XP,hm=t=>{const [h,m]=String(t||"").split(":").map(Number);return isNaN(h)?"":new Date(2000,0,1,h,m||0).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});};const pct=b.handicapPct??Math.round(b.handicapPerYear*100);
@@ -1004,12 +1030,12 @@ async function handleAct(act,ds){
     else guard(setDoc(doc(db,"prefs",kid),{equipped:{[ds.slot]:ds.id}},{merge:true}));break;
   case "lu-ok": try{localStorage.setItem(seenKey(S.ui.levelUp.kid),String(S.ui.levelUp.at));}catch(e){} S.ui.levelUp=null;break;
   case "freeze-ok": try{localStorage.setItem("boon.freezeSeen."+kid,String(ds.at));}catch(e){} break;
-  case "bb-open":{const pool=bbChores(kid,"timetrial")[0];S.ui.bb={kid,mode:"race",opponent:"",team:[],opponents:[],n:"3",windowMin:String(G.timeLimit(cfg(),"race")),customMin:"",days:"1",choreId:pool?pool.id:""};break;}
+  case "bb-open":{const pool=bbChores(kid,"timetrial")[0];S.ui.bb={kid,mode:"race",opponent:"",team:[],opponents:[],n:"3",windowMin:String(G.timeLimit(cfg(),"race")),customMin:"",days:"1",choreId:pool?pool.id:"",room:G.ROOMS[0],roomCustom:"",minutes:"2"};break;}
   case "bb-pick":{const bb=S.ui.bb;if(ds.multi){const l=new Set(bb[ds.key]||[]);if(l.has(ds.id))l.delete(ds.id);else l.add(ds.id);bb[ds.key]=[...l];}else bb[ds.key]=ds.id;break;}
   case "bb-close": S.ui.bb=null;break;
   case "bb-mode":{const bb=S.ui.bb;bb.mode=ds.id;bb.windowMin=String(G.timeLimit(cfg(),ds.id));bb.customMin="";if((G.TIMED.includes(ds.id)||ds.id==="judge")&&!bbChores(kid,ds.id).some(c=>c.id===bb.choreId)){const c=bbChores(kid,ds.id)[0];bb.choreId=c?c.id:"";}break;}
 
-  case "bb-send":{const bb=S.ui.bb,m=G.modeById(bb.mode);const r=await bcall("createBattle",{mode:bb.mode,opponent:bb.opponent,team:bb.team,opponents:bb.opponents,n:Number(bb.n),windowMin:bb.windowMin==="custom"||!G.TIME_CHOICES.map(String).includes(String(bb.windowMin))?Number(bb.customMin||bb.windowMin):Number(bb.windowMin),days:Number(bb.days),choreId:bb.choreId});
+  case "bb-send":{const bb=S.ui.bb,m=G.modeById(bb.mode);const r=await bcall("createBattle",{mode:bb.mode,opponent:bb.opponent,team:bb.team,opponents:bb.opponents,n:Number(bb.n),windowMin:bb.windowMin==="custom"||!G.TIME_CHOICES.map(String).includes(String(bb.windowMin))?Number(bb.customMin||bb.windowMin):Number(bb.windowMin),days:Number(bb.days),choreId:bb.choreId,room:bb.room==="other"?bb.roomCustom:bb.room,minutes:Number(bb.minutes)});
     if(r){S.ui.bb=null;const got=G.modeById(r.mode)||m;toast(m.solo?"Ghost race is on. Start when you're ready!":m.id==="wildcard"?`🃏 It's ${got.name}!${r.twist?" "+r.twist.text+".":""} Challenge sent.`:G.isRaid(m.id)?((bb.team||[]).length?"Team invite sent!":"Baby boss raid is on. Go do chores!"):"Challenge sent!");}break;}
   case "b-accept":{const r=await bcall("respondBattle",{id:ds.id,accept:true});if(r){confetti(60);chime(false);toast(r.started?"Battle on! Go go go!":"You're in! Waiting for the others.");}break;}
   case "b-decline": await bcall("respondBattle",{id:ds.id,accept:false});break;
@@ -1020,6 +1046,10 @@ async function handleAct(act,ds){
   case "fx-step":{const f=S.ui.focus,n=Number(ds.i);f.checked=f.checked.includes(n)?f.checked.filter(x=>x!==n):[...f.checked,n];saveFocus();if(stepsOf(choreById(f.id)).every((_,i)=>f.checked.includes(i)))chime(false);break;}
   case "fx-close": if(!S.ui.focus.battleId&&!confirm("Stop without finishing? Nothing is logged."))return;closeFocus();break;
   case "fx-done": await finishFocus();return;
+  case "rr-start":{const r=await bcall("startAttempt",{id:ds.id});if(r){openRush(ds.id);chime(false);}break;}
+  case "rr-open":openRush(ds.id);break;
+  case "rr-close":closeRush();break;
+  case "rr-submit":{const r=S.ui.rush;if(!r)return;const n=Number(r.count);const ok=await bcall("rushCount",{id:r.id,count:n});if(ok){closeRush();confetti(80);chime(true);toast(`${n} thing${n===1?"":"s"} cleaned up! 🌪️`);}break;}
   case "tm-open":openMap(ds.id);break;
   case "tm-close":closeMap();break;
   case "tm-pick":if(S.ui.tm)S.ui.tm.sel=Number(ds.c);break;
@@ -1173,6 +1203,7 @@ document.addEventListener("click",e=>{const el=e.target.closest("[data-act]");if
 document.addEventListener("input",e=>{const el=e.target;if(!el.dataset.bind)return;let v=el.value;if(el.type==="checkbox")v=el.checked;else if(el.dataset.type==="num")v=v===""?"":Number(v);setPath(S.ui,el.dataset.bind,v);
   if(el.type==="checkbox"&&/^draft\.(kids\.\d+\.adult|game\.)/.test(el.dataset.bind)){render();return;}
   if(el.dataset.bind==="focus.note"&&S.ui.focus){saveFocus();const f=S.ui.focus,left=stepsOf(choreById(f.id)).filter((_,i)=>!f.checked.includes(i)).length,b=document.querySelector('[data-act="fx-done"]');if(b)b.disabled=!!left||!String(v).trim();}
+  if(el.dataset.bind==="rush.count"){const b=document.querySelector('[data-act="rr-submit"]');if(b)b.disabled=!(v!==""&&Number.isInteger(v)&&v>=0&&v<=G.MAX_RUSH_ITEMS)||!!S.busy.b;}
   if(el.dataset.bind==="confirmChore.note"||el.dataset.bind==="prNote.text"){const b=document.querySelector(el.dataset.bind==="confirmChore.note"?'[data-act="confirm-chore"]':'[data-act="save-pr-note"]');if(b)b.disabled=!String(v).trim();}
   {const m=/^draft\.chores\.(\d+)\.name$/.exec(el.dataset.bind);if(m){const b=document.querySelector(`[data-drag][data-i="${m[1]}"] .set-open b`);if(b)b.textContent=String(v).trim()||"(no name)";}}
   if(el.dataset.bind.startsWith("split.shares.")){S.ui.split.dirty=true;updateSplitUI();}
@@ -1191,6 +1222,6 @@ function endDrag(e){if(!drag||e.pointerId!==drag.id)return;const d=drag;drag=nul
   if(!d.over||!S.ui.draft)return;const arr=S.ui.draft.chores,item=arr[d.from];if(!item)return;let to=Number(d.over.dataset.i)+(d.after?1:0);arr.splice(d.from,1);if(to>d.from)to--;arr.splice(to,0,item);render();}
 document.addEventListener("pointerup",endDrag);document.addEventListener("pointercancel",endDrag);
 
-let wakeLock=null;async function wake(){try{if("wakeLock" in navigator&&(S.role==="display"||S.ui.focus||S.ui.tm))wakeLock=await navigator.wakeLock.request("screen");}catch(e){}}
+let wakeLock=null;async function wake(){try{if("wakeLock" in navigator&&(S.role==="display"||S.ui.focus||S.ui.tm||S.ui.rush))wakeLock=await navigator.wakeLock.request("screen");}catch(e){}}
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")wake();});
 setInterval(()=>{if(S.phase!=="ready")return;subscribeWeeks();const a=document.activeElement;if(!(a&&(a.tagName==="INPUT"||a.tagName==="SELECT"))&&!(S.role==="parent"&&S.ptab==="settings"))render();},60000);

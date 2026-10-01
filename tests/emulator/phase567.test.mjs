@@ -129,6 +129,41 @@ test("territory: a reversed chore gives the country back", async () => {
   await quiet("xp/k1");
 });
 
+test("room rush: start the countdown, turn in a count after it, most items wins", async () => {
+  await reset();
+  await level("k1", 2);
+  const k1 = await kidClient("k1"), k2 = await kidClient("k2");
+  const { id } = await k1.call("createBattle", { mode: "roomrush", opponent: "k2", room: "  The   stairs ", minutes: 3 });
+  let b = await battle(id);
+  assert.deepEqual([b.params.room, b.params.minutes], ["The stairs", 3]);
+  await k2.call("respondBattle", { id, accept: true });
+  await rejects(k1.call("rushCount", { id, count: 5 }), /Start your timer/);
+  await k1.call("startAttempt", { id });
+  await rejects(k1.call("rushCount", { id, count: 5 }), /Time isn't up/);
+  // Wind the clock back so the 3 minutes are over.
+  await db.doc(`battles/${id}`).update({ "attempts.k1.startAt": Date.now() - 3 * 60000 });
+  await rejects(k1.call("rushCount", { id, count: 5.5 }), /Enter a number/);
+  await rejects(k1.call("rushCount", { id, count: G.MAX_RUSH_ITEMS + 1 }), /Enter a number/);
+  await k1.call("rushCount", { id, count: 14 });
+  await rejects(k1.call("rushCount", { id, count: 20 }), /already turned in/);
+  b = await battle(id);
+  assert.equal(b.status, "active");
+  assert.equal(b.scores.k1.raw, 14);
+  await k2.call("startAttempt", { id });
+  await db.doc(`battles/${id}`).update({ "attempts.k2.startAt": Date.now() - 3 * 60000 });
+  await k2.call("rushCount", { id, count: 9 });
+  b = await battle(id);
+  assert.equal(b.status, "confirming");
+  assert.equal(b.result.winner, G.decide(b, {}, [], false).winner);
+  const winner = b.result.winner, loser = winner === "k1" ? "k2" : "k1";
+  await ({ k1, k2 }[loser]).call("confirmResult", { id, action: "confirm" });
+  b = await waitFor(async () => { const b = await battle(id); return !b.live && b; }, { msg: "room rush settled" });
+  assert.deepEqual(b.xp, { [winner]: G.XP.win + G.rushXp(b.attempts[winner].count), [loser]: G.XP.loss + G.rushXp(b.attempts[loser].count) });
+  for (const p of ["k1", "k2"]) await waitFor(async () => (await eventKeys(p)).includes(`battle:${id}`), { msg: "battle XP " + p });
+  await quiet("xp/k1");
+  await quiet("xp/k2");
+});
+
 test("chore bingo: first to finish a line wins", async () => {
   await reset();
   await level("k3", 5);

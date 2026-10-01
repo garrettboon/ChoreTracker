@@ -482,3 +482,23 @@ test("territory map: a reversed chore gives its country back, and giving up lock
   // Locked out of every border country, a can't reach anything.
   assert.deepEqual(G.territoryReach(b2, "a"), []);
 });
+
+test("room rush: most items wins (with the handicap), XP adds a little per item", () => {
+  const b = { mode: "roomrush", players: ["a", "c"], handicap: { a: 1, c: 1.2 }, params: { room: "Kitchen", minutes: 2 }, attempts: {} };
+  assert.equal(G.decide(b, {}, [], false), null);
+  assert.equal(G.decide(b, {}, [], true).noContest, true);
+  b.attempts = { a: { startAt: 1, count: 12 } };
+  assert.equal(G.decide(b, {}, [], false), null, "waits for both counts");
+  assert.equal(G.decide(b, {}, [], true).winner, "a", "only one turned in a count");
+  b.attempts.c = { startAt: 1, count: 10 };
+  assert.equal(G.decide(b, {}, [], false).tie, true, "10 × 1.2 ties 12");
+  b.attempts.c.count = 11;
+  const r = G.decide(b, {}, [], false);
+  assert.equal(r.winner, "c");
+  assert.deepEqual(G.battleXp(b, r), { a: G.XP.loss + G.rushXp(12), c: G.XP.win + G.rushXp(11) });
+  assert.equal(G.rushXp(1000), G.RUSH_XP_CAP);
+  assert.equal(G.rushXp(3), 3 * G.XP.rushItem);
+  b.attempts.a.count = 0;
+  assert.equal(G.battleXp(b, G.decide(b, {}, [], false)).a, 0, "nothing cleaned up, no XP");
+  assert.ok(G.TIMEBOX_MODES.includes("roomrush"));
+});

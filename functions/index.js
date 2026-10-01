@@ -573,7 +573,7 @@ const MS_PENDING = 2 * 3600 * 1000;       // unanswered challenges expire
 const MS_AUTOCONFIRM = 12 * 3600 * 1000;  // unconfirmed results confirm themselves
 const MS_PARENT_WAIT = 48 * 3600 * 1000;  // flagged results nobody checked become no contest
 const MS_COOLDOWN = 3600 * 1000;          // after a decline
-const SPEED = ["race", "blitz", "timetrial", "ghost", "territory", "bingo", "grownups"]; // results someone confirms
+const SPEED = ["race", "blitz", "timetrial", "ghost", "territory", "bingo", "grownups", "roomrush"]; // results someone confirms
 const LIVE_SCORED = ["race", "blitz", "territory", "bingo", "raid", "babyraid", "grownups"];         // scored from chores as they happen
 
 const dowOf = (date) => { const [y, m, d] = date.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d)).getUTCDay(); };
@@ -705,6 +705,11 @@ exports.createBattle = onCall(async (req) => {
     params.card = G.bingoCard(pool.map((c) => c.id), seed);
     params.cardNames = params.card.map((id) => (pool.find((c) => c.id === id) || {}).name || id);
     params.free = G.bingoFree(meP, opp, cfg, seed);
+  }
+  if (mode.id === "roomrush") {
+    params.room = String(data.room || "").replace(/\s+/g, " ").trim().slice(0, 30) || G.ROOMS[0];
+    const min = Math.round(Number(data.minutes));
+    params.minutes = G.RUSH_MINUTES.includes(min) ? min : 2;
   }
   if (mode.id === "territory") {
     if (!pool.length) throw new HttpsError("failed-precondition", "Territory needs at least one Anyone chore.");
@@ -849,7 +854,7 @@ exports.startAttempt = onCall(async (req) => {
   await db.runTransaction(async (t) => {
     const s = await t.get(ref);
     const b = s.exists ? s.data() : null;
-    if (!b || !b.players.includes(me.id) || !G.TIMED.includes(b.mode)) throw new HttpsError("not-found", "No timed battle here.");
+    if (!b || !b.players.includes(me.id) || !(G.TIMED.includes(b.mode) || b.mode === "roomrush")) throw new HttpsError("not-found", "No timed battle here.");
     if (b.status !== "active") throw new HttpsError("failed-precondition", "That battle isn't running.");
     if ((b.attempts || {})[me.id]) throw new HttpsError("failed-precondition", "You already started.");
     t.update(ref, { [`attempts.${me.id}`]: { startAt: Date.now() } });
@@ -980,6 +985,34 @@ exports.territoryGiveUp = onCall(async (req) => {
     t.update(ref, { [`open.${me.id}`]: FieldValue.delete(), [`locked.${me.id}`]: FieldValue.arrayUnion(o2.c) });
   });
   await refreshBattle(cfg, id, Date.now());
+  return { ok: true };
+});
+
+// Room Rush: after the countdown, a player turns in how many things they cleaned up.
+exports.rushCount = onCall(async (req) => {
+  const cfg = await getConfig();
+  const me = await actor(req, cfg);
+  const id = String((req.data && req.data.id) || "");
+  const count = Number(req.data && req.data.count);
+  if (!Number.isInteger(count) || count < 0 || count > G.MAX_RUSH_ITEMS) throw new HttpsError("invalid-argument", `Enter a number from 0 to ${G.MAX_RUSH_ITEMS}.`);
+  const ref = db.doc(`battles/${id}`);
+  await db.runTransaction(async (t) => {
+    const s = await t.get(ref);
+    const b = s.exists ? s.data() : null;
+    if (!b || b.mode !== "roomrush" || !b.players.includes(me.id)) throw new HttpsError("not-found", "No Room Rush here.");
+    if (b.status !== "active") throw new HttpsError("failed-precondition", "That battle isn't running.");
+    const at = (b.attempts || {})[me.id];
+    if (!at) throw new HttpsError("failed-precondition", "Start your timer first.");
+    if (at.count != null) throw new HttpsError("failed-precondition", "You already turned in your count.");
+    if (Date.now() < at.startAt + b.params.minutes * 60000 - 3000) throw new HttpsError("failed-precondition", "Keep going! Time isn't up yet.");
+    const h = (b.handicap || {})[me.id] || 1;
+    b.attempts = { ...b.attempts, [me.id]: { ...at, count, doneAt: Date.now() } };
+    const u = { [`attempts.${me.id}`]: b.attempts[me.id], [`scores.${me.id}`]: { raw: count, adj: Math.round(count * h * 100) / 100 } };
+    const result = G.decide(b, {}, cfg.chores, false);
+    if (result) Object.assign(u, settle(b, result));
+    t.update(ref, u);
+  });
+  await afterSettle(cfg, id);
   return { ok: true };
 });
 
