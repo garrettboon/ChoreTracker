@@ -192,7 +192,7 @@ test("battle XP: winner, tie, loss, and nothing for not trying", () => {
   assert.deepEqual(G.battleXp({ mode: "ghost", players: ["a"] }, { lost: true, winner: null }), { a: G.XP.loss });
 });
 
-test("territory counts only Anyone chores, with the Wildcard twist doubling one chore", () => {
+test("legacy territory (no map) counts only Anyone chores, with the Wildcard twist doubling one chore", () => {
   const chores = [{ id: "pool1", assign: "pool" }, { id: "pool2", assign: "pool" }, { id: "mine", assign: "a" }];
   const b = { mode: "territory", players: ["a", "c"], handicap: { a: 1, c: 1 }, startAt: T0, endAt: T0 + 100 };
   const entries = { a: [e(T0 + 1, "pool1"), e(T0 + 2, "mine")], c: [e(T0 + 1, "pool2"), e(T0 + 3, "pool2")] };
@@ -397,4 +397,88 @@ test("chore icons: a parent's pick, else one from the name", () => {
   assert.equal(G.choreIcon({ name: "Mystery item", kind: "pr" }), "✅");
   assert.equal(G.choreIcon({ name: "Sweep a room", icon: "🦄" }), "🦄", "a parent's pick wins");
   assert.equal(new Set(G.CHORE_ICON_CHOICES).size, G.CHORE_ICON_CHOICES.length);
+});
+
+test("territory map: every land cell has a country, countries are connected, homes have neutral land between", () => {
+  for (const seed of ["a", "b", "c", "2026-10-01:k1,k2:1", "x9", "seed5", "z"]) {
+    const m = G.territoryMap(seed);
+    assert.deepEqual(G.territoryMap(seed), m, "the same seed draws the same map");
+    assert.equal(m.cells.length, m.cols * m.rows);
+    assert.equal(m.names.length, G.MAP_COUNTRIES);
+    assert.equal(new Set(m.names).size, m.names.length, "names are unique");
+    const adj = G.mapAdjacency(m);
+    for (let k = 0; k < m.names.length; k++) {
+      const cells = m.cells.map((c, i) => (c === k ? i : -1)).filter((i) => i >= 0);
+      assert.ok(cells.length >= 2, `country ${k} has room`);
+      // Each country's cells touch each other.
+      const seen = new Set([cells[0]]), q = [cells[0]];
+      while (q.length) for (const j of G.hexNeighbors(q.shift(), m.cols, m.rows)) if (j >= 0 && m.cells[j] === k && !seen.has(j)) { seen.add(j); q.push(j); }
+      assert.equal(seen.size, cells.length, `country ${k} is in one piece`);
+      for (const j of adj[k]) assert.ok(adj[j].includes(k), "borders go both ways");
+    }
+    // The whole map is connected, and the homes are MAP_HOME_GAP steps apart.
+    const dist = adj.map(() => Infinity); dist[m.homes[0]] = 0;
+    const q = [m.homes[0]];
+    while (q.length) { const k = q.shift(); for (const j of adj[k]) if (dist[j] === Infinity) { dist[j] = dist[k] + 1; q.push(j); } }
+    assert.ok(dist.every(Number.isFinite), "every country can be reached");
+    assert.equal(dist[m.homes[1]], G.MAP_HOME_GAP);
+  }
+});
+
+// A Territory battle on a generated map, with a and c at home.
+function mapBattle(extra = {}) {
+  const m = G.territoryMap("test-map");
+  return { mode: "territory", players: ["a", "c"], handicap: { a: 1, c: 1 }, startAt: T0, endAt: T0 + 100, status: "active",
+    params: { map: { cols: m.cols, rows: m.rows, cells: m.cells, names: m.names }, homes: { a: m.homes[0], c: m.homes[1] } }, land: {}, open: {}, ...extra };
+}
+test("territory map: reveal only next to your land, one at a time, never someone else's", () => {
+  const b = mapBattle(), adj = G.mapAdjacency(b.params.map), ha = b.params.homes.a, hc = b.params.homes.c;
+  const next = adj[ha][0], far = b.params.map.names.map((_, k) => k).find((k) => k !== ha && k !== hc && !adj[ha].includes(k));
+  assert.equal(G.pickProblem(b, "a", next), null);
+  assert.match(G.pickProblem(b, "a", far), /next to yours/);
+  assert.match(G.pickProblem(b, "a", ha), /already yours/);
+  assert.match(G.pickProblem(b, "a", hc), /taken/);
+  assert.match(G.pickProblem(b, "a", 99), /isn't a country/);
+  b.open = { a: { c: next, choreId: "x" } };
+  assert.match(G.pickProblem(b, "a", adj[ha][1] ?? next), /Finish the chore/);
+  assert.match(G.pickProblem({ ...b, open: { c: { c: next } } }, "a", next), /already working/);
+  assert.match(G.pickProblem({ ...b, open: {}, locked: { a: [next] } }, "a", next), /gave that one up/);
+  // Claiming a country lets you reach its neighbors.
+  b.open = {}; b.land = { [next]: { by: "a", choreId: "x", entryId: "e1" } };
+  assert.equal(G.countryOwner(b, next), "a");
+  const beyond = adj[next].find((k) => !adj[ha].includes(k) && k !== ha && G.countryOwner(b, k) == null);
+  if (beyond != null) assert.equal(G.pickProblem(b, "a", beyond), null);
+});
+test("territory map: scores count claimed countries, early win when the other side can't catch up", () => {
+  const b = mapBattle(), n = b.params.map.names.length;
+  const take = (by, k, choreId = "x") => { b.land[k] = { by, choreId, entryId: "e" + k }; };
+  assert.deepEqual(G.battleScores(b, {}, []), { a: { raw: 0, adj: 0 }, c: { raw: 0, adj: 0 } });
+  assert.equal(G.decide(b, {}, [], false), null);
+  assert.equal(G.decide(b, {}, [], true).noContest, true);
+  const neutral = () => b.params.map.names.map((_, k) => k).filter((k) => G.countryOwner(b, k) == null);
+  take("a", G.mapAdjacency(b.params.map)[b.params.homes.a][0]);
+  assert.deepEqual(G.battleScores(b, {}, [])["a"], { raw: 1, adj: 1 });
+  assert.equal(G.decide(b, {}, [], true).winner, "a");
+  assert.equal(G.decide({ ...b, twist: { choreId: "x" } }, {}, [], false), null);
+  // Hand a every neutral country but one: c can't catch up.
+  const rest = neutral();
+  rest.slice(0, -1).forEach((k) => take("a", k));
+  assert.equal(G.territoryReach(b, "c").length <= 1, true);
+  const r = G.decide(b, {}, [], false);
+  assert.equal(r.winner, "a");
+  assert.equal(r.reason, "Too far ahead to catch");
+  assert.equal(Object.keys(b.land).length, n - 3);
+  // With nothing left to take, it's decided even before time runs out.
+  take("c", rest[rest.length - 1]);
+  assert.equal(G.territoryReach(b, "a").length + G.territoryReach(b, "c").length, 0);
+  assert.equal(G.decide(b, {}, [], false).winner, "a");
+});
+test("territory map: a reversed chore gives its country back, and giving up locks it", () => {
+  const b = mapBattle(), adj = G.mapAdjacency(b.params.map), k = adj[b.params.homes.a][0];
+  b.land = { [k]: { by: "a", choreId: "x", entryId: "e1" } };
+  assert.deepEqual(G.reversedLand(b, { a: [{ id: "e1", status: "ok" }] }), []);
+  assert.deepEqual(G.reversedLand(b, { a: [{ id: "e1", status: "reversed" }] }), [String(k)]);
+  const b2 = mapBattle({ locked: { a: adj[b.params.homes.a] } });
+  // Locked out of every border country, a can't reach anything.
+  assert.deepEqual(G.territoryReach(b2, "a"), []);
 });

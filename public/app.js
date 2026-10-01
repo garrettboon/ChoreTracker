@@ -201,6 +201,7 @@ function render(){
   else if(S.role==="display")h=viewDisplay();
   else h=viewParent();
   if(S.ui.focus&&S.phase==="ready"&&S.config)h+=focusOverlay();
+  else if(S.ui.tm&&S.phase==="ready"&&S.config&&onKidScreen())h+=mapOverlay();
   if(S.ui.levelUp)h+=levelUpOverlay();
   $("#app").innerHTML=h;document.body.dataset.mode=mode();
   const th=S.phase==="ready"&&S.config&&S.viewKid&&kidCfg(S.viewKid)&&onKidScreen()?equipped(S.viewKid).theme:"";
@@ -390,7 +391,7 @@ const bName=(b,id)=>esc((kidCfg(id)||{}).name||(b.names||{})[id]||"Someone");
 const TEAM=["raid","babyraid","grownups"];
 function modeParams(b){const p=b.params||{};const tw=b.twist?`. ${esc(b.twist.text)}`:"";
   const t={race:`First to ${p.n} chores`,blitz:p.windowMin?`${G.timeText(p.windowMin)} blitz`:"Until midnight",grownups:p.windowMin?G.timeText(p.windowMin):"Until midnight",
-    territory:"Most Anyone chores by midnight",bingo:"First to a line",streakduel:"Don't miss a day",showdown:"Best share of weekly goal",
+    territory:p.map?"Conquer the map":"Most Anyone chores by midnight",bingo:"First to a line",streakduel:"Don't miss a day",showdown:"Best share of weekly goal",
     raid:`${p.bossEmoji||"🐉"} ${esc(p.bossName||"Boss")}, ${p.days||1} day${(p.days||1)>1?"s":""}`,babyraid:`${p.bossEmoji||"🐣"} ${esc(p.bossName||"Baby boss")}, today`}[b.mode];
   const time=p.windowMin&&!["blitz","grownups"].includes(b.mode)?`, ${G.timeText(p.windowMin)}`:"";
   return (t||(p.choreName?`${esc(G.choreIcon(choreById(p.choreId)||{name:p.choreName}))} ${esc(p.choreName)}`:""))+time+tw;}
@@ -437,6 +438,8 @@ function battleCard(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Batt
     else if(b.mode==="judge"){const a=(b.attempts||{})[me];
       body=a&&a.entryId?`<p class="sub">Turned in! ${other&&!((b.attempts||{})[other]||{}).entryId?`Waiting for ${bName(b,other)}.`:""} Then a parent picks the better job.</p>`
         :`<p class="sub">Do your best job on "${esc(b.params.choreName)}", then tap Done. A parent picks the better job.</p>${stepsOf(choreById(b.params.choreId)).length?`<button class="btn block" data-act="fx-battle" data-id="${b.id}">⤢ Open the checklist</button>`:`<button class="btn block" data-act="b-finish" data-id="${b.id}" ${dis}>✓ Done!</button>`}`;}
+    else if(G.isMapTerritory(b)){const o=(b.open||{})[me];
+      body=`<button class="tm-mini" data-act="tm-open" data-id="${b.id}" aria-label="Open the map">${mapSvg(b,me,false)}</button><p class="sub">${o?`You're conquering <b>${esc(b.params.map.names[o.c])}</b>: ${esc(G.choreIcon(choreById(o.choreId)||{name:o.name}))} ${esc(o.name)}.`:"Reveal a country next to yours, do its chore, and it's yours. Most countries wins."} Ends ${fmtEnd(b.endAt)}.</p><button class="btn block" data-act="tm-open" data-id="${b.id}">🗺️ Open the map</button>`;}
     else if(b.mode==="bingo")body=`${bingoGrid(b,me)}<p class="sub">Do the chores on your card. First to finish a row, column, or diagonal wins. Ends ${fmtEnd(b.endAt)}.</p>`;
     else if(b.mode==="streakduel")body=`<p class="sub">${ymd()<b.params.startDate?"Starts tomorrow.":"Checked each night."} Finish your daily list every day. Whoever misses first loses. Up to 14 days.</p>`;
     else if(b.mode==="showdown")body=`<p class="sub">Earn the biggest share of your weekly goal. Decided at Sunday's cash-out.</p>`;
@@ -553,6 +556,51 @@ async function finishFocus(){const f=S.ui.focus,ch=choreById(f.id);if(!f||!ch)re
   if(f.battleId){const r=await bcall("finishAttempt",{id:f.battleId});if(r){closeFocus();confetti(80);chime(true);toast(r.ms!=null?`Done in ${fmtMs(r.ms)}! A parent will check it.`:"Turned in! Chore logged.");}render();return;}
   if(ch.kind==="pr"){closeFocus();setPr(f.kid,f.id,true,String(f.note||"").trim());render();return;}
   const note=String(f.note||"").trim();closeFocus();await doChore(f.kid,f.id,note,ms);}
+
+/* ---------- Territory map ---------- */
+// Player colors stay the same on every screen: the challenger is blue, the other player orange.
+const TM_COL=["#2f7de1","#e8702a"],TM_LAND="#efe6cf",TM_CAN="#fff3b0",TM_SEL="#ffd84d",TM_LOCK="#c9c3b5";
+function mapSvg(b,me,big){const m=b.params.map,R=10,W=Math.sqrt(3)*R,f=n=>n.toFixed(1);
+  const ctr=i=>{const r=Math.floor(i/m.cols),c=i%m.cols;return [W*(c+(r&1)/2)+W/2,1.5*R*r+R];};
+  const corner=(x,y,j)=>{const a=Math.PI/180*(60*j-30);return [x+R*Math.cos(a),y+R*Math.sin(a)];};
+  const run=b.status==="active"&&Date.now()<b.endAt,sel=big&&S.ui.tm?S.ui.tm.sel:null;
+  const can=new Set(big&&run&&!(b.open||{})[me]?m.names.map((_,k)=>k).filter(k=>!G.pickProblem(b,me,k)):[]);
+  const locked=(b.locked||{})[me]||[];
+  let coast="",inner="",labels="";
+  const groups=m.names.map((name,k)=>{const cells=[];m.cells.forEach((c,i)=>{if(c===k)cells.push(i);});if(!cells.length)return "";
+    const owner=G.countryOwner(b,k),worker=Object.keys(b.open||{}).find(p=>b.open[p]&&b.open[p].c===k),home=Object.values(b.params.homes||{}).includes(k);
+    let fill=TM_LAND,op=1;
+    if(owner)fill=TM_COL[b.players.indexOf(owner)]||"#888";
+    else if(worker){fill=TM_COL[b.players.indexOf(worker)]||"#888";op=.45;}
+    else if(sel===k)fill=TM_SEL;
+    else if(locked.includes(k))fill=TM_LOCK;
+    else if(can.has(k))fill=TM_CAN;
+    let sx=0,sy=0;
+    const polys=cells.map(i=>{const [x,y]=ctr(i);sx+=x;sy+=y;
+      G.hexNeighbors(i,m.cols,m.rows).forEach((n,j)=>{const o=n<0?-1:m.cells[n];if(o===k||(o>=0&&o<k))return;const [x1,y1]=corner(x,y,j),[x2,y2]=corner(x,y,j+1);const seg=`M${f(x1)} ${f(y1)}L${f(x2)} ${f(y2)}`;if(o<0)coast+=seg;else inner+=seg;});
+      return `<polygon points="${[0,1,2,3,4,5].map(j=>corner(x,y,j).map(f).join(",")).join(" ")}" fill="${fill}" stroke="${fill}" stroke-width=".8" fill-opacity="${op}" stroke-opacity="${op}"/>`;}).join("");
+    const lx=sx/cells.length,ly=sy/cells.length;
+    const emo=home?"🏰":owner?creatureFor(owner)[1]:worker?"⛏️":locked.includes(k)?"🔒":"";
+    labels+=emo?`<text class="tm-emo" x="${f(lx)}" y="${f(ly)}">${emo}</text>${big&&!home?`<text class="tm-lbl on" x="${f(lx)}" y="${f(ly+7)}">${esc(name)}</text>`:""}`:big?`<text class="tm-lbl" x="${f(lx)}" y="${f(ly)}">${esc(name)}</text>`:"";
+    return `<g class="tm-ct ${can.has(k)&&sel!==k?"tm-can":""}" ${big?`data-act="tm-pick" data-c="${k}" role="button" aria-label="${esc(name)}${owner?`, ${owner===me?"yours":bName(b,owner)+"'s"}`:""}"`:""}>${polys}</g>`;}).join("");
+  const vw=W*(m.cols+.5),vh=1.5*R*(m.rows-1)+2*R;
+  return `<svg class="tm-svg" viewBox="${f(-2)} ${f(-2)} ${f(vw+4)} ${f(vh+4)}" role="img" aria-label="Territory map">${groups}<path d="${inner}" class="tm-border"/><path d="${coast}" class="tm-coast"/>${labels}</svg>`;}
+function mapChips(b,me){return `<div class="tm-score">${b.players.map((p,i)=>`<span class="tm-chip" style="--c:${TM_COL[i]}"><i></i>${p===me?"You":bName(b,p)} <b>${scoreHtml(b,p)}</b></span>`).join("")}</div>`;}
+function mapOverlay(){const t=S.ui.tm,b=S.battles[t.id],me=S.viewKid;if(!b||!G.isMapTerritory(b)||!b.players.includes(me))return "";
+  const m=b.params.map,open=(b.open||{})[me],run=b.status==="active"&&Date.now()<b.endAt,busy=S.busy.b;let panel;
+  if(!run)panel=`<p class="b-result">${b.status==="active"?"Time's up! Counting the map…":b.result?resultText(b,me):"This battle is over."}</p>`;
+  else if(open){const ch=choreById(open.choreId)||{name:open.name},steps=stepsOf(ch),left=steps.filter((_,i)=>!t.checked.includes(i)).length;
+    panel=`<p class="tm-now">⛏️ Conquering <b>${esc(m.names[open.c])}</b></p><div class="tm-chore"><span class="fx-ic">${esc(G.choreIcon(ch))}</span><b>${esc(ch.name)}</b></div><div class="fx-clock tm-clock"><span class="tt-clock" data-start="${open.at}"></span></div>
+      ${steps.length?`<div class="checks fx-steps">${steps.map((s,i)=>{const on=t.checked.includes(i);return `<button class="check ${on?"on":""}" data-act="tm-step" data-i="${i}" aria-pressed="${on}"><span class="box">${on?"✓":""}</span><span><b>${esc(s)}</b></span></button>`;}).join("")}</div>`:""}
+      <button class="btn block" data-act="tm-claim" ${left||busy?"disabled":""}>${busy?"Saving…":left?`Check off every step first (${left} left)`:"✓ Done! Claim it"}</button>
+      <button class="btn ghost small" data-act="tm-giveup" ${busy?"disabled":""}>Give up this country</button>`;}
+  else if(t.sel!=null&&m.names[t.sel]){const why=G.pickProblem(b,me,t.sel),owner=G.countryOwner(b,t.sel);
+    panel=`<p class="tm-now"><b>${esc(m.names[t.sel])}</b>${owner?` · ${owner===me?"Yours":bName(b,owner)+"'s"}`:""}</p>${why?`<p class="sub">${esc(why)}</p>`:`<button class="btn block" data-act="tm-reveal" ${busy?"disabled":""}>🔍 Reveal the chore</button><p class="hint">Once it's revealed, you finish it before picking another country.</p>`}`;}
+  else panel=`<p class="sub">Tap a glowing country next to yours to reveal its chore. Do the chore and the country is yours.</p>`;
+  return `<div class="focus tmap" role="dialog" aria-modal="true" aria-label="Territory map"><div class="fx-top"><button class="btn ghost small" data-act="tm-close">Minimize</button><span class="pill">🚩 Ends ${fmtEnd(b.endAt)}</span></div>
+    ${mapChips(b,me)}${mapSvg(b,me,true)}<div class="tm-panel">${panel}</div></div>`;}
+function openMap(id){S.ui.tm={id,sel:null,checked:[]};try{if(document.documentElement.requestFullscreen&&!document.fullscreenElement)document.documentElement.requestFullscreen().catch(()=>{});}catch(e){}wake();}
+function closeMap(){S.ui.tm=null;try{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});}catch(e){}}
 
 function viewDisplay(){
   const d=(7-new Date().getDay())%7;const cash=d===0?"Cash-out tonight":`Cash-out in ${d} day${d===1?"":"s"}`;
@@ -796,7 +844,7 @@ function modeGuide(){const X=G.XP,std=`Win ${X.win} XP, tie ${X.tie}, and ${X.lo
   ghost:{how:"A solo race against your own best time on a chore. Start, do it, tap Done, and a parent checks the work.",xp:`Beat your best: ${X.win} XP. Your first run sets the record: ${X.ghostRecord} XP. Slower than your best: ${X.loss} XP.`,notes:"Only runs done well count. Your best time is remembered per chore, so the ghost keeps getting faster."},
   blitz:{how:"Most chore XP in a window: 30 minutes, 1 hour, or until midnight. Every chore counts its normal XP (${G.XP.chore} × its pay multiplier), so bigger chores score more.",xp:std,notes:"The handicap multiplies the score. The window never runs past midnight."},
   bingo:{how:"Both get the same 3×3 card of family chores (chores repeat when there are fewer than 9). Each chore done marks a square. The first to complete a row, column, or diagonal wins. If nobody does by midnight, the most squares wins.",xp:std,notes:"Instead of a handicap, the younger player starts with the center square free, plus one corner when they are 4 or more years younger."},
-  territory:{how:"Kids only. Claim the most Anyone chores by midnight. Chores assigned to one person don't count.",xp:std,notes:"The handicap multiplies the score. A chore that has hit its max for the day, the family, or the week can't be claimed."},
+  territory:{how:"Kids only. A full-screen map of 13 countries. Each player starts with a castle, with neutral countries in between. Tap a country next to yours to reveal its chore (an Anyone chore), do it, and the country turns your color. You have to finish it before revealing another, or give it up (then it's locked for you). The most countries when time runs out wins, or sooner if the other side can't catch up.",xp:std,notes:"The handicap multiplies the score. Only chores done from the map claim countries. If a parent reverses a chore, its country goes back to neutral."},
   judge:{how:"Both do the same chore. In the Game tab a parent picks the better job. If only one person did it, they win.",xp:std,notes:"No handicap here: the judge decides. The chore itself pays money and normal XP as usual."},
   streakduel:{how:"Starts at midnight and lasts up to 14 days. Whoever misses their daily checklist first loses. If both keep it up the whole time, it's a tie.",xp:`Double, because it runs for days: win ${X.win*2} XP, tie ${X.tie*2}, lose ${X.loss*2}.`,notes:`It's decided from the daily list records, so there is nothing to confirm. Keeping the list also grows your streak and pays the streak milestones (${G.STREAK_MILESTONES[3]} XP at 3 days up to ${G.STREAK_MILESTONES[100]} at 100).`},
   showdown:{how:"Runs through the week and is decided at Sunday's cash-out. The winner is whoever earned the biggest share of their weekly goal. A tiny goal can't win: the share is measured against at least your recent average.",xp:`Double, because it runs for days: win ${X.win*2} XP, tie ${X.tie*2}, lose ${X.loss*2}.`,notes:`Decided from the week's records, nothing to confirm. Reaching the goal also pays the goal bonus and ${X.goal} XP.`},
@@ -972,6 +1020,14 @@ async function handleAct(act,ds){
   case "fx-step":{const f=S.ui.focus,n=Number(ds.i);f.checked=f.checked.includes(n)?f.checked.filter(x=>x!==n):[...f.checked,n];saveFocus();if(stepsOf(choreById(f.id)).every((_,i)=>f.checked.includes(i)))chime(false);break;}
   case "fx-close": if(!S.ui.focus.battleId&&!confirm("Stop without finishing? Nothing is logged."))return;closeFocus();break;
   case "fx-done": await finishFocus();return;
+  case "tm-open":openMap(ds.id);break;
+  case "tm-close":closeMap();break;
+  case "tm-pick":if(S.ui.tm)S.ui.tm.sel=Number(ds.c);break;
+  case "tm-reveal":{const t=S.ui.tm;if(!t)return;const r=await bcall("territoryPick",{id:t.id,country:t.sel});if(r&&S.ui.tm){S.ui.tm.checked=[];S.ui.tm.sel=null;toast(`${r.country}: ${r.name}!`);}break;}
+  case "tm-step":{const t=S.ui.tm,n=Number(ds.i);t.checked=t.checked.includes(n)?t.checked.filter(x=>x!==n):[...t.checked,n];break;}
+  case "tm-claim":{const t=S.ui.tm,b=t&&S.battles[t.id],o=b&&(b.open||{})[S.viewKid];if(!o)return;const r=await bcall("territoryClaim",{id:t.id,ms:Date.now()-o.at});
+    if(r){if(S.ui.tm)S.ui.tm.checked=[];if(r.claimed){confetti(80);chime(true);toast(`${r.country} is yours! +${money(r.amount)}`);}else toast(`Time ran out, but the chore still counts. +${money(r.amount)}`);}break;}
+  case "tm-giveup":{const t=S.ui.tm;if(!t||!confirm("Give up this country? It stays neutral, and you can't pick it again this battle."))return;const r=await bcall("territoryGiveUp",{id:t.id});if(r&&S.ui.tm)S.ui.tm.checked=[];break;}
   case "b-finish":{const r=await bcall("finishAttempt",{id:ds.id});if(r){confetti(80);chime(true);toast(r.ms!=null?`Done in ${fmtMs(r.ms)}! Chore logged.`:"Turned in! Chore logged.");}break;}
   case "chore-icon": S.ui.draft.chores[Number(ds.i)].icon=ds.icon;break;
   case "fix-pr": setPrDay(ds.kid,ds.id,true,ds.date);return;
@@ -1135,6 +1191,6 @@ function endDrag(e){if(!drag||e.pointerId!==drag.id)return;const d=drag;drag=nul
   if(!d.over||!S.ui.draft)return;const arr=S.ui.draft.chores,item=arr[d.from];if(!item)return;let to=Number(d.over.dataset.i)+(d.after?1:0);arr.splice(d.from,1);if(to>d.from)to--;arr.splice(to,0,item);render();}
 document.addEventListener("pointerup",endDrag);document.addEventListener("pointercancel",endDrag);
 
-let wakeLock=null;async function wake(){try{if("wakeLock" in navigator&&(S.role==="display"||S.ui.focus))wakeLock=await navigator.wakeLock.request("screen");}catch(e){}}
+let wakeLock=null;async function wake(){try{if("wakeLock" in navigator&&(S.role==="display"||S.ui.focus||S.ui.tm))wakeLock=await navigator.wakeLock.request("screen");}catch(e){}}
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")wake();});
 setInterval(()=>{if(S.phase!=="ready")return;subscribeWeeks();const a=document.activeElement;if(!(a&&(a.tagName==="INPUT"||a.tagName==="SELECT"))&&!(S.role==="parent"&&S.ptab==="settings"))render();},60000);

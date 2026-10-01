@@ -52,21 +52,81 @@ test("bounties: a kid claims, a parent awards the XP", async () => {
   await rejects(parent.call("awardBounty", { id: "garage", personId: "k2" }), /closed/);
 });
 
-test("territory is kids-only and counts Anyone chores", async () => {
+test("territory: reveal a country next to yours, do its chore to claim it, most countries wins", async () => {
   await reset();
   await level("k1", 6);
   const k1 = await kidClient("k1"), k2 = await kidClient("k2"), parent = await parentClient();
   await rejects(k1.call("createBattle", { mode: "territory", opponent: "dad" }), /kids only/);
   const { id } = await k1.call("createBattle", { mode: "territory", opponent: "k2" });
+  let b = await battle(id);
+  const m = b.params.map, adj = G.mapAdjacency(m), home = b.params.homes.k1;
+  assert.equal(m.cells.length, m.cols * m.rows);
+  assert.notEqual(home, b.params.homes.k2);
+  const [first, second] = adj[home].filter((k) => k !== b.params.homes.k2);
+  await rejects(k1.call("territoryPick", { id, country: first }), /isn't running/);
   await k2.call("respondBattle", { id, accept: true });
+  const far = m.names.map((_, k) => k).find((k) => k !== home && !adj[home].includes(k) && k !== b.params.homes.k2);
+  await rejects(k1.call("territoryPick", { id, country: far }), /next to yours/);
+  await rejects(k2.call("territoryPick", { id, country: home }), /taken/);
+
+  // Reveal, then finish before picking another.
+  const r = await k1.call("territoryPick", { id, country: first });
+  assert.ok(["c1", "c2", "big"].includes(r.choreId), "an Anyone chore");
+  assert.equal((await battle(id)).open.k1.c, first);
+  await rejects(k1.call("territoryPick", { id, country: second }), /Finish the chore/);
+  await rejects(k2.call("territoryClaim", { id }), /Reveal a country/);
+  // Logging a chore the normal way doesn't claim anything.
   await k2.call("completeChore", { kidId: "k2", choreId: "c1" });
-  await k1.call("completeChore", { kidId: "k1", choreId: "mine" });
-  await waitFor(async () => (await battle(id)).scores?.k2?.raw === 1, { msg: "territory score" });
-  assert.equal((await battle(id)).scores.k1.raw, 0, "a chore that's only yours isn't a claim");
-  await parent.call("testHooks", { run: "tick", now: (await battle(id)).endAt + 1000 });
-  const b = await battle(id);
+  const c = await k1.call("territoryClaim", { id, ms: 60000 });
+  assert.equal(c.claimed, true);
+  b = await waitFor(async () => { const b = await battle(id); return b.scores?.k1?.raw === 1 && b; }, { msg: "territory score" });
+  assert.equal(b.land[first].by, "k1");
+  assert.equal(b.open?.k1, undefined);
+  assert.equal(b.scores.k2.raw, 0);
+  const wk = (await db.collection("weeks").where("kidId", "==", "k1").get()).docs.flatMap((d) => d.data().entries || []);
+  const entry = wk.find((e) => e.id === b.land[first].entryId);
+  assert.equal(entry.choreId, r.choreId, "the claim logged the revealed chore");
+  assert.equal(entry.ms, 60000);
+
+  // Give up: the country stays neutral and is locked for that player.
+  await k1.call("territoryPick", { id, country: second });
+  await k1.call("territoryGiveUp", { id });
+  b = await battle(id);
+  assert.deepEqual(b.locked.k1, [second]);
+  await rejects(k1.call("territoryPick", { id, country: second }), /gave that one up/);
+  await rejects(k1.call("territoryGiveUp", { id }), /nothing to give up/);
+
+  // Time runs out: k1 has the most countries.
+  await parent.call("testHooks", { run: "tick", now: b.endAt + 1000 });
+  b = await battle(id);
   assert.equal(b.status, "confirming");
-  assert.equal(b.result.winner, "k2");
+  assert.equal(b.result.winner, "k1");
+  await k2.call("confirmResult", { id, action: "confirm" });
+  b = await waitFor(async () => { const b = await battle(id); return !b.live && b; }, { msg: "territory settled" });
+  assert.deepEqual(b.xp, { k1: G.XP.win, k2: 0 });
+  await waitFor(async () => (await eventKeys("k1")).includes(`battle:${id}`), { msg: "battle XP" });
+  await quiet("xp/k1");
+  await quiet("xp/k2");
+});
+
+test("territory: a reversed chore gives the country back", async () => {
+  await reset();
+  await level("k1", 6);
+  const k1 = await kidClient("k1"), k2 = await kidClient("k2"), parent = await parentClient();
+  const { id } = await k1.call("createBattle", { mode: "territory", opponent: "k2" });
+  await k2.call("respondBattle", { id, accept: true });
+  let b = await battle(id);
+  const k = G.mapAdjacency(b.params.map)[b.params.homes.k1].find((x) => x !== b.params.homes.k2);
+  await k1.call("territoryPick", { id, country: k });
+  await k1.call("territoryClaim", { id });
+  b = await waitFor(async () => { const b = await battle(id); return b.scores?.k1?.raw === 1 && b; }, { msg: "claim" });
+  // A parent reverses the chore on the week doc.
+  const snap = (await db.collection("weeks").where("kidId", "==", "k1").get()).docs[0];
+  await snap.ref.update({ entries: snap.data().entries.map((e) => (e.id === b.land[k].entryId ? { ...e, status: "reversed" } : e)) });
+  b = await waitFor(async () => { const b = await battle(id); return b.scores?.k1?.raw === 0 && b; }, { msg: "claim reversed" });
+  assert.equal(b.land[k], undefined);
+  await parent.call("cancelBattle", { id });
+  await quiet("xp/k1");
 });
 
 test("chore bingo: first to finish a line wins", async () => {

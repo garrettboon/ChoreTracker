@@ -394,6 +394,27 @@ body[data-kidtheme="gold"]{--bg:#FAF2DA;--surface-2:#FDF8EA;--pine:#8A5F04;--tra
 .focus{position:fixed;inset:0;z-index:44;background:var(--bg);overflow:auto;display:flex;flex-direction:column;align-items:center;gap:10px;padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(24px + env(safe-area-inset-bottom,0px));text-align:center}
 .focus > *{width:min(560px,100%)}
 .fx-top{display:flex;justify-content:space-between;align-items:center}
+.tmap{gap:8px}
+.tm-score{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.tm-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:99px;background:var(--card);border:2px solid var(--c);font-weight:700}
+.tm-chip i{width:12px;height:12px;border-radius:50%;background:var(--c)}
+.tm-svg{width:100%;height:auto;display:block;background:#cfe8f3;border-radius:16px}
+.tmap .tm-svg{max-height:56vh}
+.tm-ct[data-act]{cursor:pointer}
+.tm-can polygon{animation:tmglow 1.2s ease-in-out infinite alternate}
+@keyframes tmglow{to{fill:#ffe066;stroke:#ffe066}}
+@media (prefers-reduced-motion:reduce){.tm-can polygon{animation:none}}
+.tm-border{fill:none;stroke:#6b5f45;stroke-width:.7;stroke-linejoin:round;pointer-events:none}
+.tm-coast{fill:none;stroke:#4d7f99;stroke-width:1.4;stroke-linejoin:round;pointer-events:none}
+.tm-lbl{font:700 4.2px system-ui,sans-serif;fill:#3b3526;text-anchor:middle;dominant-baseline:middle;pointer-events:none}
+.tm-lbl.on{fill:#fff;font-size:3.6px}
+.tm-emo{font-size:8px;text-anchor:middle;dominant-baseline:central;pointer-events:none}
+.tm-mini{display:block;width:100%;padding:0;border:0;background:none;cursor:pointer;margin:8px 0}
+.tm-panel{display:flex;flex-direction:column;gap:8px;align-items:stretch}
+.tm-now{font-size:1.15rem}
+.tm-chore{display:flex;align-items:center;justify-content:center;gap:10px;font-size:1.3rem}
+.tm-chore .fx-ic{font-size:2.6rem;margin:0}
+.tmap .tm-clock{font-size:2.2rem}
 .fx-ic{font-size:4.5rem;line-height:1.1;margin-top:6px}
 .focus h2{font-size:2rem}
 .fx-clock{font-family:var(--display);font-weight:700;font-size:clamp(3.5rem,14vw,6rem);line-height:1;font-variant-numeric:tabular-nums}

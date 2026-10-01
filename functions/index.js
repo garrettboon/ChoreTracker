@@ -677,7 +677,7 @@ exports.createBattle = onCall(async (req) => {
   const pool = cfg.chores.filter((c) => c.kind === "family" && c.assign === "pool" && !needsNote(c));
   if (picked.id === "wildcard") {
     const allKids = players.every((id) => !kidOf(cfg, id).adult);
-    const options = G.WILDCARD_MODES.filter((m) => m !== "territory" || allKids).filter((m) => m !== "bingo" || pool.length);
+    const options = G.WILDCARD_MODES.filter((m) => m !== "territory" || (allKids && pool.length)).filter((m) => m !== "bingo" || pool.length);
     mode = G.modeById(options[Math.floor(Math.random() * options.length)]);
     const tw = pool[Math.floor(Math.random() * pool.length)];
     if (tw && mode.id !== "bingo") twist = { choreId: tw.id, text: `${tw.name} counts double` };
@@ -705,6 +705,12 @@ exports.createBattle = onCall(async (req) => {
     params.card = G.bingoCard(pool.map((c) => c.id), seed);
     params.cardNames = params.card.map((id) => (pool.find((c) => c.id === id) || {}).name || id);
     params.free = G.bingoFree(meP, opp, cfg, seed);
+  }
+  if (mode.id === "territory") {
+    if (!pool.length) throw new HttpsError("failed-precondition", "Territory needs at least one Anyone chore.");
+    const m = G.territoryMap(`${L.date}:${players.join(",")}:${Date.now()}`);
+    params.map = { cols: m.cols, rows: m.rows, cells: m.cells, names: m.names };
+    params.homes = { [players[0]]: m.homes[0], [players[1]]: m.homes[1] };
   }
   if (mode.id === "streakduel") { params.startDate = addDays(L.date, 1); params.endDate = addDays(L.date, 14); }
   if (mode.id === "showdown") params.week = mondayOf(L.date, L.dow);
@@ -899,6 +905,84 @@ exports.finishAttempt = onCall(async (req) => {
   return { ms };
 });
 
+// Territory: reveal a country's chore. The player has to finish it (or give the country up)
+// before revealing another, and nobody else can take it meanwhile.
+async function mapBattle(req, cfg, me) {
+  const id = String((req.data && req.data.id) || "");
+  const ref = db.doc(`battles/${id}`);
+  const s = await ref.get();
+  const b = s.exists ? s.data() : null;
+  if (!b || !G.isMapTerritory(b) || !b.players.includes(me.id)) throw new HttpsError("not-found", "No Territory battle here.");
+  return { id, ref, b };
+}
+const mapRunning = (b) => b.status === "active" && Date.now() < b.endAt;
+exports.territoryPick = onCall(async (req) => {
+  const cfg = await getConfig();
+  const me = await actor(req, cfg);
+  const { ref, b } = await mapBattle(req, cfg, me);
+  const k = Number(req.data && req.data.country);
+  if (!mapRunning(b)) throw new HttpsError("failed-precondition", "That battle isn't running.");
+  const problem = G.pickProblem(b, me.id, k);
+  if (problem) throw new HttpsError("failed-precondition", problem);
+  // An Anyone chore this player can still do today, mixing them up across the battle.
+  const ok = [];
+  for (const ch of cfg.chores.filter((c) => c.kind === "family" && c.assign === "pool" && !needsNote(c))) {
+    const room = await choreRoom(cfg, ch, [me.id]);
+    if (room.own[me.id] >= 1 && room.shared >= 1) ok.push(ch);
+  }
+  if (!ok.length) throw new HttpsError("failed-precondition", "You've done every Anyone chore you can today.");
+  const used = (ch) => Object.values(b.land || {}).filter((l) => l.by === me.id && l.choreId === ch.id).length;
+  const least = Math.min(...ok.map(used));
+  const fresh = ok.filter((ch) => used(ch) === least);
+  const ch = fresh[Math.floor(Math.random() * fresh.length)];
+  await db.runTransaction(async (t) => {
+    const b2 = (await t.get(ref)).data();
+    if (!mapRunning(b2)) throw new HttpsError("failed-precondition", "That battle isn't running.");
+    const p2 = G.pickProblem(b2, me.id, k);
+    if (p2) throw new HttpsError("failed-precondition", p2);
+    t.update(ref, { [`open.${me.id}`]: { c: k, choreId: ch.id, name: ch.name, at: Date.now() } });
+  });
+  return { choreId: ch.id, name: ch.name, country: b.params.map.names[k] };
+});
+// Territory: the revealed chore is done. Logs it and claims the country.
+exports.territoryClaim = onCall(async (req) => {
+  const cfg = await getConfig();
+  const me = await actor(req, cfg);
+  const { id, ref, b } = await mapBattle(req, cfg, me);
+  const open = (b.open || {})[me.id];
+  if (!open) throw new HttpsError("failed-precondition", "Reveal a country's chore first.");
+  const r = await logChore(me.id, open.choreId, me.by, "", Number((req.data && req.data.ms) || 0));
+  let claimed = false;
+  await db.runTransaction(async (t) => {
+    const b2 = (await t.get(ref)).data();
+    const o2 = (b2.open || {})[me.id];
+    if (!o2 || o2.c !== open.c) return;
+    const u = { [`open.${me.id}`]: FieldValue.delete() };
+    // Too late for the battle still logs the chore; it just doesn't take the country.
+    if (mapRunning(b2) && !G.countryOwner(b2, open.c)) {
+      u[`land.${open.c}`] = { by: me.id, choreId: open.choreId, entryId: r.entryId, at: Date.now() };
+      claimed = true;
+    }
+    t.update(ref, u);
+  });
+  await refreshBattle(cfg, id, Date.now());
+  return { claimed, country: b.params.map.names[open.c], amount: r.amount };
+});
+// Territory: give up the revealed country. It stays neutral, and this player can't pick it again.
+exports.territoryGiveUp = onCall(async (req) => {
+  const cfg = await getConfig();
+  const me = await actor(req, cfg);
+  const { id, ref } = await mapBattle(req, cfg, me);
+  await db.runTransaction(async (t) => {
+    const b2 = (await t.get(ref)).data();
+    const o2 = (b2.open || {})[me.id];
+    if (!o2) throw new HttpsError("failed-precondition", "There's nothing to give up.");
+    t.update(ref, { [`open.${me.id}`]: FieldValue.delete(), [`locked.${me.id}`]: FieldValue.arrayUnion(o2.c) });
+  });
+  await refreshBattle(cfg, id, Date.now());
+  return { ok: true };
+});
+
 // A parent checks one Time Trial or Ghost Race run: was the chore done well?
 // Once every finished run is checked, the fastest run done well wins.
 exports.checkRun = onCall(async (req) => {
@@ -1058,6 +1142,8 @@ async function refreshBattle(cfg, id, now) {
     else if (b.mode === "showdown") result = await showdownCheck(cfg, b, now, u);
     else {
       const entriesBy = LIVE_SCORED.includes(b.mode) ? await battleEntries(cfg, b) : {};
+      // Territory: a claim whose chore a parent reversed goes back to neutral.
+      if (G.isMapTerritory(b)) for (const k of G.reversedLand(b, entriesBy)) { u[`land.${k}`] = FieldValue.delete(); delete b.land[k]; }
       if (LIVE_SCORED.includes(b.mode)) {
         u.scores = b.scores = G.battleScores(b, entriesBy, cfg.chores);
         if (b.teams) u.teamScores = G.teamScores(b, entriesBy, cfg.chores);

@@ -126,7 +126,7 @@ What levels unlock: new creatures (the first 13 stay free), accessories, screen 
 | Ghost Race | level 1 | Beat your own best time, done well (a parent checks) |
 | Blitz | level 3 | Most chore XP in a time window |
 | Chore Bingo | level 5 | First to finish a row, column, or diagonal on a 3×3 card of chores |
-| Territory | level 6 | Kids only. Most Anyone chores by midnight |
+| Territory | level 6 | Kids only. Conquer a map: tap a country next to yours to reveal its chore, do it, and the country turns your color. Most countries wins |
 | Judge's Pick | level 8 | Same chore; a parent picks the better job in the Game tab |
 | Streak Duel | level 10 | Whoever misses their daily list first loses (up to 14 days) |
 | Goal Showdown | level 12 | Best share of the weekly goal, decided at cash-out |
@@ -134,6 +134,8 @@ What levels unlock: new creatures (the first 13 stay free), accessories, screen 
 | Baby Boss Raid | level 1 | A tiny one-day boss for younger kids or a quick team-up. Go solo or bring up to 3 teammates. Easy to beat, and it never gets harder |
 | Kids vs. Grown-ups | level 15 | Team battle; the kids' team gets a handicap |
 | Wildcard | level 20 | A random mode, often with a twist like "Clean bathroom counts double" |
+
+**Territory map:** the battle opens a full-screen map of 13 made-up countries (tap **Open the map**). Each player starts with a castle, with neutral countries in between. Tap a glowing country that borders yours, then **Reveal the chore** to see which Anyone chore it hides. You must finish that chore (checking off any steps) before revealing another, and nobody else can take the country meanwhile. **Give up** leaves it neutral but locks it for you. Only chores done from the map claim countries, and a chore a parent reverses gives its country back. The most countries when time runs out wins (handicap applies), or sooner once the other side can't catch up.
 
 **Time limits:** when starting a same-day battle (Race, Blitz, Territory, Bingo, Baby Boss Raid, Kids vs. Grown-ups, Time Trial, Ghost Race, Judge's Pick), pick how long it runs: until midnight, 15 minutes to 2 hours, or a custom number of minutes (5 to 240). Parents set each mode's default under Settings > Game.
 

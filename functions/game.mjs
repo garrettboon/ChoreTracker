@@ -100,7 +100,7 @@ export const MODES = [
   { id: "ghost", emoji: "👻", name: "Ghost Race", level: 1, solo: true, desc: "Beat your own best time, done well." },
   { id: "blitz", emoji: "⚡", name: "Blitz", level: 3, desc: "Most chore XP before time runs out." },
   { id: "bingo", emoji: "🎱", name: "Chore Bingo", level: 5, desc: "First to finish a row of chores wins." },
-  { id: "territory", emoji: "🚩", name: "Territory", level: 6, kidsOnly: true, desc: "Claim the most Anyone chores by midnight." },
+  { id: "territory", emoji: "🚩", name: "Territory", level: 6, kidsOnly: true, desc: "Conquer a map. Each country hides a chore." },
   { id: "judge", emoji: "🧑‍⚖️", name: "Judge's Pick", level: 8, desc: "Same chore. A parent picks the better job." },
   { id: "streakduel", emoji: "🔥", name: "Streak Duel", level: 10, desc: "Whoever misses their daily list first loses." },
   { id: "showdown", emoji: "🎯", name: "Goal Showdown", level: 12, desc: "Best share of your weekly goal wins." },
@@ -381,6 +381,7 @@ export function battleScores(b, entriesBy, chores) {
     const list = battleEntries(entriesBy[p], b.startAt, b.endAt);
     let raw;
     if (b.mode === "bingo") raw = bingoMarks(b, list, p).filter(Boolean).length;
+    else if (isMapTerritory(b)) raw = landPoints(b, p);
     else raw = rawPoints(b, list, chores);
     const h = (b.handicap && b.handicap[p]) || 1;
     out[p] = { raw, adj: b.mode === "bingo" ? raw : round2(raw * h) };
@@ -471,6 +472,169 @@ export const babyBossFor = (beaten) => {
 };
 export const babyRaidHp = (members) => 15 * Math.max(1, members || 1); // about a chore and a half per person
 
+/* ---------- Territory map ---------- */
+// A made-up map of countries on a hex grid. Each country hides an Anyone chore, picked when a player
+// reveals it. Players start in home countries with neutral land between them and grow outward:
+// a player can only reveal a country next to one they own, and must finish its chore before
+// revealing another. The map is stored on the battle, so every device draws the same one.
+export const MAP_COLS = 10, MAP_ROWS = 8, MAP_COUNTRIES = 13, MAP_HOME_GAP = 3;
+const COUNTRY_NAMES = [
+  "Sockovia", "Mopistan", "Dustlandia", "Crumbania", "Sudsylvania", "Broomburg", "Laundria", "Tidy Isles",
+  "Scrubland", "Spongeria", "Dishmark", "Vacuumia", "Polishia", "Rugland", "Fluffington", "Neatherlands",
+  "Wipeland", "Bucketia", "Soapia", "Lintonia",
+];
+function rng(seed) {
+  let h = hash(String(seed)) || 1;
+  return () => { h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0; h = Math.imul(h ^ (h >>> 13), 3266489909) >>> 0; h = (h ^ (h >>> 16)) >>> 0; return h / 4294967296; };
+}
+// The 6 neighbors of a cell (or -1 off the grid), in the order E, SE, SW, W, NW, NE.
+// Rows are offset: odd rows sit half a cell to the right.
+export function hexNeighbors(i, cols, rows) {
+  const r = Math.floor(i / cols), c = i % cols;
+  const d = r & 1 ? [[1, 0], [1, 1], [0, 1], [-1, 0], [0, -1], [1, -1]] : [[1, 0], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1]];
+  return d.map(([dc, dr]) => { const cc = c + dc, rr = r + dr; return cc >= 0 && cc < cols && rr >= 0 && rr < rows ? rr * cols + cc : -1; });
+}
+// Country graph: for each country, the countries that share a border with it.
+export function mapAdjacency(map) {
+  const adj = map.names.map(() => new Set());
+  map.cells.forEach((k, i) => {
+    if (k < 0) return;
+    for (const j of hexNeighbors(i, map.cols, map.rows)) { const o = j < 0 ? -1 : map.cells[j]; if (o >= 0 && o !== k) adj[k].add(o); }
+  });
+  return adj.map((s) => [...s].sort((x, y) => x - y));
+}
+// Steps between countries (breadth-first from one country).
+function countryDist(adj, from) {
+  const d = adj.map(() => Infinity); d[from] = 0;
+  const q = [from];
+  while (q.length) { const k = q.shift(); for (const j of adj[k]) if (d[j] === Infinity) { d[j] = d[k] + 1; q.push(j); } }
+  return d;
+}
+// Builds a map from a seed: { cols, rows, cells: [country index or -1 for sea], names, homes: [a, b] }.
+export function territoryMap(seed, { cols = MAP_COLS, rows = MAP_ROWS, countries = MAP_COUNTRIES, gap = MAP_HOME_GAP } = {}) {
+  const rand = rng(seed), N = cols * rows;
+  const pos = (i) => { const r = Math.floor(i / cols); return [(i % cols) + (r & 1) / 2, r * 0.866]; };
+  // An island: an oval with a ragged coast.
+  const cx = (cols - 0.5) / 2, cy = ((rows - 1) * 0.866) / 2, ax = cols / 2, ay = (rows * 0.866) / 2;
+  let land = [];
+  for (let i = 0; i < N; i++) {
+    const [x, y] = pos(i);
+    const d = ((x - cx) / ax) ** 2 + ((y - cy) / ay) ** 2;
+    if (d < 0.78 + rand() * 0.4) land.push(i);
+  }
+  // Keep the biggest connected piece so every country can be reached.
+  const isLand = new Set(land), seen = new Set();
+  let best = [];
+  for (const s of land) {
+    if (seen.has(s)) continue;
+    const part = [s]; seen.add(s);
+    for (let q = 0; q < part.length; q++) for (const j of hexNeighbors(part[q], cols, rows)) if (isLand.has(j) && !seen.has(j)) { seen.add(j); part.push(j); }
+    if (part.length > best.length) best = part;
+  }
+  land = best.sort((a, b) => a - b);
+  const n = Math.min(countries, land.length);
+  // Country seeds spread out: each new one as far as possible from the others.
+  const dist2 = (a, b) => { const [x1, y1] = pos(a), [x2, y2] = pos(b); return (x1 - x2) ** 2 + (y1 - y2) ** 2; };
+  const seeds = [land[Math.floor(rand() * land.length)]];
+  while (seeds.length < n) {
+    let pick = -1, far = -1;
+    for (const i of land) { if (seeds.includes(i)) continue; const m = Math.min(...seeds.map((s) => dist2(i, s))) + rand() * 0.5; if (m > far) { far = m; pick = i; } }
+    seeds.push(pick);
+  }
+  // Grow the countries one cell at a time, smallest first, so they come out about the same size.
+  const cells = new Array(N).fill(-1), size = new Array(n).fill(1);
+  seeds.forEach((s, k) => { cells[s] = k; });
+  let left = land.length - n;
+  while (left > 0) {
+    const order = [...Array(n).keys()].sort((a, b) => size[a] - size[b] || a - b);
+    let grew = false;
+    for (const k of order) {
+      const edge = [];
+      for (let i = 0; i < N; i++) if (cells[i] === k) for (const j of hexNeighbors(i, cols, rows)) if (j >= 0 && isLand.has(j) && cells[j] === -1 && land.includes(j) && !edge.includes(j)) edge.push(j);
+      if (!edge.length) continue;
+      cells[edge[Math.floor(rand() * edge.length)]] = k; size[k]++; left--; grew = true;
+      break;
+    }
+    if (!grew) break;
+  }
+  // Names, shuffled.
+  const pool = [...COUNTRY_NAMES], names = [];
+  for (let k = 0; k < n; k++) names.push(pool.splice(Math.floor(rand() * pool.length), 1)[0] || `Land ${k + 1}`);
+  const map = { cols, rows, cells, names };
+  // Homes: a pair `gap` steps apart (so there's neutral land between), splitting the rest of the map as evenly as possible.
+  const adj = mapAdjacency(map), D = adj.map((_, k) => countryDist(adj, k));
+  const maxD = Math.max(...D.flat().filter(Number.isFinite));
+  const want = Math.min(gap, maxD);
+  let homes = [0, 0], bestScore = Infinity;
+  for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) {
+    if (D[a][b] !== want) continue;
+    let ca = 0, cb = 0;
+    for (let k = 0; k < n; k++) { if (D[a][k] < D[b][k]) ca++; else if (D[b][k] < D[a][k]) cb++; }
+    const score = Math.abs(ca - cb) + rand() * 0.9;
+    if (score < bestScore) { bestScore = score; homes = rand() < 0.5 ? [a, b] : [b, a]; }
+  }
+  return { ...map, homes };
+}
+
+export const isMapTerritory = (b) => b.mode === "territory" && !!(b.params && b.params.map);
+// Who owns a country: a home, or a claim. Null when it's neutral.
+export function countryOwner(b, k) {
+  for (const [p, h] of Object.entries((b.params && b.params.homes) || {})) if (h === k) return p;
+  const l = (b.land || {})[k];
+  return l ? l.by : null;
+}
+const workingOn = (b, k) => Object.keys(b.open || {}).find((p) => b.open[p] && b.open[p].c === k) || null;
+// Why a player can't reveal this country right now, or null if they can.
+export function pickProblem(b, p, k) {
+  const map = b.params.map;
+  if (!Number.isInteger(k) || k < 0 || k >= map.names.length) return "That isn't a country.";
+  if ((b.open || {})[p]) return "Finish the chore you revealed first.";
+  const owner = countryOwner(b, k);
+  if (owner === p) return "That one's already yours.";
+  if (owner) return "That one's taken.";
+  if (workingOn(b, k)) return "Someone is already working on that one.";
+  if (((b.locked || {})[p] || []).includes(k)) return "You gave that one up.";
+  if (!mapAdjacency(map)[k].some((j) => countryOwner(b, j) === p)) return "Pick a country next to yours.";
+  return null;
+}
+// Neutral countries a player could still reach by claiming outward from what they own.
+export function territoryReach(b, p) {
+  const adj = mapAdjacency(b.params.map), locked = (b.locked || {})[p] || [];
+  const out = [], seen = new Set();
+  const q = adj.map((_, k) => k).filter((k) => countryOwner(b, k) === p);
+  q.forEach((k) => seen.add(k));
+  while (q.length) {
+    const k = q.shift();
+    for (const j of adj[k]) {
+      if (seen.has(j)) continue;
+      seen.add(j);
+      if (countryOwner(b, j) || locked.includes(j)) continue;
+      out.push(j); q.push(j);
+    }
+  }
+  return out.sort((x, y) => x - y);
+}
+// Claims whose chore a parent reversed. They go back to neutral.
+export function reversedLand(b, entriesBy) {
+  return Object.keys(b.land || {}).filter((k) => {
+    const l = b.land[k];
+    return (entriesBy[l.by] || []).some((e) => e.id === l.entryId && e.status === "reversed");
+  });
+}
+const landPoints = (b, p) => Object.values(b.land || {}).filter((l) => l.by === p).reduce((s, l) => s + weight(b, l), 0);
+// Decided early once one side is ahead of the most the other side could still reach;
+// otherwise when time runs out or nobody has a country left to take.
+function decideMap(b, s, final) {
+  const [a, c] = b.players;
+  const h = (p) => (b.handicap && b.handicap[p]) || 1;
+  const reach = { [a]: territoryReach(b, a).length, [c]: territoryReach(b, c).length };
+  const most = (p) => round2((s[p].raw + reach[p] * (b.twist ? 2 : 1)) * h(p));
+  if (s[a].adj > most(c)) return { winner: a, tie: false, reason: "Too far ahead to catch" };
+  if (s[c].adj > most(a)) return { winner: c, tie: false, reason: "Too far ahead to catch" };
+  if (!final && (reach[a] || reach[c])) return null;
+  return compareScores(s, a, c, "Claimed the most countries");
+}
+
 /* ---------- Wildcard ---------- */
 export const WILDCARD_MODES = ["race", "blitz", "territory", "bingo"];
 
@@ -489,6 +653,7 @@ export function decide(b, entriesBy, chores, final) {
     if (!final) return null;
     return compareScores(battleScores(b, entriesBy, chores), a, c, "Most XP when time ran out");
   }
+  if (isMapTerritory(b)) return decideMap(b, battleScores(b, entriesBy, chores), final);
   if (b.mode === "territory") {
     if (!final) return null;
     return compareScores(battleScores(b, entriesBy, chores), a, c, "Claimed the most shared chores");
