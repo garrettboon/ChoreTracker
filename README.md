@@ -125,7 +125,7 @@ What levels unlock: new creatures (the first 13 stay free), accessories, screen 
 | Time Trial | level 1 | Same chore, fastest time done well. The timer's Done button logs the chore, and a parent checks the work |
 | Ghost Race | level 1 | Beat your own best time, done well (a parent checks) |
 | Room Rush | level 2 | Pick a room and 1, 2, or 3 minutes. Clean up as many things as you can, counting in your head, then type in your total. Most things wins |
-| Wheel of Doom | level 4 | Same chore, timed. Each player first spins a wheel for a silly handicap (one hand only, T-rex arms, nonstop singing…) and has to follow it. Fastest run done well wins |
+| Wheel of Doom | level 3 | Same chore, timed. Each player first spins a wheel for a silly handicap (one hand only, T-rex arms, nonstop singing…) and has to follow it. Fastest run done well wins |
 | Blitz | level 3 | Most chore XP in a time window |
 | Chore Bingo | level 5 | First to finish a row, column, or diagonal on a 3×3 card of chores |
 | Territory | level 6 | Kids only. Conquer a map: tap a country next to yours to reveal its chore, do it, and the country turns your color. Most countries wins |
@@ -136,6 +136,8 @@ What levels unlock: new creatures (the first 13 stay free), accessories, screen 
 | Baby Boss Raid | level 1 | A tiny one-day boss for younger kids or a quick team-up. Go solo or bring up to 3 teammates. Easy to beat, and it never gets harder |
 | Kids vs. Grown-ups | level 15 | Team battle; the kids' team gets a handicap |
 | Wildcard | level 20 | A random mode, often with a twist like "Clean bathroom counts double" |
+
+**Grown-ups skip level locks:** a switch in Settings > Game. When it's on, every grown-up (anyone ticked **Adult** in People) gets every creature, accessory, theme, title, and battle mode right away, whatever their level. They still earn XP and level up as usual. Kids aren't affected, and kids-only modes stay kids-only. Rewards still unlock at their level.
 
 **Wheel of Doom:** pick an Anyone chore. Before starting the timer, each player spins the wheel once (no re-spins), and the server decides where it lands. The 12 slots are: 🤚 One hand only, 🦖 T-rex arms, 🔄 Wrong hand, 🐸 Hop it, 🎤 Nonstop singing, 🤖 Robot mode, 🧦 Sock hands, 🤫 Silent mode, 🐌 Slow-mo start, 🏋️ Warm-up (10 jumping jacks first), 😇 Mercy (no doom), and 💀 Double doom (two dooms at once). The doom shows on the full-screen timer. Like Time Trial, a parent checks each run in the Game tab, doom included, and the fastest run done well wins.
 

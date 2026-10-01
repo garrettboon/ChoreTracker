@@ -644,7 +644,7 @@ exports.createBattle = onCall(async (req) => {
   if ((bc.modesOff || []).includes(picked.id)) throw new HttpsError("failed-precondition", `A parent turned off ${picked.name}.`);
   const xs = await db.doc(`xp/${me.id}`).get();
   const xd = xs.exists ? xs.data() : {};
-  if ((xd.maxLevel || 1) < picked.level) throw new HttpsError("failed-precondition", `Reach level ${picked.level} to unlock ${picked.name}.`);
+  if ((xd.maxLevel || 1) < picked.level && !G.skipsLevels(cfg, kidOf(cfg, me.id))) throw new HttpsError("failed-precondition", `Reach level ${picked.level} to unlock ${picked.name}.`);
   const L = localParts(tzOf(cfg));
   if (G.inQuietHours(L.hm, cfg)) throw new HttpsError("failed-precondition", "Battles are asleep right now. Try again in the morning.");
   const meP = kidOf(cfg, me.id);

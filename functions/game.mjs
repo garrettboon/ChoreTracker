@@ -39,6 +39,7 @@ export const GAME_DEFAULTS = {
   rewards: [],                                             // [{ id, level, name, repeat }] repeat: every N levels, 0 = once
   moneyPerks: { enabled: false, everyLevels: 5, amount: 0.05 }, // suggested raises, applied by a parent
   quests: { enabled: true },
+  adultsUnlockAll: false, // grown-ups get every creature, item, and battle mode no matter their level
   streakMultiplier: { enabled: true, minStreak: 7, mult: 1.25 },
   battles: {
     enabled: true, modesOff: [], quietStart: "20:30", quietEnd: "07:00", dailyCap: 3,
@@ -57,6 +58,7 @@ export function gameCfg(config) {
     rewards: Array.isArray(g.rewards) ? g.rewards : [],
     moneyPerks: { ...GAME_DEFAULTS.moneyPerks, ...(g.moneyPerks || {}) },
     quests: { ...GAME_DEFAULTS.quests, ...(g.quests || {}) },
+    adultsUnlockAll: !!g.adultsUnlockAll,
   };
 }
 
@@ -100,7 +102,7 @@ export const MODES = [
   { id: "timetrial", emoji: "⏱️", name: "Time Trial", level: 1, desc: "Same chore. Fastest time done well wins." },
   { id: "ghost", emoji: "👻", name: "Ghost Race", level: 1, solo: true, desc: "Beat your own best time, done well." },
   { id: "roomrush", emoji: "🌪️", name: "Room Rush", level: 2, desc: "1 to 3 minutes. Clean up the most things in a room." },
-  { id: "doom", emoji: "🎡", name: "Wheel of Doom", level: 4, desc: "Spin for a silly handicap, then race the same chore." },
+  { id: "doom", emoji: "🎡", name: "Wheel of Doom", level: 3, desc: "Spin for a silly handicap, then race the same chore." },
   { id: "blitz", emoji: "⚡", name: "Blitz", level: 3, desc: "Most chore XP before time runs out." },
   { id: "bingo", emoji: "🎱", name: "Chore Bingo", level: 5, desc: "First to finish a row of chores wins." },
   { id: "territory", emoji: "🚩", name: "Territory", level: 6, kidsOnly: true, desc: "Conquer a map. Each country hides a chore." },
@@ -151,6 +153,14 @@ export function unlockedIds(level, xpDoc) {
   for (const m of MODES) if (!m.soon && m.level <= level) ids.push("m:" + m.id);
   return ids;
 }
+// Every unlock id there is, achievement titles included.
+export function allUnlockIds() {
+  return [...CREATURES.map((c) => "c:" + c[0]), ...HATS.map((h) => "h:" + h[0]), ...THEMES.map((t) => "t:" + t[0]),
+    ...TRAILS.map((t) => "r:" + t[0]), ...CONFETTI.map((t) => "f:" + t[0]), ...TITLES.map((t) => "ti:" + t[0]),
+    ...MODES.filter((m) => !m.soon).map((m) => "m:" + m.id)];
+}
+// True when this person skips level locks: a grown-up, with the parents' "unlock everything for grown-ups" setting on.
+export const skipsLevels = (config, person) => !!(person && person.adult && gameCfg(config).adultsUnlockAll);
 // Human-readable list of what a level-up unlocked.
 export function describeUnlocks(ids) {
   const out = [];

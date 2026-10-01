@@ -166,9 +166,10 @@ test("room rush: start the countdown, turn in a count after it, most items wins"
 
 test("wheel of doom: spin once, then race the chore; a parent checks the work and the doom", async () => {
   await reset();
-  await level("k1", 4);
+  const doomLevel = G.modeById("doom").level;
+  await level("k1", doomLevel);
   const k1 = await kidClient("k1"), k2 = await kidClient("k2"), parent = await parentClient();
-  await rejects(k2.call("createBattle", { mode: "doom", opponent: "k1", choreId: "c1" }), /Reach level 4/);
+  await rejects(k2.call("createBattle", { mode: "doom", opponent: "k1", choreId: "c1" }), new RegExp(`Reach level ${doomLevel}`));
   await rejects(k1.call("createBattle", { mode: "doom", opponent: "k2", choreId: "mine" }), /Anyone chore/);
   const { id } = await k1.call("createBattle", { mode: "doom", opponent: "k2", choreId: "c1" });
   await rejects(k1.call("spinDoom", { id }), /isn't running/);
@@ -195,6 +196,18 @@ test("wheel of doom: spin once, then race the chore; a parent checks the work an
   await waitFor(async () => (await eventKeys("k2")).includes(`battle:${id}`), { msg: "battle XP" });
   await quiet("xp/k1");
   await quiet("xp/k2");
+});
+
+test("grown-ups skip level locks when a parent turns it on", async () => {
+  await reset();
+  const dad = await parentClient("dad@test.com");
+  await rejects(dad.call("createBattle", { mode: "doom", opponent: "k1", choreId: "c1", as: "dad" }), /Reach level/);
+  await db.doc("app/config").set(withGame({ adultsUnlockAll: true }));
+  const { id } = await dad.call("createBattle", { mode: "doom", opponent: "k1", choreId: "c1", as: "dad" });
+  assert.equal((await battle(id)).mode, "doom");
+  // Kids still need the level.
+  const k2 = await kidClient("k2");
+  await rejects(k2.call("createBattle", { mode: "doom", opponent: "k3", choreId: "c1" }), /Reach level/);
 });
 
 test("chore bingo: first to finish a line wins", async () => {

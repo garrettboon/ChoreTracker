@@ -68,7 +68,7 @@ function creatureFor(kidId){const ks=kidState(kidId);const idx=cfg().kids.findIn
 
 /* ---------- game state ---------- */
 function xpState(id){const x=S.xp[id]||{};const level=x.maxLevel||1,total=x.total||0,need=level>=G.MAX_LEVEL?0:G.xpToNext(level);
-  return {total,level,need,into:Math.max(0,Math.min(need,total-G.levelStart(level))),unlocked:new Set([...G.STARTERS.map(c=>"c:"+c),...(x.unlocked||[]),...G.unlockedIds(level,x)]),
+  return {total,level,need,into:Math.max(0,Math.min(need,total-G.levelStart(level))),unlocked:new Set([...G.STARTERS.map(c=>"c:"+c),...(x.unlocked||[]),...G.unlockedIds(level,x),...(G.skipsLevels(cfg(),kidCfg(id))?G.allUnlockIds():[])]),
     freezes:x.freezes||0,frozen:x.frozenDates||[],counts:x.counts||{},pb:x.pb||{},levelUp:x.levelUp||null,notice:x.notice||null};}
 function equipped(id){const e=(S.prefs[id]||{}).equipped||{},u=xpState(id).unlocked;const ok=(k,p)=>e[k]&&u.has(p+e[k])?e[k]:"";
   return {hat:ok("hat","h:"),theme:ok("theme","t:"),trail:ok("trail","r:"),confetti:ok("confetti","f:"),title:ok("title","ti:")};}
@@ -473,7 +473,7 @@ function recentLine(b,me){const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Batt
   return `<li><span>${m.emoji} ${esc(m.name)}${others.length?` ${G.isRaid(b.mode)?"with":"vs"} ${others.map(p=>bName(b,p)).join(", ")}`:""}<br><small>${resultText(b,me)}</small></span><span class="amt pos">${xp?"+"+xp+" XP":""}</span></li>`;}
 const bbChores=(kidId,mode)=>cfg().chores.filter(c=>c.kind==="family"&&!needsNote(c)&&(c.assign==="pool"||(mode==="ghost"&&c.assign===kidId)));
 function battleBuilder(k,bb){const bc=game().battles,lv=xpState(k.id).level,mode=G.modeById(bb.mode);
-  const modeBtn=m=>{const lim=battleLimitFor(k.id,m.id);const why=(bc.modesOff||[]).includes(m.id)?"Turned off":lv<m.level?`🔒 Level ${m.level}`:m.kidsOnly&&k.adult?"Kids only":lim?(lim.scope==="day"?"Done for today":"Done for this week"):"";
+  const modeBtn=m=>{const lim=battleLimitFor(k.id,m.id);const why=(bc.modesOff||[]).includes(m.id)?"Turned off":lv<m.level&&!G.skipsLevels(cfg(),k)?`🔒 Level ${m.level}`:m.kidsOnly&&k.adult?"Kids only":lim?(lim.scope==="day"?"Done for today":"Done for this week"):"";
     return `<button class="mode ${bb.mode===m.id?"on":""}" data-act="bb-mode" data-id="${m.id}" ${why?"disabled":""} aria-pressed="${bb.mode===m.id}"><span>${m.emoji}</span><b>${esc(m.name)}</b><small>${esc(why||m.desc)}</small></button>`;};
   const pick=(list,key,multi,label)=>`<h3>${label}</h3><div class="seg" style="justify-content:flex-start">${list.map(p=>{const on=multi?(bb[key]||[]).includes(p.id):bb[key]===p.id;
     return `<button class="${on?"on":""}" data-act="bb-pick" data-key="${key}" data-multi="${multi?1:""}" data-id="${p.id}" aria-pressed="${on}">${creatureFor(p.id)[1]} ${esc(p.name)}</button>`;}).join("")}</div>`;
@@ -932,7 +932,7 @@ function levelsCard(d){const g=d.game,mp=g.moneyPerks,X=G.XP,rows=[];const qx=G.
     <div class="guide">${rows.join("")}</div></section>`;}
 function gameSettings(d){const g=d.game,b=g.battles;const chk=(path,on,label)=>`<label class="check-label"><input type="checkbox" data-bind="draft.game.${path}" ${on?"checked":""}> ${label}</label>`;
   return `<section class="card"><div class="sec-head"><h2>Game</h2></div>
-    <div class="grid-2">${chk("quests.enabled",g.quests.enabled,"Weekly quests")}${chk("choreOfDay.enabled",g.choreOfDay.enabled,"Chore of the Day (double XP)")}${chk("streakMultiplier.enabled",g.streakMultiplier.enabled,`Streak bonus (×${g.streakMultiplier.mult} XP at ${g.streakMultiplier.minStreak}+ days)`)}${chk("battles.enabled",b.enabled,"Battles")}</div>
+    <div class="grid-2">${chk("quests.enabled",g.quests.enabled,"Weekly quests")}${chk("choreOfDay.enabled",g.choreOfDay.enabled,"Chore of the Day (double XP)")}${chk("streakMultiplier.enabled",g.streakMultiplier.enabled,`Streak bonus (×${g.streakMultiplier.mult} XP at ${g.streakMultiplier.minStreak}+ days)`)}${chk("battles.enabled",b.enabled,"Battles")}${chk("adultsUnlockAll",g.adultsUnlockAll,"Grown-ups skip level locks (every creature, item, and battle mode)")}</div>
     <h3 style="margin-top:14px">Battle modes</h3><p class="hint" style="margin:2px 0 4px">Tick a mode to allow it. Tap one to see how it works.</p>
     <div class="guide">${gRow("m:all","How battles work","Challenges, handicaps, XP, confirming, and what carries over",battlesGeneral(b))}${G.MODES.filter(m=>!m.soon).map(m=>{const t=modeGuide()[m.id]||{};const ml=(b.modeLimits||{})[m.id]||{};const limTxt=[ml.day>0?`${ml.day} a day`:"",ml.week>0?`${ml.week} a week`:""].filter(Boolean).join(", ");
       return gRow("m:"+m.id,`${m.emoji} ${esc(m.name)} <span class="pill">Level ${m.level}</span>${limTxt?` <span class="pill">Max ${limTxt}</span>`:""}`,esc(m.desc),`<p><b>How it works.</b> ${t.how||""}</p><p><b>XP.</b> ${t.xp||""}</p>${t.notes?`<p><b>Good to know.</b> ${t.notes}</p>`:""}

@@ -524,3 +524,15 @@ test("wheel of doom: 12 slots, Double doom adds two different real dooms, scored
   assert.equal(G.decide(b, {}, [], false).winner, "c");
   assert.deepEqual(G.battleXp({ ...b, quality: { c: false } }, { winner: "a" }), { a: G.XP.win, c: 0 }, "a run that failed the check earns nothing");
 });
+
+test("grown-ups skip level locks only when the setting is on", () => {
+  const dad = { id: "dad", adult: true }, kid = { id: "k", age: 9 };
+  assert.equal(G.gameCfg({}).adultsUnlockAll, false);
+  assert.equal(G.skipsLevels({}, dad), false);
+  const on = { game: { adultsUnlockAll: true } };
+  assert.equal(G.skipsLevels(on, dad), true);
+  assert.equal(G.skipsLevels(on, kid), false, "kids still level up");
+  const all = G.allUnlockIds();
+  for (const id of G.unlockedIds(G.MAX_LEVEL, { counts: { win: 99, giant: 9, redeem: 9, goal: 9, chore: 999 }, bestStreak: 99 })) assert.ok(all.includes(id), id);
+  assert.ok(all.includes("c:peacock") && all.includes("m:wildcard") && all.includes("ti:giantslayer"));
+});
