@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInAnonymously, signInWithPopup, GoogleAuthProvider, signOut, connectAuthEmulator } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, collection, query, where, orderBy, limit, getDocs, onSnapshot, setDoc, updateDoc, deleteDoc, runTransaction, arrayUnion, arrayRemove, increment, Timestamp, connectFirestoreEmulator } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, collection, query, where, orderBy, limit, getDocs, onSnapshot, setDoc, updateDoc, deleteDoc, runTransaction, arrayUnion, arrayRemove, increment, deleteField, Timestamp, connectFirestoreEmulator } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 import { getMessaging, getToken, onMessage, isSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
 import { VAPID_KEY } from "./config.js";
@@ -338,7 +338,7 @@ function moneySection(k,ks,w,net){const sp=splitAmt(Math.max(0,net)),goals=ks.go
   return `<section class="card"><div class="sec-head"><h2>My money</h2></div><div class="buckets">
     ${card("spend","b-spend","Spend",sp.spend,"Cash you get Sunday night","")}
     ${card("save","b-save","Save",saved,`+${money(sp.save)} this week`,
-      `${goals.map(x=>`<div class="sgoal"><div class="top"><span>${esc(x.name)}</span><span>${money(x.balance)}${x.target?" / "+money(x.target):""}</span></div>${x.target?`<div class="bar"><i style="width:${Math.min(100,x.balance/x.target*100)}%"></i></div>`:""}</div>`).join("")}
+      `${goals.map(x=>`<div class="sgoal"><div class="top"><span>${esc(x.name)}${x.id==="general"?"":`<button class="sg-del" data-act="del-goal" data-kid="${k.id}" data-goal="${x.id}" aria-label="Delete ${esc(x.name)}" title="Delete this goal">✕</button>`}</span><span>${money(x.balance)}${x.target?" / "+money(x.target):""}</span></div>${x.target?`<div class="bar"><i style="width:${Math.min(100,x.balance/x.target*100)}%"></i></div>`:""}</div>`).join("")}
       ${splitEditor(k,ks,w,goals,sp.save)}
       <div class="mini-form"><input placeholder="New goal" aria-label="New goal name" data-bind="newGoal.name" value="${esc(g.name)}"><input type="number" inputmode="decimal" placeholder="$" aria-label="Goal amount" data-bind="newGoal.target" value="${esc(g.target)}"><button class="btn small" data-act="add-goal">Add</button></div>`)}
     ${card("invest","b-invest","Invest",ks.invest,`+${money(sp.invest)} this week`,
@@ -756,7 +756,7 @@ function pGoals(){
     ${ks.goals.map(g=>{const eg=S.ui.editGoal;if(eg&&eg.kid===k.id&&eg.goal===g.id)return `<div class="flag-row"><span class="row" style="flex:1"><label style="flex:2 1 140px">Name<input aria-label="Goal name" data-bind="editGoal.name" value="${esc(eg.name)}"></label><label style="flex:1 1 90px">Amount<input type="number" step="0.25" min="0.25" inputmode="decimal" aria-label="Goal amount" data-bind="editGoal.target" data-type="num" value="${esc(eg.target)}"></label><button class="btn small" data-act="save-goal">Save</button><button class="btn ghost small" data-act="cancel-edit-goal">Cancel</button></span></div>`;
       return `<div class="flag-row"><span><b>${esc(g.name)}</b><br><small>${money(g.balance)}${g.target?" of "+money(g.target):""}</small></span>
       ${b&&b.kid===k.id&&b.goal===g.id?`<span class="row" style="flex:0 1 260px"><input type="number" step="0.25" inputmode="decimal" aria-label="Purchase amount" data-bind="buy.amount" data-type="num" value="${esc(b.amount)}"><button class="btn small" data-act="confirm-buy">Log</button><button class="btn ghost small" data-act="cancel-buy">Cancel</button></span>`
-      :`<span class="row" style="flex:0 0 auto;gap:6px">${g.id==="general"?"":`<button class="btn ghost small" data-act="edit-goal" data-kid="${k.id}" data-goal="${g.id}">Edit</button>`}<button class="btn ghost small" data-act="buy-goal" data-kid="${k.id}" data-goal="${g.id}" ${g.balance>0?"":"disabled"}>Log purchase</button></span>`}</div>`;}).join("")}
+      :`<span class="row" style="flex:0 0 auto;gap:6px">${g.id==="general"?"":`<button class="btn ghost small" data-act="edit-goal" data-kid="${k.id}" data-goal="${g.id}">Edit</button><button class="btn ghost small" data-act="del-goal" data-kid="${k.id}" data-goal="${g.id}">Delete</button>`}<button class="btn ghost small" data-act="buy-goal" data-kid="${k.id}" data-goal="${g.id}" ${g.balance>0?"":"disabled"}>Log purchase</button></span>`}</div>`;}).join("")}
     <div class="mini-form"><input placeholder="New goal" aria-label="New goal name" data-bind="pgoal.${k.id}.name" value="${esc(pg.name)}"><input type="number" inputmode="decimal" placeholder="$" aria-label="Goal amount" data-bind="pgoal.${k.id}.target" value="${esc(pg.target)}"><button class="btn small" data-act="p-add-goal" data-kid="${k.id}">Add</button></div>
     ${ks.archived.length?`<p class="hint">Bought so far: ${ks.archived.map(a=>`${esc(a.name)} (${money(a.bought)}, ${shortDate(a.date)})`).join(", ")}</p>`:""}
     ${balanceForm(k,ks)}</section>`;}).join("");
@@ -1052,6 +1052,17 @@ async function handleAct(act,ds){
       if(b.goal==="general"){bank.goalBal.general=left;bank.archived.push({name:"From general savings",bought:amt,date:ymd()});}
       else{delete bank.goalBal[b.goal];bank.archived.push({goalId:b.goal,name:g0.name,target:g0.target,bought:amt,date:ymd()});if(left>0)bank.goalBal.general=r2((bank.goalBal.general||0)+left);}
       t.set(ref,bank);}),`Logged. Take ${money(amt)} out of storage.`);break;}
+  case "del-goal":{const ks=kidState(ds.kid),g=ks.goals.find(x=>x.id===ds.goal);if(!g||g.id==="general")return;
+    const parent=S.role==="parent";
+    if(g.balance>0&&!parent){toast(`"${g.name}" has ${money(g.balance)} in it. Ask a parent to delete it. The money will move to General savings.`);return;}
+    if(!confirm(`Delete the savings goal "${g.name}"?${g.balance>0?` Its ${money(g.balance)} moves to General savings.`:""} This can't be undone.`))return;
+    const fix=ks.interestTo===g.id?{interestTo:"invest"}:{};
+    if(S.ui.editGoal&&S.ui.editGoal.goal===g.id)S.ui.editGoal=null;
+    if(parent&&g.balance>0)guard(runTransaction(db,async t=>{const bref=doc(db,"bank",ds.kid);const bs=await t.get(bref);const bank=bs.exists()?bs.data():{};const gb={...(bank.goalBal||{})};
+      const amt=r2(gb[g.id]||0);delete gb[g.id];gb.general=r2((gb.general||0)+amt);t.set(bref,{goalBal:gb},{mergeFields:["goalBal"]});
+      t.set(doc(db,"prefs",ds.kid),{goals:{[g.id]:deleteField()},...fix},{merge:true});}),`Deleted. ${money(g.balance)} moved to General savings.`);
+    else guard(setDoc(doc(db,"prefs",ds.kid),{goals:{[g.id]:deleteField()},...fix},{merge:true}),"Goal deleted.");
+    break;}
   case "edit-goal":{const g=kidState(ds.kid).goals.find(x=>x.id===ds.goal);if(!g)return;S.ui.buy=null;S.ui.editGoal={kid:ds.kid,goal:ds.goal,name:g.name,target:g.target||""};break;}
   case "cancel-edit-goal": S.ui.editGoal=null;break;
   case "save-goal":{const e=S.ui.editGoal;if(!e)return;const name=String(e.name||"").trim();const t=r2(e.target);if(!name||!(t>0)){toast("Give the goal a name and an amount.");return;}
