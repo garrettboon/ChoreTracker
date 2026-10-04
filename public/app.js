@@ -801,12 +801,23 @@ function pViews(){
 }
 function pActions(){return `<h2 class="tab-h">Deductions</h2>${pDeductions()}<h2 class="tab-h">Cash-out</h2>${pCashout()}`;}
 // Parents can fill in a daily checklist that was done but not checked off, up to two weeks back.
+// For each person, the most recent day in the last two weeks that broke a streak of 2+ days.
+function brokenStreaks(){const out=[],today=ymd();
+  for(const k of kidsSorted()){const ks=kidState(k.id),fz=xpState(k.id).frozen;
+    for(let i=1;i<=14;i++){const d=addDays(today,-i);if(prComplete(ks,d,fz))continue;
+      let run=0,p=addDays(d,-1);while(prComplete(ks,p,fz)&&run<400){run++;p=addDays(p,-1);}
+      if(run>=2){const done=ks.prLog[d]||[];out.push({k,d,run,missing:prChores().filter(c=>!done.includes(c.id))});}
+      break;}}
+  return out;}
 function fixDayCard(){const prs=prChores();if(!prs.length)return "";
   const f=S.ui.fix||(S.ui.fix={kid:kidsSorted()[0].id,date:addDays(ymd(),-1)});if(!kidCfg(f.kid))f.kid=kidsSorted()[0].id;
   const ks=kidState(f.kid),done=ks.prLog[f.date]||[],full=prComplete(ks,f.date),s=streak(f.kid);
   const dates=Array.from({length:14},(_,i)=>addDays(ymd(),-(i+1)));
   const label=d=>parseYmd(d).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"})+(d===addDays(ymd(),-1)?" (yesterday)":"");
+  const day=d=>parseYmd(d).toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"});
+  const broken=brokenStreaks().map(x=>`<div class="flag-row"><span><b>${esc(x.k.name)}</b>'s ${x.run}-day streak stopped on ${esc(day(x.d))}${x.missing.length?`: missed ${x.missing.map(c=>esc(c.name)).join(", ")}`:""}</span><span class="btn-pair"><button class="btn small" data-act="fix-day" data-kid="${x.k.id}" data-date="${x.d}">It was done</button><button class="btn ghost small" data-act="fix-pick" data-kid="${x.k.id}" data-date="${x.d}">Pick items</button></span></div>`).join("");
   return `<section class="card"><div class="sec-head"><h2>Fix a missed day</h2><span class="sub">🔥 ${esc(kidCfg(f.kid).name)}: ${s} day${s===1?"":"s"} in a row</span></div>
+    ${broken?`<h3 style="margin-top:0">Streaks that broke recently</h3>${broken}<p class="hint">If everything on that day's list was really done, tap It was done. The streak comes back right away. Or pick the items below.</p><h3>Any day</h3>`:""}
     <div class="row"><label>Who<select data-bind="fix.kid">${kidsSorted().map(k=>`<option value="${k.id}" ${k.id===f.kid?"selected":""}>${esc(k.name)}</option>`).join("")}</select></label>
     <label>Day<select data-bind="fix.date">${dates.map(d=>`<option value="${d}" ${d===f.date?"selected":""}>${label(d)}</option>`).join("")}</select></label></div>
     <div class="checks" style="margin-top:10px">${prs.map(c=>{const on=done.includes(c.id);return `<button class="check ${on?"on":""}" data-act="fix-pr-toggle" data-id="${c.id}" aria-pressed="${on}"><span class="box">${on?"✓":""}</span><span><b>${icon(c)}${esc(c.name)}</b></span></button>`;}).join("")}</div>
@@ -1140,6 +1151,9 @@ async function handleAct(act,ds){
   case "b-finish":{const r=await bcall("finishAttempt",{id:ds.id});if(r){confetti(80);chime(true);toast(r.ms!=null?`Done in ${fmtMs(r.ms)}! Chore logged.`:"Turned in! Chore logged.");}break;}
   case "chore-icon": S.ui.draft.chores[Number(ds.i)].icon=ds.icon;break;
   case "fix-pr": setPrDay(ds.kid,ds.id,true,ds.date);return;
+  case "fix-day":{const ids=prChores().map(c=>c.id),day=parseYmd(ds.date).toLocaleDateString(undefined,{weekday:"long"});
+    guard(setDoc(doc(db,"prefs",ds.kid),{prLog:{[ds.date]:arrayUnion(...ids)},prDone:{[ds.date]:true}},{merge:true}),`Fixed. ${kidCfg(ds.kid).name}'s ${day} counts toward the streak.`);return;}
+  case "fix-pick":S.ui.fix={kid:ds.kid,date:ds.date};break;
   case "fix-pr-toggle":{const f=S.ui.fix;const on=(kidState(f.kid).prLog[f.date]||[]).includes(ds.id);setPrDay(f.kid,ds.id,!on,f.date);return;}
   case "p-check": await bcall("checkRun",{id:ds.id,player:ds.player,ok:!!ds.ok,as:null},ds.ok?"Marked done well.":"Marked not good enough.");break;
   case "p-judge": if(!confirm(ds.winner==="tie"?"Call it a tie?":`${kidCfg(ds.winner).name} did the better job?`))return;await bcall("judgeBattle",{id:ds.id,winner:ds.winner,as:null},"Judged. Thanks!");break;
@@ -1305,3 +1319,17 @@ document.addEventListener("pointerup",endDrag);document.addEventListener("pointe
 let wakeLock=null;async function wake(){try{if("wakeLock" in navigator&&(S.role==="display"||S.ui.focus||S.ui.tm||S.ui.rush||S.ui.wheel))wakeLock=await navigator.wakeLock.request("screen");}catch(e){}}
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")wake();});
 setInterval(()=>{if(S.phase!=="ready")return;subscribeWeeks();const a=document.activeElement;if(!(a&&(a.tagName==="INPUT"||a.tagName==="SELECT"))&&!(S.role==="parent"&&S.ptab==="settings"))render();},60000);
+
+/* ---------- updates: pick up a new version without a manual refresh ---------- */
+// The deploy writes version.json with the live commit. A screen left open for days checks it now and then;
+// when it changes, the page reloads itself, or shows a button if someone is in the middle of something.
+let liveVersion=null;
+function busyNow(){const a=document.activeElement;
+  return !!(S.ui.focus||S.ui.tm||S.ui.rush||S.ui.wheel||S.ui.bb||(S.ui.draft&&S.ui.draftClean!==JSON.stringify(S.ui.draft))||(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)));}
+function showUpdate(){if(document.getElementById("update-bar"))return;const d=document.createElement("div");d.id="update-bar";d.className="update-bar";d.setAttribute("role","status");
+  d.innerHTML=`<span>✨ A new version of the app is ready.</span><button class="btn small" type="button">Update now</button>`;d.querySelector("button").onclick=()=>location.reload();document.body.appendChild(d);}
+async function checkVersion(){try{const r=await fetch("/version.json?t="+Date.now(),{cache:"no-store"});if(!r.ok)return;const v=(await r.json()).commit;if(!v)return;
+  if(liveVersion==null){liveVersion=v;return;}
+  if(v!==liveVersion){if(busyNow())showUpdate();else location.reload();}}catch(e){}}
+checkVersion();setInterval(checkVersion,10*60e3);
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")checkVersion();});

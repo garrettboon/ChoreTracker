@@ -88,6 +88,7 @@ label > input, label > select{margin-top:4px;font-weight:600}
 .picker button span{font-size:2rem}
 .picker button.on{border-color:var(--pine);background:var(--surface)}
 .banner{background:var(--sun);color:#2A1E00;border-radius:16px;padding:12px 16px;margin-top:14px;font-weight:700}
+.update-bar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:60;display:flex;gap:12px;align-items:center;background:var(--sun);color:#2A1E00;border-radius:16px;padding:10px 14px;font-weight:700;box-shadow:0 6px 24px rgba(0,0,0,.18);width:max-content;max-width:calc(100% - 32px)}
 .goal{border-color:var(--pine)}
 .goal.won{background:linear-gradient(0deg,var(--surface),var(--surface)) padding-box, repeating-linear-gradient(45deg,var(--sun) 0 10px,var(--pine) 10px 20px) border-box;border-color:transparent}
 .goal-top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
