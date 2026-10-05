@@ -93,7 +93,8 @@ For the leaderboard device, keep it plugged in. The app asks the screen to stay 
 - **Forgot to check something off?** In **Activity**, tap **It was done** next to it under Missed yesterday, or use **Fix a missed day** to fill in any day from the last two weeks, for anyone (adults too). That card also lists any streak that broke recently, with the day and what was missed, so one tap on **It was done** restores it. The streak comes back right away, and a streak freeze spent on that day is returned.
 - **Streaks** count days when every daily item was checked off. Once a day is complete it stays complete, even if the list changes later that day.
 - **Reminders** go out at each person's reminder times (Mountain time), listing only what's still unchecked. Nothing is sent if everything's done.
-- **Interest** on Invest is added once a month at cash-out, rounded down to the nearest quarter. The kid's Invest card shows the exact amount coming.
+- **Interest** on Invest is added once a month at cash-out, rounded down to the nearest quarter. The kid's Invest card shows the amount coming. Nothing is decided ahead of time: during cash-out you choose together where it goes, and you can split it between Spend (cash now), Invest, Give, and any savings goals, in quarters.
+- **Cash-out walkthrough:** in **Actions**, each person's card shows a summary. Tap **Start cash-out** to open a full-screen walkthrough, one step at a time: **Earnings** (chores, deductions that become final, total), **Weekly goal** (reached or not, and the bonus), **Interest** (when it's due: place every quarter), **Savings** (how Save splits between goals), and **Hand it over** (a checklist: cash to hand over or collect, and what goes in each jar). Each step needs **Looks right**, and **Finish cash-out** unlocks once every hand-off item is ticked. Nothing is saved until then, so **Cancel** at any point leaves everything as it was.
 
 ## Levels, XP, and battles
 

@@ -207,6 +207,7 @@ function render(){
   else if(S.ui.tm&&S.phase==="ready"&&S.config&&onKidScreen())h+=mapOverlay();
   else if(S.ui.rush&&S.phase==="ready"&&S.config&&onKidScreen())h+=rushOverlay();
   else if(S.ui.wheel&&S.phase==="ready"&&S.config&&onKidScreen())h+=wheelOverlay();
+  else if(S.ui.co&&S.role==="parent"&&S.phase==="ready"&&S.config)h+=cashoutWizard();
   if(S.ui.levelUp)h+=levelUpOverlay();
   $("#app").innerHTML=h;document.body.dataset.mode=mode();
   const th=S.phase==="ready"&&S.config&&S.viewKid&&kidCfg(S.viewKid)&&onKidScreen()?equipped(S.viewKid).theme:"";
@@ -351,7 +352,7 @@ function moneySection(k,ks,w,net){const sp=splitAmt(Math.max(0,net)),goals=ks.go
       ${splitEditor(k,ks,w,goals,sp.save)}
       <div class="mini-form"><input placeholder="New goal" aria-label="New goal name" data-bind="newGoal.name" value="${esc(g.name)}"><input type="number" inputmode="decimal" placeholder="$" aria-label="Goal amount" data-bind="newGoal.target" value="${esc(g.target)}"><button class="btn small" data-act="add-goal">Add</button></div>`)}
     ${card("invest","b-invest","Invest",ks.invest,`+${money(sp.invest)} this week`,
-      `<p>Next monthly interest: ${money(qd(calcInterest(ks.invest)))}, rounded down to the nearest quarter.</p><label>Interest goes to<select data-change="interestTo">${["invest","spend","give",...goals.map(x=>x.id)].map(o=>`<option value="${o}" ${o===ks.interestTo?"selected":""}>${o==="invest"?"Back into Invest (it grows!)":destName(ks,o)}</option>`).join("")}</select></label>`)}
+      `<p>Next monthly interest: ${money(qd(calcInterest(ks.invest)))}, rounded down to the nearest quarter. You'll decide where it goes at cash-out, and you can split it.</p>`)}
     ${card("give","b-give","Give",ks.give,`+${money(sp.give)} this week`,"")}
   </div></section>`;}
 function badgeList(kidId){const ks=kidState(kidId),st=ks.stats,x=xpState(kidId),c=x.counts;const live=openWeeks(kidId).reduce((s,w)=>s+choreCount(w),0);const chores=(st.chores||0)+live;
@@ -871,38 +872,89 @@ function pDeductions(){
 function cashWeeks(kidId){const thisMon=mondayOf(new Date()),prev=addDays(thisMon,-7),out=[];
   const pw=S.weeks[weekDocId(kidId,prev)];if(pw&&!pw.closed&&((pw.entries||[]).length||(pw.deductions||[]).length||pw.goal))out.push(prev);
   const tw=S.weeks[weekDocId(kidId,thisMon)];if(!(tw&&tw.closed))out.push(thisMon);return out.length?out:null;}
-function cashoutPlan(kidId,weeks){
+// Where this month's interest goes is decided during cash-out, and can be split. Until then it starts all
+// in one place: the kid's old pick if they had one, else back into Invest.
+function interestDests(ks){return [["spend","Spend (cash now)"],["invest","Invest (it grows!)"],["give","Give"],...ks.goals.map(g=>[g.id,g.name])];}
+function defaultAlloc(ks,interest){const to=ks.interestTo||"invest";return interest?{[interestDests(ks).some(d=>d[0]===to)?to:"invest"]:interest}:{};}
+const isQuarter=v=>Math.abs(v*4-Math.round(v*4))<1e-9;
+function cashoutPlan(kidId,weeks,alloc){
   const ks=kidState(kidId),sp=cfg().split,ex={spend:0,save:0,invest:0,give:0};const addSplit=a=>{for(const b in ex)ex[b]+=a*sp[b]/100;};
   const parts=weeks.map(wk=>{const w=getWeek(kidId,wk),net=weekNet(w),goal=w.goal||0,met=goal>0&&net>=goal;
     return {wk,w,net,goal,met,bonus:met?r2(goal*BONUS_RATE):0,bonusTo:w.bonusTo||"split",chores:choreCount(w),activeDed:w.deductions.filter(e=>e.status==="active").length};});
   const net=r2(parts.reduce((t,p)=>t+p.net,0));if(net>0)addSplit(net);const owed=net<0?q(-net):0;
   let bonus=0;for(const p of parts)if(p.bonus){bonus=r2(bonus+p.bonus);if(p.bonusTo==="split")addSplit(p.bonus);else ex[p.bonusTo]+=p.bonus;}
-  const month=ymd().slice(0,7);const interestDue=ks.lastInterestMonth!==month&&ks.invest>0;const interest=interestDue?qd(calcInterest(ks.invest)):0;const interestTo=ks.interestTo||"invest";
-  let goalInterest=0;if(interest){if(interestTo in ex)ex[interestTo]+=interest;else goalInterest=interest;}
+  const month=ymd().slice(0,7);const interestDue=ks.lastInterestMonth!==month&&ks.invest>0;const interest=interestDue?qd(calcInterest(ks.invest)):0;
+  const dests=interestDests(ks).map(d=>d[0]),interestAlloc={};for(const [d,v] of Object.entries(alloc||defaultAlloc(ks,interest))){const n=r2(v);if(n>0&&dests.includes(d))interestAlloc[d]=n;}
+  const allocTotal=r2(Object.values(interestAlloc).reduce((t,v)=>t+v,0));
+  const allocOk=!interest||(Math.abs(allocTotal-interest)<0.005&&Object.values(interestAlloc).every(isQuarter));
+  const goalInterest={};if(interest)for(const [d,v] of Object.entries(interestAlloc)){if(d==="spend"||d==="invest"||d==="give")ex[d]+=v;else goalInterest[d]=v;}
   const total=q(ex.spend+ex.save+ex.invest+ex.give);const storage={save:q(ex.save),invest:q(ex.invest),give:q(ex.give)};
   let cash=r2(total-storage.save-storage.invest-storage.give);if(cash<0){storage.save=r2(storage.save+cash);cash=0;}
   // The savings split comes from the newest week that set one.
   const splitW=[...parts].reverse().map(p=>p.w).find(w=>(w.saveSplit&&Object.keys(w.saveSplit).length)||w.saveTo)||parts[parts.length-1].w;
   const saveParts=splitCents(storage.save,saveSplitFor(splitW,ks));
-  return {weeks,parts,net,bonus,owed,interestDue,interest,interestTo,goalInterest,cash,storage,saveParts,
+  return {weeks,parts,net,bonus,owed,interestDue,interest,interestAlloc,allocTotal,allocOk,goalInterest,cash,storage,saveParts,
     chores:parts.reduce((t,p)=>t+p.chores,0),activeDed:parts.reduce((t,p)=>t+p.activeDed,0),goalHits:parts.filter(p=>p.met).length,earned:r2(parts.reduce((t,p)=>t+Math.max(0,p.net),0))};
 }
 function pCashout(){
   return (new Date().getDay()===0?"":`<p class="hint">It isn't Sunday yet. Cashing out now closes this week early.</p>`)+kidsSorted().map(k=>{
     const ks=kidState(k.id),weeks=cashWeeks(k.id);
     if(!weeks){const c=getWeek(k.id,mondayOf(new Date())).cashout;return `<section class="card"><div class="sec-head"><h2>${esc(k.name)}</h2><span class="sub">Cashed out</span></div>${c?`<div class="handoff">Handed <b>${money(c.cash)}</b> in cash. Into storage: Save <b>${money(c.storage.save)}</b>, Invest <b>${money(c.storage.invest)}</b>, Give <b>${money(c.storage.give)}</b>.${c.owed?` Collected <b>${money(c.owed)}</b> from Spend.`:""}</div>`:""}</section>`;}
-    const p=cashoutPlan(k.id,weeks),multi=weeks.length>1,one=p.parts[0];
+    const p=cashoutPlan(k.id,weeks,{}),multi=weeks.length>1,one=p.parts[0];
     return `<section class="card"><div class="sec-head"><h2>${esc(k.name)}</h2><span class="sub">${multi?`${weeks.length} weeks in one lump`:`Week of ${shortDate(weeks[0])}`}</span></div>
     ${multi?`<p class="hint" style="margin:0 0 6px">Last week wasn't cashed out, so it's combined with this week. Each week's goal still counts on its own.</p>`:""}
     <dl class="kv">${multi?p.parts.map(x=>`<dt>Week of ${shortDate(x.wk)}</dt><dd>${money(x.net)}${x.goal?`, goal ${money(x.goal)} ${x.met?"reached":"missed"}`:", no goal"}</dd>`).join(""):""}
     <dt>Earned (after deductions)</dt><dd>${money(p.net)}</dd>${multi?"":`<dt>Goal</dt><dd>${one.goal?money(one.goal)+(one.met?" reached":" missed"):"None set"}</dd>`}
     ${p.bonus?`<dt>Bonus${multi?"":" ("+esc(destName(ks,one.bonusTo))+")"}</dt><dd>+${money(p.bonus)}</dd>`:""}
-    ${p.interestDue?`<dt>Monthly interest (to ${esc(destName(ks,p.interestTo))})</dt><dd>+${money(p.interest)}</dd>`:""}
+    ${p.interestDue?`<dt>Monthly interest</dt><dd>+${money(p.interest)}</dd>`:""}
     ${p.activeDed?`<dt>Open deductions becoming final</dt><dd>${p.activeDed}</dd>`:""}</dl>
     <div class="handoff">${p.owed?`Earnings came up short. Collect <b>${money(p.owed)}</b> from ${esc(k.name)}'s Spend cash.<br>`:""}Hand ${esc(k.name)} <b>${money(p.cash)}</b> in cash.<br>
-      Into storage: Save <b>${money(p.storage.save)}</b> (${savePartsText(ks,p.saveParts)}), Invest <b>${money(p.storage.invest)}</b>, Give <b>${money(p.storage.give)}</b>.${p.goalInterest?` Interest of <b>${money(p.goalInterest)}</b> goes to ${esc(goalName(ks,p.interestTo))}.`:""}</div>
-    <button class="btn block" style="margin-top:12px" data-act="cashout" data-kid="${k.id}" ${S.busy["co:"+k.id]?"disabled":""}>Confirm cash-out for ${esc(k.name)}${multi?` (${weeks.length} weeks)`:""}</button></section>`;}).join("");
+      Into storage: Save <b>${money(p.storage.save)}</b> (${savePartsText(ks,p.saveParts)}), Invest <b>${money(p.storage.invest)}</b>, Give <b>${money(p.storage.give)}</b>.${p.interestDue?` Plus ${money(p.interest)} of interest, placed during cash-out.`:""}</div>
+    <button class="btn block" style="margin-top:12px" data-act="co-start" data-kid="${k.id}" ${S.busy["co:"+k.id]?"disabled":""}>Start cash-out for ${esc(k.name)}${multi?` (${weeks.length} weeks)`:""}</button></section>`;}).join("");
 }
+/* ---------- cash-out walkthrough ---------- */
+// Start cash-out opens this for one person. Each step is confirmed before the next; money only moves at the end.
+function coSteps(p){const s=["earn"];if(p.parts.some(x=>x.goal)||p.bonus)s.push("goal");if(p.interestDue&&p.interest>0)s.push("interest");if(p.storage.save>0||Object.keys(p.goalInterest).length)s.push("save");s.push("hand");return s;}
+const coLine=(label,val,cls="")=>`<div class="co-line ${cls}"><span>${label}</span><span>${val}</span></div>`;
+const CO_TITLES={earn:"Earnings",goal:"Weekly goal",interest:"Interest",save:"Savings",hand:"Hand it over"};
+function coHandoff(k,ks,p){const items=[],gi=Object.entries(p.goalInterest);
+  if(p.owed)items.push(`Collect <b>${money(p.owed)}</b> from ${esc(k.name)}'s Spend cash (earnings came up short)`);
+  if(p.cash>0)items.push(`Hand ${esc(k.name)} <b>${money(p.cash)}</b> in cash`);
+  const save=r2(p.storage.save+gi.reduce((t,[,v])=>t+v,0));
+  if(save>0)items.push(`Put <b>${money(save)}</b> in the Save jar <small>(${[savePartsText(ks,p.saveParts)+(p.storage.save>0?` ${money(p.storage.save)}`:""),...gi.map(([id,v])=>`interest to ${esc(goalName(ks,id))} ${money(v)}`)].filter((x,i)=>i>0||p.storage.save>0).join(", ")})</small>`);
+  if(p.storage.invest>0)items.push(`Put <b>${money(p.storage.invest)}</b> in the Invest jar`);
+  if(p.storage.give>0)items.push(`Put <b>${money(p.storage.give)}</b> in the Give jar`);
+  return items;}
+function cashoutWizard(){const c=S.ui.co,k=kidCfg(c.kid),weeks=k&&cashWeeks(c.kid);
+  if(!weeks)return `<div class="focus co" role="dialog" aria-modal="true"><div class="fx-top"><button class="btn ghost small" data-act="co-close">Close</button></div><h2>All done</h2><p class="sub">${k?esc(k.name)+" is":"They're"} cashed out.</p><button class="btn block" data-act="co-close">Close</button></div>`;
+  const ks=kidState(c.kid),p=cashoutPlan(c.kid,weeks,c.alloc),steps=coSteps(p);c.step=Math.max(0,Math.min(c.step,steps.length-1));const st=steps[c.step],busy=S.busy["co:"+c.kid];
+  let body="",ready=true;
+  if(st==="earn"){
+    body=`<div class="co-lines">${p.parts.map(x=>{const w=x.w,ded=(w.deductions||[]).filter(d=>d.status==="active"||d.status==="final"),gross=r2(x.net+ded.reduce((t,d)=>t+(d.amount||0),0));
+      return `${weeks.length>1?`<h3>Week of ${shortDate(x.wk)}</h3>`:""}${coLine(`${x.chores} chore${x.chores===1?"":"s"}`,money(gross))}${ded.map(d=>coLine(`Deduction: ${esc(d.reason||"")}${d.status==="active"?" <small>(becomes final)</small>":""}`,"−"+money(d.amount),"neg")).join("")}`;}).join("")}
+      ${coLine("<b>Earned</b>",`<b>${money(p.net)}</b>`,"total")}</div>
+      ${p.owed?`<p class="hint">Earnings came up short, so ${esc(k.name)} owes ${money(p.owed)} from their Spend cash. That's collected in the last step.</p>`:""}
+      ${weeks.length>1?`<p class="hint">Last week wasn't cashed out, so both weeks settle together. Each week's goal still counts on its own.</p>`:""}
+      ${new Date().getDay()===0?"":`<p class="hint">It isn't Sunday yet. Cashing out now closes this week early.</p>`}`;}
+  else if(st==="goal"){
+    body=`<div class="co-lines">${p.parts.map(x=>`${weeks.length>1?`<h3>Week of ${shortDate(x.wk)}</h3>`:""}${coLine(x.goal?`Goal ${money(x.goal)}, earned ${money(x.net)}`:"No goal set",x.goal?(x.met?"✅ Reached":"Missed"):"")}${x.bonus?coLine(`Bonus (25% of the goal) to ${esc(destName(ks,x.bonusTo))}`,"+"+money(x.bonus)):""}`).join("")}</div>
+      ${p.bonus?"":`<p class="hint">No bonus this time.</p>`}`;}
+  else if(st==="interest"){const left=r2(p.interest-p.allocTotal),bad=Object.values(p.interestAlloc).some(v=>!isQuarter(v));ready=p.allocOk;
+    body=`<p class="co-big">Invest earned <b>${money(p.interest)}</b> this month</p><p class="hint">On ${money(ks.invest)} in Invest, rounded down to the nearest quarter. Decide together where it goes. You can split it.</p>
+      <div class="co-alloc">${interestDests(ks).map(([d,label])=>{const v=(c.alloc||{})[d];return `<label class="co-arow"><span>${esc(label)}</span><input type="number" min="0" step="0.25" inputmode="decimal" data-type="num" data-bind="co.alloc.${d}" value="${esc(v??"")}" placeholder="0"><button class="btn ghost small" data-act="co-rest" data-dest="${d}" type="button">${left>0?"+ the rest":"All"}</button></label>`;}).join("")}</div>
+      <p class="co-left ${ready?"ok":""}">${ready?"✅ All of it is placed.":left>0?`${money(left)} left to place`:left<0?`${money(-left)} too much`:bad?"Use quarters ($0.25 steps)":""}${!ready&&bad&&left===0?"":""}</p>`;}
+  else if(st==="save"){const gi=Object.entries(p.goalInterest);
+    body=`<div class="co-lines">${p.storage.save>0?`${coLine("Savings from earnings",money(p.storage.save))}${Object.entries(p.saveParts).map(([id,v])=>coLine(`→ ${esc(goalName(ks,id))}`,money(v),"sub")).join("")}`:""}
+      ${gi.map(([id,v])=>coLine(`Interest → ${esc(goalName(ks,id))}`,money(v))).join("")}</div>
+      <p class="hint">${esc(k.name)} sets how savings split between goals on their own screen (Save card).</p>`;}
+  else{const items=coHandoff(k,ks,p);c.checks=c.checks||{};
+    body=items.length?`<div class="checks">${items.map((t,i)=>{const on=!!c.checks[i];return `<button class="check ${on?"on":""}" data-act="co-check" data-i="${i}" aria-pressed="${on}"><span class="box">${on?"✓":""}</span><span class="co-hand">${t}</span></button>`;}).join("")}</div>`:`<p class="sub">Nothing to hand over this time.</p>`;
+    ready=items.every((_,i)=>c.checks[i]);}
+  const last=c.step===steps.length-1;
+  return `<div class="focus co" role="dialog" aria-modal="true" aria-labelledby="co-title"><div class="fx-top"><button class="btn ghost small" data-act="co-close">Cancel</button><span class="pill">💵 Cash-out: ${esc(k.name)}</span></div>
+    <div class="co-dots" aria-label="Step ${c.step+1} of ${steps.length}">${steps.map((x,i)=>`<span class="${i<c.step?"done":i===c.step?"on":""}">${i<c.step?"✓":i+1}</span>`).join("")}</div>
+    <h2 id="co-title">${CO_TITLES[st]}</h2><div class="co-body">${body}</div>
+    <div class="row co-nav">${c.step?`<button class="btn ghost" data-act="co-back">Back</button>`:""}<button class="btn" data-act="${last?"co-finish":"co-next"}" ${!ready||busy?"disabled":""}>${busy?"Saving…":last?"✓ Finish cash-out":"✓ Looks right"}</button></div></div>`;}
 function pGoals(){
   return kidsSorted().map(k=>{const ks=kidState(k.id),b=S.ui.buy,pg=S.ui.pgoal[k.id]||(S.ui.pgoal[k.id]={name:"",target:""});
     return `<section class="card"><div class="sec-head"><h2>${esc(k.name)}</h2><span class="sub">Invest ${money(ks.invest)}, Give ${money(ks.give)}</span></div>
@@ -1062,9 +1114,10 @@ async function doChore(kidId,choreId,note,ms){
   catch(e){toast(errMsg(e));}
   finally{delete S.busy["c:"+choreId];render();}
 }
-async function doCashout(kidId){
-  const weeks=cashWeeks(kidId);if(!weeks)return;const p=cashoutPlan(kidId,weeks);const k=kidCfg(kidId);
-  if(!confirm(`Cash out ${k.name}${weeks.length>1?` for ${weeks.length} weeks in one lump`:""}? Hand over ${money(p.cash)} in cash${p.owed?` and collect ${money(p.owed)}`:""}.`))return;
+async function doCashout(kidId,alloc){
+  const weeks=cashWeeks(kidId);if(!weeks)return false;const p=cashoutPlan(kidId,weeks,alloc);const k=kidCfg(kidId);
+  if(!p.allocOk){toast(`Split all ${money(p.interest)} of interest first.`);return false;}
+  let ok=false;
   const month=ymd().slice(0,7);S.busy["co:"+kidId]=true;render();
   try{await runTransaction(db,async t=>{
     const refs=weeks.map(wk=>weekRef(kidId,wk)),bref=doc(db,"bank",kidId);const snaps=[];for(const r of refs)snaps.push(await t.get(r));const bs=await t.get(bref);
@@ -1072,15 +1125,16 @@ async function doCashout(kidId){
     const b=Object.assign({goalBal:{},invest:0,give:0,archived:[],stats:{}},bs.exists()?bs.data():{});
     const addGoal=(id,amt)=>{if(amt)b.goalBal[id]=r2((b.goalBal[id]||0)+amt);};
     for(const id in p.saveParts)addGoal(id,p.saveParts[id]);b.invest=r2((b.invest||0)+p.storage.invest);b.give=r2((b.give||0)+p.storage.give);
-    if(p.interestDue){b.lastInterestMonth=month;addGoal(p.interestTo,p.goalInterest);}
+    if(p.interestDue){b.lastInterestMonth=month;for(const id in p.goalInterest)addGoal(id,p.goalInterest[id]);}
     b.stats.chores=(b.stats.chores||0)+p.chores;b.stats.goalHits=(b.stats.goalHits||0)+p.goalHits;b.stats.earned=r2((b.stats.earned||0)+p.earned+p.bonus);
     const at=Date.now(),last=ws.length-1;
     ws.forEach((w,i)=>{const x=p.parts[i],final=i===last;w.closed=true;
-      w.cashout={at,by:parentName(),weeks,net:x.net,goal:x.goal,met:x.met,bonus:x.bonus,interest:final?p.interest:0,cash:final?p.cash:0,owed:final?p.owed:0,storage:final?p.storage:{save:0,invest:0,give:0},saveParts:final?p.saveParts:{},goalInterest:final?p.goalInterest:0,combinedInto:final?null:weeks[last]};
+      w.cashout={at,by:parentName(),weeks,net:x.net,goal:x.goal,met:x.met,bonus:x.bonus,interest:final?p.interest:0,cash:final?p.cash:0,owed:final?p.owed:0,storage:final?p.storage:{save:0,invest:0,give:0},saveParts:final?p.saveParts:{},goalInterest:final?p.goalInterest:{},interestAlloc:final?p.interestAlloc:{},combinedInto:final?null:weeks[last]};
       w.deductions=w.deductions.map(d=>d.status==="active"?{...d,status:"final"}:d);t.set(refs[i],w);});
-    t.set(bref,b);});toast(`${k.name} is cashed out.`);}
+    t.set(bref,b);});ok=true;toast(`${k.name} is cashed out.`);}
   catch(e){toast("Couldn't cash out: "+errMsg(e));}
   finally{delete S.busy["co:"+kidId];render();}
+  return ok;
 }
 async function enablePush(silent){
   try{const m=await messaging();if(!m){if(!silent)toast("This device can't get reminders.");return;}
@@ -1222,7 +1276,15 @@ async function handleAct(act,ds){
     S.ui.ded={kid:d.kid,amount:0.25,reason:"",how:"",type:"ded"};break;}
   case "redeem": guard(txWeek(ds.kid,ds.wk,w=>{const e=w.deductions.find(x=>x.id===ds.id);if(e){e.status="redeemed";e.redeemedBy=parentName();}}).then(()=>setDoc(doc(db,"bank",ds.kid),{stats:{redemptions:increment(1)}},{merge:true})),"Earned back. Nice comeback.");return;
   case "remove-ded": if(!confirm("Remove this deduction entirely? Use this for mistakes. To reward a comeback, use Earned back instead."))return;guard(txWeek(ds.kid,ds.wk,w=>{w.deductions=w.deductions.filter(x=>x.id!==ds.id);}));return;
-  case "cashout": doCashout(ds.kid);return;
+  case "co-start":{const ks=kidState(ds.kid),weeks=cashWeeks(ds.kid);if(!weeks)return;const p=cashoutPlan(ds.kid,weeks);
+    S.ui.co={kid:ds.kid,step:0,alloc:{...p.interestAlloc},checks:{}};try{if(document.documentElement.requestFullscreen&&!document.fullscreenElement)document.documentElement.requestFullscreen().catch(()=>{});}catch(e){}break;}
+  case "co-close":if(S.ui.co&&cashWeeks(S.ui.co.kid)&&S.ui.co.step>0&&!confirm("Stop this cash-out? Nothing has been saved yet."))return;S.ui.co=null;try{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});}catch(e){}break;
+  case "co-next":S.ui.co.step++;S.ui.co.checks={};break;
+  case "co-back":S.ui.co.step--;S.ui.co.checks={};break;
+  case "co-check":{const c=S.ui.co;c.checks[ds.i]=!c.checks[ds.i];break;}
+  case "co-rest":{const c=S.ui.co,weeks=cashWeeks(c.kid);if(!weeks)return;const p=cashoutPlan(c.kid,weeks,c.alloc);const others=Object.entries(c.alloc||{}).filter(([d])=>d!==ds.dest).reduce((t,[,v])=>t+(Number(v)||0),0);
+    c.alloc={...c.alloc,[ds.dest]:Math.max(0,r2(p.interest-others))};if(r2(p.interest-others)<=0)c.alloc={[ds.dest]:p.interest};break;}
+  case "co-finish":{const c=S.ui.co;const ok=await doCashout(c.kid,c.alloc);if(ok&&S.ui.co){confetti(120);chime(true);}break;}
   case "buy-goal":{const g=kidState(ds.kid).goals.find(x=>x.id===ds.goal);S.ui.buy={kid:ds.kid,goal:ds.goal,amount:g?g.balance:0};break;}
   case "cancel-buy": S.ui.buy=null;break;
   case "confirm-buy":{const b=S.ui.buy;const amt=r2(b.amount);const g0=kidState(b.kid).goals.find(x=>x.id===b.goal);
@@ -1296,6 +1358,7 @@ document.addEventListener("click",e=>{const el=e.target.closest("[data-act]");if
 document.addEventListener("input",e=>{const el=e.target;if(!el.dataset.bind)return;let v=el.value;if(el.type==="checkbox")v=el.checked;else if(el.dataset.type==="num")v=v===""?"":Number(v);setPath(S.ui,el.dataset.bind,v);
   if(el.type==="checkbox"&&/^draft\.(kids\.\d+\.adult|game\.)/.test(el.dataset.bind)){render();return;}
   if(el.dataset.bind==="focus.note"&&S.ui.focus){saveFocus();const f=S.ui.focus,left=stepsOf(choreById(f.id)).filter((_,i)=>!f.checked.includes(i)).length,b=document.querySelector('[data-act="fx-done"]');if(b)b.disabled=!!left||!String(v).trim();}
+  if(el.dataset.bind.startsWith("co.alloc.")){softRender(true);return;}
   if(el.dataset.bind.startsWith("dishes.")){const b=document.querySelector(`[data-act="dd-submit"][data-id="${el.dataset.bind.slice(7)}"]`);if(b)b.disabled=!(v!==""&&Number.isInteger(v)&&v>=0&&v<=G.MAX_RUSH_ITEMS)||!!S.busy.b;}
   if(el.dataset.bind==="rush.count"){const b=document.querySelector('[data-act="rr-submit"]');if(b)b.disabled=!(v!==""&&Number.isInteger(v)&&v>=0&&v<=G.MAX_RUSH_ITEMS)||!!S.busy.b;}
   if(el.dataset.bind==="confirmChore.note"||el.dataset.bind==="prNote.text"){const b=document.querySelector(el.dataset.bind==="confirmChore.note"?'[data-act="confirm-chore"]':'[data-act="save-pr-note"]');if(b)b.disabled=!String(v).trim();}
