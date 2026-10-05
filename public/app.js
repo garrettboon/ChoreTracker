@@ -17,7 +17,7 @@ const r2=n=>Math.round((Number(n)||0)*100)/100;
 const q=n=>Math.round((Number(n)||0)*4)/4;
 const qd=n=>Math.floor((Number(n)||0)*4+1e-9)/4;   // round down to the nearest quarter
 const BONUS_RATE=.25;   // bonus for reaching the weekly goal, as a share of the goal
-const money=n=>(n<0?"−":"")+"$"+Math.abs(r2(n)).toFixed(2);
+const money=n=>(n<0?"−":"")+"$"+Math.abs(r2(n)).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 const uid=()=>Math.random().toString(36).slice(2,10);
 const clone=o=>JSON.parse(JSON.stringify(o));
 function ymd(d=new Date()){const z=n=>String(n).padStart(2,"0");return d.getFullYear()+"-"+z(d.getMonth()+1)+"-"+z(d.getDate());}
@@ -276,7 +276,7 @@ function viewKid(kidId,embedded){
   if(S.ui.pickCreature)h+=wardrobe(k.id);
   h+=familyBar(true)+freezeNotice(k.id)+reminderBanner(k,ks,today);
   h+=w.goal==null?goalSetter(k,wk):goalCard(k,ks,w,net,cr);
-  h+=battleSection(k)+bountySection(k)+warningCards(k,ks)+challengeCards(k.id)+prSection(k,ks,today)+choreSection(k,today)+moneySection(k,ks,w,net)+questSection(k)+rewardSection(k)+badgeSection(k.id)+activitySection(w);
+  h+=battleSection(k)+bountySection(k)+warningCards(k,ks)+challengeCards(k.id)+prSection(k,ks,today)+choreSection(k,today)+(k.adult?adultSavings(k,ks):moneySection(k,ks,w,net))+questSection(k)+rewardSection(k)+badgeSection(k.id)+activitySection(w);
   return h+(embedded?"":`</div>`);
 }
 function pushControl(){
@@ -295,6 +295,11 @@ function reminderBanner(k,ks,today){
 function goalSetter(k,wk){
   const last=weekNet(getWeek(k.id,addDays(wk,-7)));const dl=daysLeft(wk);const max=r2(famChoresFor(k.id).reduce((s,c)=>{const L=limitState(k.id,c,wk),perDay=Math.min(L.lim,L.flim||Infinity),room=L.wlim?Math.max(0,L.wlim-L.wk):Infinity;return s+choreValue(k,c)*Math.min(perDay*dl,room);},0));
   const v=Number(S.ui.goalInput)||0;const chips=last>0?[q(last),q(last*1.25),q(last*1.5)]:[1,2.5,5];
+  if(k.adult)return `<section class="card goal goal-set"><h2>Your goal for the race this week</h2>
+    <p class="sub">It moves your lane on the family board, like the kids'. Nothing is paid out.${last>0?` Last week you reached ${money(last)}.`:""}</p>
+    <div class="chips">${[...new Set(chips)].filter(c=>c>0).map(c=>`<button data-act="goal-chip" data-v="${c}">${money(c)}</button>`).join("")}</div>
+    <div class="money-in">$<input type="number" inputmode="decimal" step="0.25" min="0.25" aria-label="Weekly race goal" data-bind="goalInput" value="${esc(S.ui.goalInput)}"></div>
+    <button class="btn block" data-act="set-goal">Lock in my goal</button></section>`;
   return `<section class="card goal goal-set"><h2>What do you want to earn this week?</h2>
     <p class="sub">${last>0?`Last week you earned ${money(last)}. `:""}Doing every chore every day would earn about ${money(max)}.</p>
     <div class="chips">${[...new Set(chips)].filter(c=>c>0).map(c=>`<button data-act="goal-chip" data-v="${c}">${money(c)}</button>`).join("")}</div>
@@ -304,6 +309,9 @@ function goalSetter(k,wk){
 }
 function goalCard(k,ks,w,net,cr){
   const won=net>=w.goal,bonus=r2(w.goal*BONUS_RATE),bt=w.bonusTo||"split";
+  if(k.adult)return `<section class="card goal ${won?"won":""}"><div class="goal-top"><div><div class="big">${money(net)}</div><p class="sub">of your ${money(w.goal)} race goal</p></div>
+    <div class="bonus">${won?"Goal reached":"Reach it for"}<b>+${G.XP.goal} XP</b><small>Not paid, just for the race</small></div></div>${trail(net/w.goal,crHtml(k.id),won,undefined,equipped(k.id).trail)}
+    <p class="goal-msg">${won?"Goal reached! 🎉":`${money(w.goal-net)} to go`}</p></section>`;
   return `<section class="card goal ${won?"won":""}"><div class="goal-top"><div><div class="big">${money(net)}</div><p class="sub">of your ${money(w.goal)} goal</p></div>
     <div class="bonus">${won?"Bonus earned":"Bonus if you make it"}<b>+${money(bonus)}</b><small>and +${G.XP.goal} XP</small></div></div>${trail(net/w.goal,crHtml(k.id),won,undefined,equipped(k.id).trail)}
     <p class="goal-msg">${won?"Goal reached! Your bonus is locked in.":`${money(w.goal-net)} to go`}</p>
@@ -340,6 +348,14 @@ function updateSplitUI(){const el=document.querySelector(".split");if(!el)return
   const proj=ok?splitCents(Number(el.dataset.weekSave)||0,fr):{};rows.forEach(r=>{r.querySelector(".proj").textContent=ok?"+"+money(proj[r.dataset.goal]||0)+" this week":"";});
   const t=el.querySelector(".split-total");t.textContent=`Total ${total}%${ok?"":" (make it 100%)"}`;t.classList.toggle("bad",!ok);
   el.querySelector('[data-act="save-split"]').disabled=!(ok&&JSON.stringify(cur)!==S.ui.split.base);}
+// Grown-ups aren't paid: no Spend, Invest, Give, or cash-out. Their savings goals are for the kids to see,
+// with the saved amount typed in by hand.
+function adultSavings(k,ks){const g=S.ui.newGoal,eg=S.ui.editGoal,goals=ks.goals.filter(x=>x.id!=="general"||x.balance>0);
+  return `<section class="card"><div class="sec-head"><h2>My savings goals</h2></div><p class="hint" style="margin-top:0">Just for the kids to see you saving too. Grown-ups don't get paid or cashed out, so update the amount yourself.</p>
+    ${goals.length?goals.map(x=>eg&&eg.kid===k.id&&eg.goal===x.id&&eg.amountOnly?`<div class="sgoal"><div class="row"><label style="flex:2 1 140px">Saved so far for ${esc(x.name)}<input type="number" step="1" min="0" inputmode="decimal" data-type="num" data-bind="editGoal.amount" value="${esc(eg.amount)}"></label><button class="btn small" data-act="adult-save-amt">Save</button><button class="btn ghost small" data-act="cancel-edit-goal">Cancel</button></div></div>`
+      :`<div class="sgoal"><div class="top"><span>${esc(x.name)}${x.id==="general"?"":`<button class="sg-del" data-act="del-goal" data-kid="${k.id}" data-goal="${x.id}" aria-label="Delete ${esc(x.name)}" title="Delete this goal">✕</button>`}</span><span>${money(x.balance)}${x.target?" / "+money(x.target):""} <button class="btn ghost small" data-act="adult-edit-amt" data-kid="${k.id}" data-goal="${x.id}">✏️ Update</button></span></div>${x.target?`<div class="bar"><i style="width:${Math.min(100,x.balance/x.target*100)}%"></i></div>`:""}</div>`).join("")
+      :`<p class="empty">No savings goals yet. Add one the kids can cheer you on for.</p>`}
+    <div class="mini-form"><input placeholder="New goal" aria-label="New goal name" data-bind="newGoal.name" value="${esc(g.name)}"><input type="number" inputmode="decimal" placeholder="$" aria-label="Goal amount" data-bind="newGoal.target" value="${esc(g.target)}"><button class="btn small" data-act="add-goal">Add</button></div></section>`;}
 function moneySection(k,ks,w,net){const sp=splitAmt(Math.max(0,net)),goals=ks.goals,g=S.ui.newGoal,open=S.ui.openBuckets,pc=cfg().split;
   // One column of cards, collapsed by default. The header always shows the total; cards with details open on tap.
   const card=(id,cls,name,total,sub,body)=>{const o=!!open[id],x=!!body;
@@ -704,9 +720,13 @@ function viewDisplay(){
     return `<section class="lane ${won?"won":""}" data-kid="${k.id}"><div class="lane-who"><span class="lane-cr">${crHtml(k.id)}</span><div><h2>${esc(k.name)}</h2><span class="lvl-badge">Lv ${x.level}</span> <span class="streak">🔥 ${s}</span><small class="lane-title">${esc(titleOf(k.id))}</small></div></div>
       <div class="lane-track">${w.goal?trail(net/w.goal,crHtml(k.id),won,`${esc(k.name)} is at ${Math.round(net/w.goal*100)}% of their goal`,equipped(k.id).trail):`<p class="sub">Waiting for this week's goal</p>`}</div>
       <div class="lane-num"><b>${money(net)}</b><span>${w.goal?"of "+money(w.goal):"No goal yet"}</span>${w.goal?`<em class="${won?"won-note":""}">${won?"Goal reached!":Math.round(net/w.goal*100)+"%"}</em>`:""}</div>
+      ${k.adult?adultSaving(ks):""}
 </section>`;}).join("")}</div>
   <footer class="ticker">${[...ups,...(recent.length?["Latest: "+recent.join("&emsp;")]:[])].join("&emsp;")||"No chores done yet this week. Who's first?"}</footer></div>`;
 }
+// On the family display, what a grown-up is saving toward, so the kids see it.
+function adultSaving(ks){const gs=ks.goals.filter(g=>g.id!=="general"&&g.target>0);if(!gs.length)return "";
+  return `<div class="lane-save">💰 Saving for ${gs.map(g=>`<b>${esc(g.name)}</b> ${money(g.balance)} of ${money(g.target)}`).join(" · ")}</div>`;}
 // Live battles across the top of the family display.
 function battleStrip(){const bl=battleList().filter(b=>b.live&&b.status!=="pending");if(!bl.length)return "";
   return `<div class="battle-strip" aria-label="Battles going on">${bl.map(b=>{const m=G.modeById(b.mode)||{emoji:"⚔️",name:"Battle"};const r=b.result||{};
@@ -860,7 +880,7 @@ function pDeductions(){
     ${e.status==="active"?`<button class="btn small" data-act="redeem" data-kid="${k.id}" data-wk="${w.week}" data-id="${e.id}">Earned back</button>`:""}<button class="btn ghost small" data-act="remove-ded" data-kid="${k.id}" data-wk="${w.week}" data-id="${e.id}">Remove</button></li>`;}
   return `<section class="card"><div class="sec-head"><h2>Add a deduction or warning</h2></div>
     <div class="seg" style="margin-bottom:10px"><button class="${warn?"":"on"}" data-act="ded-type" data-type="ded" aria-pressed="${!warn}">💸 Deduction</button><button class="${warn?"on":""}" data-act="ded-type" data-type="warn" aria-pressed="${warn}">⚠️ Warning (no money)</button></div>
-    <div class="row"><label>Who<select data-bind="ded.kid">${kidsSorted().map(k=>`<option value="${k.id}" ${k.id===d.kid?"selected":""}>${esc(k.name)}</option>`).join("")}</select></label>
+    <div class="row"><label>Who<select data-bind="ded.kid">${kidsSorted().filter(k=>!k.adult).map(k=>`<option value="${k.id}" ${k.id===d.kid?"selected":""}>${esc(k.name)}</option>`).join("")}</select></label>
     ${warn?"":`<label>Amount<input type="number" step="0.25" min="0.25" inputmode="decimal" data-bind="ded.amount" data-type="num" value="${esc(d.amount)}"></label>`}</div>
     <div class="row" style="margin-top:10px"><label>Reason<input data-bind="ded.reason" value="${esc(d.reason)}" placeholder="Bad attitude at dinner"></label></div>
     ${warn?"":`<div class="row" style="margin-top:10px"><label>How to earn it back<input data-bind="ded.how" value="${esc(d.how)}" placeholder="Apologize and keep a good attitude the rest of the day"></label></div>`}
@@ -897,7 +917,7 @@ function cashoutPlan(kidId,weeks,alloc){
     chores:parts.reduce((t,p)=>t+p.chores,0),activeDed:parts.reduce((t,p)=>t+p.activeDed,0),goalHits:parts.filter(p=>p.met).length,earned:r2(parts.reduce((t,p)=>t+Math.max(0,p.net),0))};
 }
 function pCashout(){
-  return (new Date().getDay()===0?"":`<p class="hint">It isn't Sunday yet. Cashing out now closes this week early.</p>`)+kidsSorted().map(k=>{
+  return (new Date().getDay()===0?"":`<p class="hint">It isn't Sunday yet. Cashing out now closes this week early.</p>`)+kidsSorted().filter(k=>!k.adult).map(k=>{
     const ks=kidState(k.id),weeks=cashWeeks(k.id);
     if(!weeks){const c=getWeek(k.id,mondayOf(new Date())).cashout;return `<section class="card"><div class="sec-head"><h2>${esc(k.name)}</h2><span class="sub">Cashed out</span></div>${c?`<div class="handoff">Handed <b>${money(c.cash)}</b> in cash. Into storage: Save <b>${money(c.storage.save)}</b>, Invest <b>${money(c.storage.invest)}</b>, Give <b>${money(c.storage.give)}</b>.${c.owed?` Collected <b>${money(c.owed)}</b> from Spend.`:""}</div>`:""}</section>`;}
     const p=cashoutPlan(k.id,weeks,{}),multi=weeks.length>1,one=p.parts[0];
@@ -957,7 +977,7 @@ function cashoutWizard(){const c=S.ui.co,k=kidCfg(c.kid),weeks=k&&cashWeeks(c.ki
     <div class="row co-nav">${c.step?`<button class="btn ghost" data-act="co-back">Back</button>`:""}<button class="btn" data-act="${last?"co-finish":"co-next"}" ${!ready||busy?"disabled":""}>${busy?"Saving…":last?"✓ Finish cash-out":"✓ Looks right"}</button></div></div>`;}
 function pGoals(){
   return kidsSorted().map(k=>{const ks=kidState(k.id),b=S.ui.buy,pg=S.ui.pgoal[k.id]||(S.ui.pgoal[k.id]={name:"",target:""});
-    return `<section class="card"><div class="sec-head"><h2>${esc(k.name)}</h2><span class="sub">Invest ${money(ks.invest)}, Give ${money(ks.give)}</span></div>
+    return `<section class="card"><div class="sec-head"><h2>${esc(k.name)}</h2><span class="sub">${k.adult?"Savings goals only (grown-ups aren't paid)":`Invest ${money(ks.invest)}, Give ${money(ks.give)}`}</span></div>
     ${ks.goals.map(g=>{const eg=S.ui.editGoal;if(eg&&eg.kid===k.id&&eg.goal===g.id)return `<div class="flag-row"><span class="row" style="flex:1"><label style="flex:2 1 140px">Name<input aria-label="Goal name" data-bind="editGoal.name" value="${esc(eg.name)}"></label><label style="flex:1 1 90px">Amount<input type="number" step="0.25" min="0.25" inputmode="decimal" aria-label="Goal amount" data-bind="editGoal.target" data-type="num" value="${esc(eg.target)}"></label><button class="btn small" data-act="save-goal">Save</button><button class="btn ghost small" data-act="cancel-edit-goal">Cancel</button></span></div>`;
       return `<div class="flag-row"><span><b>${esc(g.name)}</b><br><small>${money(g.balance)}${g.target?" of "+money(g.target):""}</small></span>
       ${b&&b.kid===k.id&&b.goal===g.id?`<span class="row" style="flex:0 1 260px"><input type="number" step="0.25" inputmode="decimal" aria-label="Purchase amount" data-bind="buy.amount" data-type="num" value="${esc(b.amount)}"><button class="btn small" data-act="confirm-buy">Log</button><button class="btn ghost small" data-act="cancel-buy">Cancel</button></span>`
@@ -973,8 +993,8 @@ function balanceForm(k,ks){
   return `<div class="adjust"><h3>What ${esc(k.name)} has right now</h3><p class="hint" style="margin:0 0 10px">Use this for money from before the app, or to fix a mistake. Spend is handed over as cash each week, so it has no balance here.</p>
     <h4>Save <small>Total <b class="save-total">${money(saveTotal)}</b>. Split it between general savings and any goals.</small></h4>
     <div class="grid-2">${ks.goals.map(g=>field(g.name,`adjust.goalBal.${g.id}`,a.goalBal[g.id])).join("")}</div>
-    <h4>Invest</h4><div class="grid-2">${field("Invest balance","adjust.invest",a.invest)}</div>
-    <h4>Give</h4><div class="grid-2">${field("Give balance","adjust.give",a.give)}</div>
+    ${k.adult?"":`<h4>Invest</h4><div class="grid-2">${field("Invest balance","adjust.invest",a.invest)}</div>
+    <h4>Give</h4><div class="grid-2">${field("Give balance","adjust.give",a.give)}</div>`}
     <div class="row" style="margin-top:12px"><button class="btn small" data-act="save-bal">Save balances</button><button class="btn ghost small" data-act="cancel-bal">Cancel</button></div></div>`;
 }
 function pDevices(){
@@ -1205,6 +1225,9 @@ async function handleAct(act,ds){
   case "b-finish":{const r=await bcall("finishAttempt",{id:ds.id});if(r){confetti(80);chime(true);toast(r.ms!=null?`Done in ${fmtMs(r.ms)}! Chore logged.`:"Turned in! Chore logged.");}break;}
   case "chore-icon": S.ui.draft.chores[Number(ds.i)].icon=ds.icon;break;
   case "fix-pr": setPrDay(ds.kid,ds.id,true,ds.date);return;
+  case "adult-edit-amt":{const g=kidState(ds.kid).goals.find(x=>x.id===ds.goal);S.ui.editGoal={kid:ds.kid,goal:ds.goal,amountOnly:true,amount:g?g.balance:0};break;}
+  case "adult-save-amt":{const e=S.ui.editGoal;if(!e)return;const v=r2(Math.max(0,Number(e.amount)||0));S.ui.editGoal=null;
+    guard(setDoc(doc(db,"bank",e.kid),{goalBal:{[e.goal]:v}},{merge:true}),`Saved: ${money(v)}.`);break;}
   case "fix-day":{const ids=prChores().map(c=>c.id),day=parseYmd(ds.date).toLocaleDateString(undefined,{weekday:"long"});
     guard(setDoc(doc(db,"prefs",ds.kid),{prLog:{[ds.date]:arrayUnion(...ids)},prDone:{[ds.date]:true}},{merge:true}),`Fixed. ${kidCfg(ds.kid).name}'s ${day} counts toward the streak.`);return;}
   case "fix-pick":S.ui.fix={kid:ds.kid,date:ds.date};break;

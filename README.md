@@ -140,6 +140,8 @@ What levels unlock: new creatures (the first 13 stay free), accessories, screen 
 | Kids vs. Grown-ups | level 15 | Team battle; the kids' team gets a handicap |
 | Wildcard | level 20 | A random mode, often with a twist like "Clean bathroom counts double" |
 
+**Grown-ups:** grown-ups (ticked **Adult** in People) aren't paid, so their screen is simpler. Their weekly goal is a race goal that moves their lane on the family board, like the kids', but there's no bonus and nothing is cashed out. Instead of Spend, Save, Invest, and Give, they get **My savings goals**: add a goal and tap **✏️ Update** to type in how much they've saved. The family display shows it under their lane ("💰 Saving for Family trip $1,350.00 of $3,000.00") so the kids can cheer them on. Grown-ups don't appear in cash-out or deductions.
+
 **Updates:** a screen left open picks up new versions by itself. It checks every 10 minutes and whenever the app comes back to the front. It reloads when nobody's in the middle of something; otherwise it shows **Update now**.
 
 **Calling off a battle:** a challenger can take back a challenge nobody has answered. Once a battle is running, tap **Call it off** on its card: in a solo battle (Ghost Race too) that cancels it right away; with other players, everyone has to tap **Agree** first, so nobody can bail out just because they're behind. A parent can call off any unfinished battle from the Game tab. Called-off battles pay no XP and don't count toward battle limits, and any full-screen run for them closes.
