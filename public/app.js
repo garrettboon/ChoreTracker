@@ -381,9 +381,12 @@ const badgeKind=id=>({first:"chores",fifty:"chores",bought:"bought",comeback:"co
 function badgeSection(kidId){const b=badgeList(kidId),got=b.filter(x=>x[3]),open=S.ui.allBadges,kinds=new Set();
   const next=b.filter(x=>!x[3]&&!kinds.has(badgeKind(x[0]))&&kinds.add(badgeKind(x[0]))).slice(0,4);
   const shown=open?b:[...got,...next];
-  const tile=x=>`<div class="badge ${x[3]?"":"locked"}" title="${esc(x[4])}"><span>${x[1]}</span>${esc(x[2])}${!x[3]&&!/\d/.test(x[2])?`<small>${esc(x[4])}</small>`:""}</div>`;
+  // Tap a badge to see how it's earned (tablets have no hover).
+  const sel=S.ui.badgeInfo&&S.ui.badgeInfo.kid===kidId?S.ui.badgeInfo.id:null,pick=b.find(x=>x[0]===sel);
+  const tile=x=>`<button type="button" class="badge ${x[3]?"":"locked"} ${x[0]===sel?"sel":""}" data-act="badge-info" data-kid="${kidId}" data-id="${x[0]}" aria-pressed="${x[0]===sel}" title="${esc(x[4])}"><span>${x[1]}</span>${esc(x[2])}${!x[3]&&!/\d/.test(x[2])?`<small>${esc(x[4])}</small>`:""}</button>`;
+  const info=pick&&shown.includes(pick)?`<div class="badge-info" role="status"><span>${pick[1]}</span><div><b>${esc(pick[2])}</b>${pick[3]?" ✅ Earned":" 🔒 Not yet"}<br>${esc(pick[4])}.</div><button class="btn ghost small" data-act="badge-info" data-kid="${kidId}" data-id="${pick[0]}" aria-label="Close">✕</button></div>`:"";
   return `<section class="card"><div class="sec-head"><h2>Badges</h2><span class="sub">${got.length} of ${b.length}. +${G.XP.badge} XP each</span></div>
-    <div class="badges">${shown.map(tile).join("")}</div>
+    ${info}<div class="badges">${shown.map(tile).join("")}</div>
     <button class="btn ghost small" style="margin-top:10px" data-act="all-badges" aria-expanded="${!!open}">${open?"Show fewer":`Show all ${b.length}`}</button></section>`;}
 function choreLine(e){const rev=e.status==="reversed";return [`<span class="${rev?"struck":""}">${icon(choreById(e.choreId)||{name:e.name,kind:"family"})}${esc(e.name)}${e.ms?` <small class="took">⏱ ${fmtMs(e.ms)}</small>`:""}${e.detail?`: ${esc(e.detail)}`:""}<br><small>${timeOf(e.t)}${rev?", reversed":""}</small></span>`,`<span class="amt ${rev?"struck":"pos"}">+${money(e.amount)}</span>`];}
 function dedLine(d){const st={active:"can still earn back",redeemed:"earned back",final:"final"}[d.status]||d.status;return [`<span class="${d.status==="redeemed"?"struck":""}">${esc(d.reason)}<br><small>${timeOf(d.t)}, ${st}</small></span>`,`<span class="amt ${d.status==="redeemed"?"struck":"neg"}">−${money(d.amount)}</span>`];}
@@ -1225,6 +1228,7 @@ async function handleAct(act,ds){
   case "b-finish":{const r=await bcall("finishAttempt",{id:ds.id});if(r){confetti(80);chime(true);toast(r.ms!=null?`Done in ${fmtMs(r.ms)}! Chore logged.`:"Turned in! Chore logged.");}break;}
   case "chore-icon": S.ui.draft.chores[Number(ds.i)].icon=ds.icon;break;
   case "fix-pr": setPrDay(ds.kid,ds.id,true,ds.date);return;
+  case "badge-info":{const cur=S.ui.badgeInfo;S.ui.badgeInfo=cur&&cur.kid===ds.kid&&cur.id===ds.id?null:{kid:ds.kid,id:ds.id};break;}
   case "adult-edit-amt":{const g=kidState(ds.kid).goals.find(x=>x.id===ds.goal);S.ui.editGoal={kid:ds.kid,goal:ds.goal,amountOnly:true,amount:g?g.balance:0};break;}
   case "adult-save-amt":{const e=S.ui.editGoal;if(!e)return;const v=r2(Math.max(0,Number(e.amount)||0));S.ui.editGoal=null;
     guard(setDoc(doc(db,"bank",e.kid),{goalBal:{[e.goal]:v}},{merge:true}),`Saved: ${money(v)}.`);break;}

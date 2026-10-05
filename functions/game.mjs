@@ -308,7 +308,7 @@ export function badgeList(s) {
     // Mornings
     b("early3", "🌅", "Early bird", n(s.earlyBest) >= 3, "Do 3 chores before 9 AM in one day"),
     b("early5", "🐓", "Rise and shine", n(s.earlyBest) >= 5, "Do 5 chores before 9 AM in one day"),
-    b("early25", "☀️", "Morning person", n(s.early) >= 25, "Do 25 chores before 9 AM"),
+    b("early25", "☀️", "Morning person", n(s.early) >= 25, "Do 25 chores before 9 AM, added up over any number of days"),
     // Daily checklist
     b("streak3", "✨", "3-day streak", n(s.bestStreak) >= 3, "Finish your daily list 3 days in a row"),
     b("streak7", "🔥", "7-day streak", n(s.bestStreak) >= 7, "Finish your daily list 7 days in a row"),
@@ -350,6 +350,9 @@ export function badgeList(s) {
     // One per battle mode: win it once. modeWins: { modeId: wins }
     ...MODE_BADGES.filter(([m]) => ACTIVE_MODES.some((x) => x.id === m))
       .map(([m, emoji, name, how]) => b("mode_" + m, emoji, name, n((s.modeWins || {})[m]) >= 1, how)),
+    // And a star version for the fifth win in each mode.
+    ...MODE_BADGES.filter(([m]) => ACTIVE_MODES.some((x) => x.id === m))
+      .map(([m, emoji, name, how]) => b("mode5_" + m, emoji + "🌟", name + " pro", n((s.modeWins || {})[m]) >= 5, how + " 5 times")),
   ];
 }
 // [mode id, emoji, badge name, how to earn it]

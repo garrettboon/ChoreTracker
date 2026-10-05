@@ -141,6 +141,10 @@ test("badges", () => {
   // One badge per battle mode, for the first win; a Wildcard win counts for Wildcard and the mode it became.
   for (const m of G.ACTIVE_MODES) assert.ok(none.some((b) => b[0] === "mode_" + m.id), `badge for ${m.id}`);
   assert.ok(!none.some((b) => b[0] === "mode_race"), "no badge for a retired mode");
+  for (const m of G.ACTIVE_MODES) assert.ok(none.some((b) => b[0] === "mode5_" + m.id), `5-win badge for ${m.id}`);
+  const four = G.badgeList({ modeWins: { blitz: 4 } }).filter((b) => b[3]).map((b) => b[0]);
+  assert.deepEqual(four, ["mode_blitz"], "4 wins: just the first-win badge");
+  assert.deepEqual(G.badgeList({ modeWins: { blitz: 5 } }).filter((b) => b[3]).map((b) => b[0]), ["mode_blitz", "mode5_blitz"]);
   const counts = {};
   for (const k of G.modeWinKeys({ mode: "bingo", wildcard: true })) counts[k] = 1;
   assert.deepEqual(G.badgeList({ modeWins: G.modeWinsOf(counts) }).filter((b) => b[3]).map((b) => b[0]), ["mode_bingo", "mode_wildcard"]);
