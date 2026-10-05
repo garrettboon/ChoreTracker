@@ -118,7 +118,7 @@ How XP works:
 
 **How much XP a level takes:** each level needs a bit more than the last. Up to level 10 the extra grows (level 2 takes 60 XP, level 10 to 11 takes 1,197). From level 10 on, each level needs a steady 153 XP more than the one before (1,350 for 11 to 12, 1,503 for 12 to 13, and so on), so the top levels stay within reach. The Levels card in Settings lists every level.
 
-What levels unlock: new creatures (the first 13 stay free), accessories, screen themes, goal-trail styles, confetti styles, titles, battle modes, and **streak freezes**. Freezes come every 5 levels, and you can hold 2. Just after midnight, a freeze covers anyone who missed yesterday's checklist. Creatures also grow as you level: they get a ring at level 5, a glow at 10, and an aura at 20.
+What levels unlock: new creatures (the first 13 stay free), accessories, screen themes, goal-trail styles, confetti styles, titles, battle modes, and **streak freezes**. Freezes come every 5 levels, and you can hold 2. Just after midnight, a freeze covers anyone who missed yesterday's checklist. **Creatures evolve** at levels 5, 10, and 20: Baby → Buddy → Champion → Legend. Each stage is bigger, with a fancier frame around the avatar (none, a blue ring, gold with a glow, then a rainbow ring with sparkles). The kid's screen shows the stage under their name ("★★★☆ Champion Lion · Legend at level 20"), the wardrobe previews all four stages, and reaching a new stage gets its own "Evolved!" screen showing the creature before and after.
 
 **Battles** are opt-in challenges. You earn XP from them, never money:
 

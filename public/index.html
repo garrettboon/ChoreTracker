@@ -251,14 +251,39 @@ body[data-mode="display"] .walker.cheer{animation:victory 1.4s ease-in-out 2}
 .cr .hat-shades{top:.18em;font-size:.5em}
 .cr .hat-bow{left:78%;top:-.18em;font-size:.45em}
 .cr .hat-wand{left:auto;right:-.42em;top:.3em;transform:rotate(18deg);font-size:.5em}
-.cr.stage-2{transform:scale(1.06)}
-.cr.stage-3{transform:scale(1.1);filter:drop-shadow(0 0 5px color-mix(in srgb,var(--sun) 80%,transparent))}
-.cr.stage-4{transform:scale(1.14);animation:aura 2.6s ease-in-out infinite}
-@keyframes aura{0%,100%{filter:drop-shadow(0 0 6px #B388FF) drop-shadow(0 0 2px var(--sun))}50%{filter:drop-shadow(0 0 12px #FFD54F) drop-shadow(0 0 3px #B388FF)}}
-.avatar.stage-2{border-color:var(--sky);box-shadow:0 0 0 3px color-mix(in srgb,var(--sky) 35%,transparent)}
-.avatar.stage-3{border-color:var(--sun);box-shadow:0 0 0 4px color-mix(in srgb,var(--sun) 40%,transparent),0 0 16px color-mix(in srgb,var(--sun) 45%,transparent)}
+.cr.stage-1{font-size:.82em}
+.cr.stage-2{font-size:1em}
+.cr.stage-3{font-size:1.14em;filter:drop-shadow(0 0 5px color-mix(in srgb,var(--sun) 85%,transparent))}
+.cr.stage-4{font-size:1.28em;animation:aura 2.6s ease-in-out infinite}
+@keyframes aura{0%,100%{filter:drop-shadow(0 0 6px #B388FF) drop-shadow(0 0 2px var(--sun))}50%{filter:drop-shadow(0 0 14px #FFD54F) drop-shadow(0 0 4px #B388FF)}}
+/* The avatar frame: bigger and fancier at each stage. */
+.avatar{position:relative}
+.avatar.stage-1{border-style:dashed}
+.avatar.stage-2{width:78px;height:78px;border-color:var(--sky);border-width:3px;box-shadow:0 0 0 3px color-mix(in srgb,var(--sky) 30%,transparent)}
+.avatar.stage-3{width:86px;height:86px;border-color:var(--sun);border-width:3px;box-shadow:0 0 0 4px color-mix(in srgb,var(--sun) 40%,transparent),0 0 18px color-mix(in srgb,var(--sun) 50%,transparent)}
 .avatar.stage-3 .cr{animation:bob 1.8s ease-in-out infinite}
-.avatar.stage-4{border-color:transparent;background:linear-gradient(var(--surface),var(--surface)) padding-box,conic-gradient(#E3A20F,#D5553C,#9B6BD6,#2B7FC2,#2D6A4D,#E3A20F) border-box;border-width:3px}
+.avatar.stage-4{width:94px;height:94px;border-color:transparent;border-width:4px;background:linear-gradient(var(--surface),var(--surface)) padding-box,conic-gradient(#E3A20F,#D5553C,#9B6BD6,#2B7FC2,#2D6A4D,#E3A20F) border-box;box-shadow:0 0 22px color-mix(in srgb,#B388FF 45%,transparent)}
+.avatar.stage-4::before,.avatar.stage-4::after{content:"✨";position:absolute;font-size:.36em;animation:twinkle 1.6s ease-in-out infinite;pointer-events:none}
+.avatar.stage-4::before{top:-.35em;right:-.3em}
+.avatar.stage-4::after{bottom:-.3em;left:-.3em;animation-delay:.8s}
+@keyframes twinkle{0%,100%{opacity:.2;transform:scale(.7)}50%{opacity:1;transform:scale(1.1)}}
+.stage-chip{display:inline-block;font-weight:800;border-radius:99px;padding:0 8px;margin-right:4px;font-size:.82rem;border:1px solid var(--line);background:var(--surface-2);color:var(--ink)}
+.stage-chip{white-space:nowrap}
+.stage-line{margin:4px 0 0;font-size:.9rem}
+.stage-next{font-weight:700;opacity:.7;white-space:nowrap}
+.stage-chip.s2{border-color:var(--sky)}
+.stage-chip.s3{border-color:var(--sun);background:color-mix(in srgb,var(--sun) 18%,var(--surface))}
+.stage-chip.s4{border-color:#9B6BD6;background:color-mix(in srgb,#B388FF 18%,var(--surface))}
+.stages{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:4px 0 14px;text-align:center}
+.stg{display:grid;justify-items:center;align-content:end;gap:4px;font-size:.8rem}
+.stg .avatar{font-size:2rem;cursor:default}
+.stg:not(.got){opacity:.45;filter:grayscale(.8)}
+.stg.on b{color:var(--coral)}
+.evo{display:flex;align-items:center;justify-content:center;gap:14px;margin:10px 0}
+.evo .avatar{font-size:2.6rem}
+.evo-arrow{font-size:2rem;font-weight:800;color:var(--coral)}
+.lu-card.evolve{border-color:#9B6BD6}
+.lu-card.evolve h2{font-size:1.9rem}
 .title-chip{display:inline-block;font-weight:800;color:var(--ink);background:var(--surface-2);border:1px solid var(--line);border-radius:99px;padding:0 8px;margin-right:4px;font-size:.82rem}
 .xpbar{display:flex;align-items:center;gap:10px;margin-top:12px}
 .lvl-badge{display:inline-block;font-family:var(--display);font-weight:700;background:var(--ink);color:var(--bg);border-radius:10px;padding:2px 9px;font-size:.95rem;white-space:nowrap}
@@ -495,7 +520,7 @@ body[data-kidtheme="gold"]{--bg:#FAF2DA;--surface-2:#FDF8EA;--pine:#8A5F04;--tra
 .feed li.has-qc{align-items:flex-start}
 
 @media (prefers-reduced-motion: reduce){
-  .cr.stage-4,.avatar.stage-3 .cr,.overlay,.lu-card{animation:none}
+  .cr.stage-4,.avatar.stage-3 .cr,.avatar.stage-4::before,.avatar.stage-4::after,.overlay,.lu-card{animation:none}
   .xp-track i{transition:none}
 }
 

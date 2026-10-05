@@ -100,7 +100,8 @@ export const TITLES = [
   ["battlechamp", "Battle Champ", 0, (x) => (x.counts.win || 0) >= 10, "Win 10 battles"],
   ["giantslayer", "Giant Slayer", 0, (x) => (x.counts.giant || 0) >= 1, "Beat someone older in a battle"],
 ];
-export const STAGES = [[1, "Hatchling"], [5, "Buddy"], [10, "Champion"], [20, "Legend"]];
+// Creatures evolve as you level: each stage is bigger with a fancier frame. [from level, name]
+export const STAGES = [[1, "Baby"], [5, "Buddy"], [10, "Champion"], [20, "Legend"]];
 export const stageFor = (level) => { let s = 1; STAGES.forEach(([l], i) => { if (level >= l) s = i + 1; }); return s; };
 
 /* ---------- battle modes ---------- */

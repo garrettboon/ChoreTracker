@@ -73,8 +73,11 @@ function xpState(id){const x=S.xp[id]||{};const level=x.maxLevel||1,total=x.tota
 function equipped(id){const e=(S.prefs[id]||{}).equipped||{},u=xpState(id).unlocked;const ok=(k,p)=>e[k]&&u.has(p+e[k])?e[k]:"";
   return {hat:ok("hat","h:"),theme:ok("theme","t:"),trail:ok("trail","r:"),confetti:ok("confetti","f:"),title:ok("title","ti:")};}
 function titleOf(id){const lv=xpState(id).level,t=equipped(id).title;const f=G.TITLES.find(x=>x[0]===t)||G.TITLES.filter(x=>!x[3]&&x[2]<=lv).pop();return f?f[1]:"";}
-// A person's creature with its growth stage and accessory.
-function crHtml(id){const cr=creatureFor(id),hat=G.HATS.find(h=>h[0]===equipped(id).hat);return `<span class="cr stage-${G.stageFor(xpState(id).level)}">${cr[1]}${hat?`<i class="hat hat-${hat[0]}" aria-hidden="true">${hat[1]}</i>`:""}</span>`;}
+// Evolution stage as stars and a name, with when the next one comes: "★★★☆ Champion Dragon · Legend at level 20".
+function stageChip(id){const lv=xpState(id).level,st=G.stageFor(lv),next=G.STAGES[st];
+  return `<span class="stage-chip s${st}" title="Your creature evolves at levels 5, 10, and 20">${"★".repeat(st)}${"☆".repeat(G.STAGES.length-st)} ${esc(G.STAGES[st-1][1])} ${esc(creatureFor(id)[2])}</span>${next?` <small class="stage-next">${esc(next[1])} at level ${next[0]}</small>`:""}`;}
+// A person's creature with its evolution stage and accessory.
+function crHtml(id,stage){const cr=creatureFor(id),hat=G.HATS.find(h=>h[0]===equipped(id).hat);return `<span class="cr stage-${stage||G.stageFor(xpState(id).level)}">${cr[1]}${hat?`<i class="hat hat-${hat[0]}" aria-hidden="true">${hat[1]}</i>`:""}</span>`;}
 const game=()=>G.gameCfg(cfg());
 const icon=ch=>`<span class="c-ic" aria-hidden="true">${esc(G.choreIcon(ch))}</span>`;
 const cotdId=()=>G.choreOfDay(cfg().chores,ymd(),cfg());
@@ -236,6 +239,13 @@ function checkLevelUp(){
   S.ui.levelUp={...lu,kid:S.viewKid};render();confetti(320);chime(true);
 }
 function levelUpOverlay(){const lu=S.ui.levelUp;const items=G.describeUnlocks(lu.unlocks||[]);if(lu.freezes)items.push(["🧊",`${lu.freezes} streak freeze${lu.freezes>1?"s":""}`,"Saves your streak on a missed day"]);
+  const was=G.stageFor(lu.from||lu.level-1),now=G.stageFor(lu.level),cr=creatureFor(lu.kid)[2];
+  // Reaching a new stage is the big moment: show the creature before and after.
+  if(now>was)return `<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="lu-title"><div class="lu-card evolve"><p class="lu-kicker">✨ Evolved! ✨</p>
+    <div class="evo"><span class="avatar stage-${was}">${crHtml(lu.kid,was)}</span><span class="evo-arrow" aria-hidden="true">➜</span><span class="avatar stage-${now}">${crHtml(lu.kid,now)}</span></div>
+    <h2 id="lu-title">Your ${esc(cr)} is now a ${esc(G.STAGES[now-1][1])}!</h2><p class="sub">Level ${lu.level}. ${G.STAGES[now]?`Next evolution at level ${G.STAGES[now][0]}.`:"That's the final form!"}</p>
+    ${items.length?`<p class="sub">You also unlocked:</p><ul class="lu-list">${items.map(i=>`<li><span>${i[0]}</span><b>${esc(i[1])}</b><small>${esc(i[2])}</small></li>`).join("")}</ul>`:""}
+    <button class="btn block" data-act="lu-ok" autofocus>Awesome!</button></div></div>`;
   return `<div class="overlay" role="dialog" aria-modal="true" aria-labelledby="lu-title"><div class="lu-card"><div class="lu-cr">${crHtml(lu.kid)}</div><p class="lu-kicker">Level up!</p><h2 id="lu-title">Level ${lu.level}</h2>
     ${items.length?`<p class="sub">You unlocked:</p><ul class="lu-list">${items.map(i=>`<li><span>${i[0]}</span><b>${esc(i[1])}</b><small>${esc(i[2])}</small></li>`).join("")}</ul>`:`<p class="sub">Keep going. More unlocks are on the way.</p>`}
     <button class="btn block" data-act="lu-ok" autofocus>Awesome!</button></div></div>`;}
@@ -271,7 +281,7 @@ function daysLeft(wk){if(wk!==mondayOf(new Date()))return 7;return 7-((new Date(
 function viewKid(kidId,embedded){
   const k=kidCfg(kidId),ks=kidState(k.id),today=ymd(),wk=activeWeek(k.id),w=getWeek(k.id,wk),net=weekNet(w),cr=creatureFor(k.id);
   let h=embedded?"":`<div class="wrap">`;
-  h+=`<header class="kid-head"><button class="avatar stage-${G.stageFor(xpState(k.id).level)}" data-act="pick-creature" aria-label="Open wardrobe" aria-expanded="${!!S.ui.pickCreature}">${crHtml(k.id)}</button><div><h1>${esc(k.name)}</h1><p class="sub"><span class="title-chip">${esc(titleOf(k.id))}</span> ${weekLabel(wk)}</p></div></header>`;
+  h+=`<header class="kid-head"><button class="avatar stage-${G.stageFor(xpState(k.id).level)}" data-act="pick-creature" aria-label="Open wardrobe" aria-expanded="${!!S.ui.pickCreature}">${crHtml(k.id)}</button><div><h1>${esc(k.name)}</h1><p class="sub"><span class="title-chip">${esc(titleOf(k.id))}</span> ${weekLabel(wk)}</p><p class="stage-line">${stageChip(k.id)}</p></div></header>`;
   h+=xpBar(k.id)+pushControl();
   if(S.ui.pickCreature)h+=wardrobe(k.id);
   h+=familyBar(true)+freezeNotice(k.id)+reminderBanner(k,ks,today);
@@ -408,10 +418,12 @@ function wardrobe(id){const x=xpState(id),e=equipped(id),cr=creatureFor(id),tab=
   else if(tab==="confetti")items=opt(G.CONFETTI,"confetti","f:",t=>CONF_ICON[t[0]]||"🎉",["🎊","Classic"]);
   else {const cur=titleOf(id);items=G.TITLES.map(t=>({id:t[0],icon:"🏷️",name:t[1],lv:t[2],hint:t[4],ok:x.unlocked.has("ti:"+t[0]),on:t[1]===cur}));}
   const stage=G.STAGES[G.stageFor(x.level)-1][1],next=G.STAGES[G.stageFor(x.level)];
-  return `<section class="card"><div class="sec-head"><h2>Wardrobe</h2><span class="sub">${esc(creatureFor(id)[2])}: ${stage}${next?`. Grows at level ${next[0]}`:""}</span></div>
+  const st=G.stageFor(x.level);
+  const stages=`<div class="stages" aria-label="Evolution stages">${G.STAGES.map(([lv,name],i)=>`<div class="stg ${i+1<=st?"got":""} ${i+1===st?"on":""}"><span class="avatar stage-${i+1}">${crHtml(id,i+1)}</span><b>${esc(name)}</b><small>${i+1<=st?(i+1===st?"Now":"✓"):"Level "+lv}</small></div>`).join("")}</div>`;
+  return `<section class="card"><div class="sec-head"><h2>Wardrobe</h2><span class="sub">${esc(creatureFor(id)[2])}: ${stage}${next?`. Evolves at level ${next[0]}`:""}</span></div>${stages}
     <div class="seg wtabs">${WTABS.map(t=>`<button class="${tab===t[0]?"on":""}" data-act="wtab" data-tab="${t[0]}" aria-pressed="${tab===t[0]}">${t[1]}</button>`).join("")}</div>
     <div class="picker" style="margin-top:12px">${items.map(it=>`<button class="${it.on?"on":""} ${it.ok?"":"locked"}" data-act="equip" data-slot="${tab}" data-id="${it.id}" ${it.ok?"":"disabled"} aria-pressed="${it.on}"><span>${it.icon}</span>${esc(it.name)}${it.ok?"":`<small>${it.hint?esc(it.hint):"🔒 Level "+it.lv}</small>`}</button>`).join("")}</div>
-    <p class="hint">Level up to unlock more. Your creature grows at levels 5, 10, and 20.</p></section>`;}
+    <p class="hint">Level up to unlock more. Your creature evolves at levels 5, 10, and 20: bigger each time, with a fancier frame.</p></section>`;}
 function freezeNotice(id){const n=xpState(id).notice;if(!n||n.type!=="freeze"||Date.now()-n.at>36*3600e3)return "";let seen=0;try{seen=Number(localStorage.getItem("boon.freezeSeen."+id))||0;}catch(e){}if(n.at<=seen)return "";
   return `<div class="banner freeze" role="status"><span>🧊 A streak freeze covered ${esc(parseYmd(n.date).toLocaleDateString(undefined,{weekday:"long"}))}. Your streak is safe!</span><button class="btn ghost small" data-act="freeze-ok" data-at="${n.at}">OK</button></div>`;}
 
