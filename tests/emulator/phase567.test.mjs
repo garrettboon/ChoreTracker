@@ -56,7 +56,6 @@ test("territory: reveal a country next to yours, do its chore to claim it, most 
   await reset();
   await level("k1", 6);
   const k1 = await kidClient("k1"), k2 = await kidClient("k2"), parent = await parentClient();
-  await rejects(k1.call("createBattle", { mode: "territory", opponent: "dad" }), /kids only/);
   const { id } = await k1.call("createBattle", { mode: "territory", opponent: "k2" });
   let b = await battle(id);
   const m = b.params.map, adj = G.mapAdjacency(m), home = b.params.homes.k1;
@@ -107,6 +106,18 @@ test("territory: reveal a country next to yours, do its chore to claim it, most 
   await waitFor(async () => (await eventKeys("k1")).includes(`battle:${id}`), { msg: "battle XP" });
   await quiet("xp/k1");
   await quiet("xp/k2");
+});
+
+test("territory: a kid can challenge a grown-up", async () => {
+  await reset();
+  await level("k1", 6);
+  const k1 = await kidClient("k1"), dad = await parentClient("dad@test.com"), parent = await parentClient();
+  const { id } = await k1.call("createBattle", { mode: "territory", opponent: "dad" });
+  await dad.call("respondBattle", { id, accept: true, as: "dad" });
+  const b = await battle(id);
+  assert.equal(b.status, "active");
+  assert.deepEqual(Object.keys(b.params.homes).sort(), ["dad", "k1"]);
+  await parent.call("cancelBattle", { id });
 });
 
 test("territory: a reversed chore gives the country back", async () => {
@@ -242,7 +253,7 @@ test("solo play: anyone can Room Rush solo; grown-ups can play any mode solo whe
   b = await waitFor(async () => { const b = await battle(blitz.id); return !b.live && b; }, { msg: "solo blitz done" });
   assert.deepEqual([b.status, b.result.solo, b.result.done], ["done", true, true]);
   assert.deepEqual(b.xp, { dad: G.XP.tie });
-  // A kids-only mode works solo for a grown-up, and Boss Raid needs no teammates.
+  // Territory works solo for a grown-up, and Boss Raid needs no teammates.
   const terr = await dad.call("createBattle", { mode: "territory", solo: true, as: "dad" });
   b = await battle(terr.id);
   assert.deepEqual(Object.keys(b.params.homes), ["dad"]);

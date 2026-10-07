@@ -131,7 +131,7 @@ What levels unlock: new creatures (the first 13 stay free), accessories, screen 
 | Wheel of Doom | level 3 | Same chore, timed. Each player first spins a wheel for a silly handicap (one hand only, T-rex arms, nonstop singing…) and has to follow it. Fastest run done well wins |
 | Blitz | level 3 | Most chore XP in a time window |
 | Chore Bingo | level 5 | First to finish a row, column, or diagonal on a 3×3 card of chores |
-| Territory | level 6 | Kids only. Conquer a map: tap a country next to yours to reveal its chore, do it, and the country turns your color. Most countries wins |
+| Territory | level 6 | Conquer a map: tap a country next to yours to reveal its chore, do it, and the country turns your color. Most countries wins |
 | Judge's Pick | level 8 | Same chore; a parent picks the better job in the Game tab |
 | Streak Duel | level 10 | Whoever misses their daily list first loses (up to 14 days) |
 | Goal Showdown | level 12 | Best share of the weekly goal, decided at cash-out |
