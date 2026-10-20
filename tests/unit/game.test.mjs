@@ -609,3 +609,13 @@ test("dish duel: most dishes wins (with the handicap), XP per dish like Room Rus
   assert.deepEqual(G.battleXp(b, r), { a: G.XP.loss + G.rushXp(20), c: G.XP.win + G.rushXp(18) });
   assert.ok(G.badgeList({}).some((x) => x[0] === "mode_dishduel"));
 });
+
+test("the big-chores quest names the chores that count", () => {
+  const chores = [{ id: "a", kind: "family", name: "Clean bathroom", mult: 2, assign: "pool" }, { id: "b", kind: "family", name: "Do laundry", mult: 2, assign: "pool" },
+    { id: "c", kind: "family", name: "Sweep", mult: 1, assign: "pool" }, { id: "d", kind: "family", name: "Mow lawn", mult: 3, assign: "k2" }];
+  assert.equal(G.bigChoresText(chores, "k1"), "Do 2 big chores (Clean bathroom, Do laundry)");
+  assert.equal(G.bigChoresText(chores, "k2"), "Do 2 big chores (Clean bathroom, Do laundry, Mow lawn)", "their own big chores count too");
+  assert.equal(G.bigChoresText([], "k1"), "Do 2 big chores (ones that pay 2× or more)");
+  const q = G.QUESTS.find((x) => x.id === "big");
+  assert.equal(q.text({ chores }, "k1"), "Do 2 big chores (Clean bathroom, Do laundry)");
+});

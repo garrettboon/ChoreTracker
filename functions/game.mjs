@@ -959,8 +959,14 @@ export const QUESTS = [
   { id: "checklist5", emoji: "✅", text: "Finish your daily checklist 5 days this week", target: 5, xp: 25, progress: (c) => c.checklistDays },
   { id: "goalfri", emoji: "🎯", text: "Reach your weekly goal by Friday", target: 1, xp: 25, progress: (c) => (c.goal > 0 && c.netByFri >= c.goal ? 1 : 0) },
   { id: "battle", emoji: "⚔️", text: "Win a battle", target: 1, xp: 20, progress: (c) => c.wins },
-  { id: "big", emoji: "💪", text: "Do 2 double-size chores", target: 2, xp: 20, progress: (c) => c.entries.filter((e) => ((choreOf(c.chores, e.choreId) || {}).mult || 1) >= 2).length },
+  { id: "big", emoji: "💪", text: (c, personId) => bigChoresText(c.chores, personId), target: 2, xp: 20, progress: (c) => c.entries.filter((e) => ((choreOf(c.chores, e.choreId) || {}).mult || 1) >= 2).length },
 ];
+// The "big chores" quest names the chores that count: ones paying 2× or more that this person can do.
+export function bigChoresText(chores, personId) {
+  const names = (chores || []).filter((c) => c.kind === "family" && (c.mult || 1) >= 2 && (c.assign === "pool" || c.assign === personId)).map((c) => c.name);
+  if (!names.length) return "Do 2 big chores (ones that pay 2× or more)";
+  return names.length <= 3 ? `Do 2 big chores (${names.join(", ")})` : "Do 2 big chores (ones that pay 2× or more)";
+}
 // This week's three quests for a person: the same on every device, different each week.
 export function weeklyQuests(week, personId) {
   let h = hash(week + ":" + personId);
@@ -971,6 +977,6 @@ export function weeklyQuests(week, personId) {
 export function questStatus(week, personId, ctx) {
   return weeklyQuests(week, personId).map((q) => {
     const p = Math.min(q.target, q.progress(ctx) || 0);
-    return { id: q.id, emoji: q.emoji, text: q.text, target: q.target, xp: q.xp, progress: p, done: p >= q.target };
+    return { id: q.id, emoji: q.emoji, text: typeof q.text === "function" ? q.text(ctx, personId) : q.text, target: q.target, xp: q.xp, progress: p, done: p >= q.target };
   });
 }
