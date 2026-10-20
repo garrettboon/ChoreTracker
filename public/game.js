@@ -113,7 +113,7 @@ export const MODES = [
   { id: "doom", emoji: "🎡", name: "Wheel of Doom", level: 3, desc: "Spin for a silly handicap, then race the same chore." },
   { id: "blitz", emoji: "⚡", name: "Blitz", level: 3, desc: "Most chore XP before time runs out." },
   { id: "bingo", emoji: "🎱", name: "Chore Bingo", level: 5, desc: "First to finish a row of chores wins." },
-  { id: "territory", emoji: "🚩", name: "Territory", level: 6, kidsOnly: true, desc: "Conquer a map. Each country hides a chore." },
+  { id: "territory", emoji: "🚩", name: "Territory", level: 6, desc: "Conquer a map. Each country hides a chore." },
   { id: "judge", emoji: "🧑‍⚖️", name: "Judge's Pick", level: 8, desc: "Same chore. A parent picks the better job." },
   { id: "streakduel", emoji: "🔥", name: "Streak Duel", level: 10, desc: "Whoever misses their daily list first loses." },
   { id: "showdown", emoji: "🎯", name: "Goal Showdown", level: 12, desc: "Best share of your weekly goal wins." },

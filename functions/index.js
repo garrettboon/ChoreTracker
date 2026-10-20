@@ -700,8 +700,7 @@ exports.createBattle = onCall(async (req) => {
   let mode = picked, twist = null;
   const pool = cfg.chores.filter((c) => c.kind === "family" && c.assign === "pool" && !needsNote(c));
   if (picked.id === "wildcard") {
-    const allKids = players.every((id) => !kidOf(cfg, id).adult);
-    const options = G.WILDCARD_MODES.filter((m) => m !== "territory" || (allKids && pool.length)).filter((m) => m !== "bingo" || pool.length);
+    const options = G.WILDCARD_MODES.filter((m) => m !== "territory" || pool.length).filter((m) => m !== "bingo" || pool.length);
     mode = G.modeById(options[Math.floor(Math.random() * options.length)]);
     const tw = pool[Math.floor(Math.random() * pool.length)];
     if (tw && mode.id !== "bingo") twist = { choreId: tw.id, text: `${tw.name} counts double` };
